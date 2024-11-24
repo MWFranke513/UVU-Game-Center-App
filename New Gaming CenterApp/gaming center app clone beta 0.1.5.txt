@@ -1,0 +1,301 @@
+gaming center app clone beta 0.1.5:
+
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox
+import time
+from datetime import datetime
+import math
+
+class TimerRing(tk.Canvas):
+    def __init__(self, parent, width=60, height=60):
+        super().__init__(parent, width=width, height=height, bg='white', highlightthickness=0)
+        self.width = width
+        self.height = height
+        self.time_limit = 35 * 60  # 35 minutes in seconds
+        self.warning_threshold = 0.8 * self.time_limit  # 28 minutes
+        
+    def draw_ring(self, progress):
+        self.delete("all")  # Clear canvas
+        
+        # Calculate coordinates for the ring
+        padding = 4
+        x0 = padding
+        y0 = padding
+        x1 = self.width - padding
+        y1 = self.height - padding
+        
+        # Draw background ring
+        self.create_oval(x0, y0, x1, y1, outline='#e0e0e0', width=3)
+        
+        if progress > 0:
+            # Calculate color based on progress
+            if progress >= 1:
+                color = '#ff0000'  # Red for overtime
+            elif progress >= 0.8:
+                color = '#ffa500'  # Orange for warning
+            else:
+                color = '#00ff00'  # Green for normal
+            
+            # Convert progress to angle (0 to 360 degrees)
+            start = 90  # Start at top (90 degrees)
+            extent = -progress * 360  # Negative for clockwise
+            
+            # Draw progress arc
+            self.create_arc(x0, y0, x1, y1, 
+                          start=start, extent=extent,
+                          outline=color, width=3, style='arc')
+
+class StationTimer:
+    def __init__(self):
+        self.is_running = False
+        self.start_time = 0
+        self.elapsed_time = 0
+        self.alert_shown = False
+        self.TIME_LIMIT = 5 * 60  # 35 minutes in seconds
+
+    def start(self):
+        if not self.is_running:
+            self.is_running = True
+            self.start_time = time.time() - self.elapsed_time
+
+    def stop(self):
+        if self.is_running:
+            self.is_running = False
+            self.elapsed_time = time.time() - self.start_time
+
+    def reset(self):
+        self.is_running = False
+        self.elapsed_time = 0
+        self.alert_shown = False
+
+    def get_time(self):
+        if self.is_running:
+            return time.time() - self.start_time
+        return self.elapsed_time
+
+    def check_time_limit(self):
+        return self.get_time() >= self.TIME_LIMIT
+
+class Station(tk.Frame):
+    def __init__(self, parent, station_type, station_num):
+        super().__init__(parent)
+        self.station_type = station_type
+        self.station_num = station_num
+        self.timer = StationTimer()
+        self.setup_ui()
+        self.update_timer()
+
+    def setup_ui(self):
+        # Main frame styling
+        self.configure(relief="ridge", borderwidth=2)
+        
+        # Station header
+        header_frame = ttk.Frame(self)
+        header_frame.pack(fill="x", padx=5, pady=5)
+
+        # For console stations
+        if self.station_type in ["XBOX One", "Switch"]:
+            self.console_var = tk.StringVar(value="XBOX One")
+            console_tabs = ttk.Notebook(header_frame)
+            console_tabs.pack(fill="x")
+            
+            xbox_tab = ttk.Frame(console_tabs)
+            switch_tab = ttk.Frame(console_tabs)
+            console_tabs.add(xbox_tab, text="XBOX One")
+            console_tabs.add(switch_tab, text="Switch")
+
+            # Station number dropdown
+            station_frame = ttk.Frame(self)
+            station_frame.pack(fill="x", padx=5)
+            ttk.Label(station_frame, text="Station\t").pack(side="left")
+            self.station_num_entry = ttk.Entry(station_frame, width=5)
+            self.station_num_entry.insert(0, str(self.station_num))
+            self.station_num_entry.configure(state="readonly")
+            self.station_num_entry.pack(side="left", padx=5)
+
+            # Name and ID fields
+            name_frame = ttk.Frame(self)
+            name_frame.pack(fill="x", padx=5, pady=2)
+            ttk.Label(name_frame, text="Name:\t").pack(side="left")
+            self.name_entry = ttk.Entry(name_frame)
+            self.name_entry.pack(side="left", fill="x", expand=True, padx=5)
+            ttk.Label(name_frame, text="ID #").pack(side="left")
+
+            # Game and controller dropdowns
+            game_frame = ttk.Frame(self)
+            game_frame.pack(fill="x", padx=5, pady=2)
+            ttk.Label(game_frame, text="Game:\t").pack(side="left")
+            self.game_var = tk.StringVar()
+            games = ["games..."]
+            self.game_dropdown = ttk.Combobox(game_frame, textvariable=self.game_var, values=games, width=15)
+            self.game_dropdown.pack(side="left", padx=5)
+
+            controller_frame = ttk.Frame(self)
+            controller_frame.pack(fill="x", padx=5, pady=2)
+            ttk.Label(controller_frame, text="Ctrl:\t").pack(side="left")
+            self.controller_var = tk.StringVar()
+            controllers = ["# of controllers..."]
+            self.controller_dropdown = ttk.Combobox(controller_frame, textvariable=self.controller_var, values=controllers, width=15)
+            self.controller_dropdown.pack(side="left", padx=5)
+
+        else:  # For other station types
+            ttk.Label(header_frame, text=self.station_type).pack(side="left")
+            
+            station_frame = ttk.Frame(self)
+            station_frame.pack(fill="x", padx=5)
+            ttk.Label(station_frame, text="Station\t").pack(side="left")
+            self.station_num_entry = ttk.Entry(station_frame, width=5)
+            self.station_num_entry.insert(0, str(self.station_num))
+            self.station_num_entry.configure(state="readonly")
+            self.station_num_entry.pack(side="left", padx=5)
+
+
+            # Name field
+            name_frame = ttk.Frame(self)
+            name_frame.pack(fill="x", padx=5, pady=2)
+            ttk.Label(name_frame, text="Name:\t").pack(side="left")
+            self.name_entry = ttk.Entry(name_frame)
+            self.name_entry.pack(side="left", fill="x", expand=True, padx=5)
+            ttk.Label(name_frame, text="ID #").pack(side="left")
+
+        # Timer controls with ring
+        timer_frame = ttk.Frame(self)
+        timer_frame.pack(fill="x", padx=5, pady=2)
+        
+        # Add timer ring
+        self.timer_ring = TimerRing(timer_frame)
+        self.timer_ring.pack(side="right", padx=5)
+        
+        self.timer_label = ttk.Label(self.timer_ring, text="00:00:00", foreground="black")
+        self.timer_label.place(relx=0.5, rely=0.5, anchor="center")
+        
+        button_frame = ttk.Frame(timer_frame)
+        button_frame.pack(side="left")
+        
+        self.start_button = ttk.Button(button_frame, text="▶", width=4, command=self.start_timer)
+        self.start_button.pack(side="left", padx=6, pady=6)
+        
+        self.stop_button = ttk.Button(button_frame, text="■", width=4, command=self.stop_timer)
+        self.stop_button.pack(side="left", padx=6, pady=6)
+        
+        self.reset_button = ttk.Button(button_frame, text="↺", width=4, command=self.reset_station)
+        self.reset_button.pack(side="left", padx=6, pady=6)
+
+    def update_timer(self):
+        if self.timer.is_running:
+            elapsed = self.timer.get_time()
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            seconds = int(elapsed % 60)
+            self.timer_label.config(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+            
+            # Update progress ring
+            progress = min(elapsed / self.timer.TIME_LIMIT, 1.0)
+            self.timer_ring.draw_ring(progress)
+            
+            # Update timer color based on elapsed time
+            if elapsed >= self.timer.TIME_LIMIT:
+                self.timer_label.config(foreground="red")
+                if not self.timer.alert_shown:
+                    self.show_time_alert()
+                    self.timer.alert_shown = True
+            elif elapsed >= (self.timer.TIME_LIMIT * 0.8):
+                self.timer_label.config(foreground="orange")
+            else:
+                self.timer_label.config(foreground="green")
+        
+        self.after(1000, self.update_timer)
+
+    def show_time_alert(self):
+        station_info = f"Station {self.station_num} ({self.station_type})"
+        user_name = self.name_entry.get()
+        if user_name:
+            station_info += f" - {user_name}"
+        messagebox.showwarning("Time Limit Exceeded", 
+                             f"{station_info}\nhas exceeded the 35-minute time limit.\nPlease ask the user to wrap up their session.")
+
+    def start_timer(self):
+        self.timer.start()
+
+    def stop_timer(self):
+        self.timer.stop()
+
+    def reset_station(self):
+        self.log_usage()
+        self.timer.reset()
+        self.timer_label.config(text="00:00:00", foreground="black")
+        self.timer_ring.draw_ring(0)  # Reset progress ring
+        self.name_entry.delete(0, tk.END)
+        
+        if self.station_type in ["XBOX One", "Switch"]:
+            self.game_dropdown.set("")
+            self.controller_dropdown.set("")
+
+    def log_usage(self):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        elapsed_time = self.timer_label.cget("text")
+        name = self.name_entry.get()
+        
+        with open("usage_log.txt", "a") as f:
+            f.write(f"Date: {timestamp}\n")
+            f.write(f"Station Type: {self.station_type}\n")
+            f.write(f"Station Number: {self.station_num}\n")
+            f.write(f"User Name: {name}\n")
+            f.write(f"Duration: {elapsed_time}\n")
+            
+            if self.station_type in ["XBOX One", "Switch"]:
+                f.write(f"Game: {self.game_var.get()}\n")
+                f.write(f"Controllers: {self.controller_var.get()}\n")
+            
+            f.write("-" * 50 + "\n")
+
+class GamingCenter:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("UVU Gaming Center")
+        self.setup_ui()
+
+    def setup_ui(self):
+        # Create main container with more padding
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Configure grid weights
+        for i in range(6):  # 6 rows
+            main_frame.grid_rowconfigure(i, weight=1)
+        for i in range(3):  # 3 columns
+            main_frame.grid_columnconfigure(i, weight=1)
+
+        # Create first 4 console stations (left column) in reverse order
+        for i in range(4):
+            station = Station(main_frame, "XBOX One", 4 - i)  # Reversed numbering
+            station.grid(row=i, column=0, padx=10, pady=10, sticky="nsew")
+
+        # Create 5th console station (top center)
+        station = Station(main_frame, "XBOX One", 5)
+        station.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+
+        # Create other activity stations (under 5th console)
+        activities = [
+            ("Ping-Pong", 1),
+            ("Ping-Pong", 2),
+            ("Air Hockey", 1),
+            ("Football", 1),
+            ("Billiards", 1),
+            ("Billiards", 2),
+        ]
+
+        row, col = 1, 1  # Start position (under 5th console)
+        for activity, num in activities:
+            station = Station(main_frame, activity, num)
+            station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+            col += 1
+            if col > 2:  # Move to next row after 2 columns
+                col = 1
+                row += 1
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = GamingCenter(root)
+    root.mainloop()

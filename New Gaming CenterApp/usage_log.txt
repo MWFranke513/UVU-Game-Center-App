@@ -1,0 +1,480 @@
+Date: 2023-11-15 13:44:17
+Station Type: XBOX One
+Station Number: 4
+User Name: 
+Duration: 00:00:51
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2023-11-15 14:02:58
+Station Type: XBOX One
+Station Number: 3
+User Name: Ronald McDonald
+Duration: 00:04:27
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2023-11-15 14:03:16
+Station Type: XBOX One
+Station Number: 4
+User Name: Boe Jiden
+Duration: 00:05:32
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2023-11-16 10:15:45
+Station Type: PlayStation 5
+Station Number: 1
+User Name: Jane Doe
+Duration: 00:30:15
+Game: FIFA 21
+Controllers: 2
+--------------------------------------------------
+Date: 2023-11-17 11:20:30
+Station Type: PlayStation 5
+Station Number: 2
+User Name: John Smith
+Duration: 01:15:00
+Game: Call of Duty
+Controllers: 1
+--------------------------------------------------
+Date: 2023-11-18 12:45:00
+Station Type: Nintendo Switch
+Station Number: 1
+User Name: Alice Wonderland
+Duration: 00:45:30
+Game: Mario Kart 8
+Controllers: 4
+--------------------------------------------------
+Date: 2023-11-19 14:30:00
+Station Type: XBOX Series X
+Station Number: 1
+User Name: Bob Builder
+Duration: 00:50:00
+Game: Halo Infinite
+Controllers: 2
+--------------------------------------------------
+Date: 2023-11-20 15:00:00
+Station Type: XBOX Series X
+Station Number: 2
+User Name: Charlie Brown
+Duration: 01:00:00
+Game: Forza Horizon 5
+Controllers: 1
+--------------------------------------------------
+Date: 2023-11-21 16:00:00
+Station Type: PlayStation 5
+Station Number: 3
+User Name: Dora Explorer
+Duration: 00:20:00
+Game: Spider-Man: Miles Morales
+Controllers: 1
+--------------------------------------------------
+Date: 2023-11-22 17:00:00
+Station Type: Nintendo Switch
+Station Number: 2
+User Name: Elmo Sesame
+Duration: 00:35:00
+Game: Animal Crossing
+Controllers: 2
+--------------------------------------------------
+Date: 2024-11-15 16:27:50
+Station Type: XBOX One
+Station Number: 
+User Name: 
+Duration: 00:00:00
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-16 17:40:36.31
+Station Type: Switch
+Station Number: 4
+User Name: Boe Jiden
+Duration: 00:01:42
+Game: Minecraft
+Controllers: 4
+--------------------------------------------------
+Date: 2024-11-16 17:48:41.35
+Station Type: XBOX
+Station Number: 4
+User Name: Boe Jiden
+Duration: 00:00:33
+Game: Halo Infinite
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-16 17:48:46.30
+Station Type: XBOX
+Station Number: 5
+User Name: 
+Duration: 00:00:02
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-16 18:41:11.88
+Station Type: XBOX
+Station Number: 4
+User Name: 
+Duration: 00:00:05
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-16 21:18:41.22
+Station Type: XBOX
+Station Number: 4
+User Name: Boe Jiden
+Duration: 01:00:02
+Game: Halo: Master Chief Collection
+Controllers: 2
+--------------------------------------------------
+Date: 2024-11-16 21:31:16.91
+Station Type: XBOX
+Station Number: 4
+User Name: 
+Duration: 00:11:21
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-16 21:31:17.66
+Station Type: XBOX
+Station Number: 5
+User Name: Boe Jiden
+Duration: 00:02:52
+Game: Fortnite
+Controllers: 2
+--------------------------------------------------
+Date: 2024-11-19 18:19:41.30
+Station Type: XBOX
+Station Number: 5
+User Name: Ronald McDonald
+Duration: 00:07:27
+Game: Forza Horizon 5
+Controllers: 2
+--------------------------------------------------
+Date: 2024-11-19 18:19:49.59
+Station Type: XBOX
+Station Number: 1
+User Name: Giorno Giovanna
+Duration: 00:06:38
+Game: Forza Horizon 5
+Controllers: 2
+--------------------------------------------------
+Date: 2024-11-19 18:19:51.15
+Station Type: Switch
+Station Number: 2
+User Name: Joseph Joestar
+Duration: 00:07:01
+Game: Super Smash Bros
+Controllers: 4
+--------------------------------------------------
+Date: 2024-11-19 18:19:53.05
+Station Type: XBOX
+Station Number: 3
+User Name: Kai Cenat
+Duration: 00:07:28
+Game: Fortnite
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-19 18:19:53.46
+Station Type: XBOX
+Station Number: 3
+User Name: 
+Duration: 00:00:00
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-19 18:19:55.01
+Station Type: XBOX
+Station Number: 4
+User Name: Boe Jiden
+Duration: 00:08:43
+Game: Fortnite
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-19 18:31:29.03
+Station Type: Switch
+Station Number: 5
+User Name: Joesph Joestar
+Duration: 00:06:26
+Game: Super Smash Bros
+Controllers: 4
+--------------------------------------------------
+Date: 2024-11-19 18:31:41.80
+Station Type: XBOX
+Station Number: 4
+User Name: Boe Jiden
+Duration: 00:06:50
+Game: Fortnite
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-19 18:36:42.23
+Station Type: Ping-Pong
+Station Number: 1
+User Name: Boe Jiden
+Duration: 00:00:35
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-19 18:38:16.75
+Station Type: XBOX
+Station Number: 4
+User Name: Boe Jiden
+Duration: 00:01:16
+Game: Fortnite
+Controllers: 4
+--------------------------------------------------
+Date: 2024-11-19 18:40:01.61
+Station Type: PoolTable
+Station Number: 1
+User Name: Johnny Bravo
+Duration: 00:01:33
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-20 18:04:30.60
+Station Type: XBOX
+Station Number: 4
+User Name: Boe Jiden
+Duration: 00:48:51
+Game: Fortnite
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-20 18:48:44.85
+Station Type: Switch
+Station Number: 5
+User Name: Michael Jackson
+Duration: 00:13:54
+Game: Super Smash Bros
+Controllers: 4
+--------------------------------------------------
+Date: 2024-11-20 18:48:45.97
+Station Type: XBOX
+Station Number: 4
+User Name: Joseph Joestar
+Duration: 00:14:09
+Game: Call of Duty: Black Ops 6
+Controllers: 3
+--------------------------------------------------
+Date: 2024-11-20 18:48:46.97
+Station Type: XBOX
+Station Number: 3
+User Name: Boe Jiden
+Duration: 00:13:48
+Game: Forza Horizon 5
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-20 18:48:47.82
+Station Type: Switch
+Station Number: 2
+User Name: Captain Sparklz
+Duration: 00:13:03
+Game: Minecraft
+Controllers: 2
+--------------------------------------------------
+Date: 2024-11-20 18:48:49.09
+Station Type: Switch
+Station Number: 1
+User Name: Dio Brando
+Duration: 00:12:13
+Game: Super Smash Bros
+Controllers: 4
+--------------------------------------------------
+Date: 2024-11-20 18:48:50.38
+Station Type: Ping-Pong
+Station Number: 1
+User Name: Ray Ramano
+Duration: 00:13:37
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-20 18:48:51.32
+Station Type: Ping-Pong
+Station Number: 2
+User Name: Levelle Edwards
+Duration: 00:13:25
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-20 18:48:52.42
+Station Type: Foosball
+Station Number: 1
+User Name: Mike Tyson
+Duration: 00:12:49
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-20 18:48:53.45
+Station Type: Air Hockey
+Station Number: 1
+User Name: Jake Paul
+Duration: 00:12:46
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-20 18:48:55.51
+Station Type: PoolTable
+Station Number: 1
+User Name: Freddy Mercury
+Duration: 00:12:37
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-20 18:48:56.33
+Station Type: PoolTable
+Station Number: 2
+User Name: Your Mom
+Duration: 00:12:34
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-20 18:57:03.02
+Station Type: Ping-Pong
+Station Number: 1
+User Name: Boe Jiden
+Duration: 00:00:21
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-21 17:17:49.85
+Station Type: Switch
+Station Number: 4
+User Name: Boe Jiden
+Duration: 00:06:41
+Game: Overcooked 2
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-21 17:17:51.22
+Station Type: XBOX
+Station Number: 5
+User Name: Donald Trump 
+Duration: 00:06:29
+Game: Fortnite
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-21 17:17:53.46
+Station Type: Ping-Pong
+Station Number: 1
+User Name: Joseph Joestar
+Duration: 00:05:42
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-21 17:17:54.89
+Station Type: Foosball
+Station Number: 1
+User Name: Broski
+Duration: 00:02:49
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-21 17:17:56.03
+Station Type: Air Hockey
+Station Number: 1
+User Name: Mark Wahlberg
+Duration: 00:02:45
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-21 17:17:57.42
+Station Type: PoolTable
+Station Number: 1
+User Name: Carson Lantz
+Duration: 00:02:40
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-23 21:17:27.67
+Station Type: XBOX
+Station Number: 5
+User Name: Boe Jiden
+Duration: 00:42:14
+Game: Fortnite
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-23 21:17:28.95
+Station Type: Switch
+Station Number: 4
+User Name: Travis Scott
+Duration: 00:42:18
+Game: Overcooked 2
+Controllers: 3
+--------------------------------------------------
+Date: 2024-11-23 21:17:30.41
+Station Type: XBOX
+Station Number: 3
+User Name: Autism Incarnate
+Duration: 00:42:04
+Game: Call of Duty: Black Ops 6
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-23 21:17:31.26
+Station Type: Ping-Pong
+Station Number: 1
+User Name: Kolanii
+Duration: 00:41:57
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-23 21:17:32.17
+Station Type: Ping-Pong
+Station Number: 2
+User Name: Yuge Yackman
+Duration: 00:41:43
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-23 21:17:33.17
+Station Type: Foosball
+Station Number: 1
+User Name: Jack Hoff
+Duration: 00:41:38
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-23 21:17:34.03
+Station Type: Switch
+Station Number: 2
+User Name: Steve
+Duration: 00:41:15
+Game: Minecraft
+Controllers: 2
+--------------------------------------------------
+Date: 2024-11-23 21:17:35.10
+Station Type: Switch
+Station Number: 2
+User Name: 
+Duration: 00:00:00
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-23 21:17:36.33
+Station Type: Switch
+Station Number: 1
+User Name: Luigi
+Duration: 00:40:43
+Game: Luigi's Mansion 3
+Controllers: 1
+--------------------------------------------------
+Date: 2024-11-23 21:17:37.30
+Station Type: PoolTable
+Station Number: 1
+User Name: Gustavo Fring
+Duration: 00:40:59
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-23 21:17:38.41
+Station Type: Air Hockey
+Station Number: 1
+User Name: Lionel Messi
+Duration: 00:39:16
+Game: 
+Controllers: 
+--------------------------------------------------
+Date: 2024-11-23 21:34:38.26
+Station Type: XBOX
+Station Number: 4
+User Name: 
+Duration: 00:00:13
+Game: 
+Controllers: 
+--------------------------------------------------
