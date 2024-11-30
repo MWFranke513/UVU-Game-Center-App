@@ -18,6 +18,29 @@ import os
 # Polish up the UI and make it look nice, modern, and user-friendly.
 # Performance improvments and optimizations since this is a python application
 
+dark_mode_styles = {
+    "bg": "#2e2e2e",
+    "fg": "#ffffff",
+    "button_bg": "#444444",
+    "button_fg": "#ffffff"
+}
+
+def toggle_dark_mode():
+    if app.cget("bg") == "white":
+        app.config(bg=dark_mode_styles["bg"])
+        for widget in app.winfo_children():
+            try:
+                widget.config(bg=dark_mode_styles["button_bg"], fg=dark_mode_styles["button_fg"])
+            except tk.TclError:
+                pass  # Ignore widgets that do not support bg and fg options
+    else:
+        app.config(bg="white")
+        for widget in app.winfo_children():
+            try:
+                widget.config(bg="SystemButtonFace", fg="black")
+            except tk.TclError:
+                pass  # Ignore widgets that do not support bg and fg options
+
 
 class TimerRing(tk.Canvas):
     def __init__(self, parent, width=65, height=65):
@@ -342,12 +365,29 @@ class GamesWindow(tk.Toplevel):
         for game in self.games[console]:
             games_listbox.insert('end', game)
 
+class StationSelectionDialog(simpledialog.Dialog):
+    def __init__(self, parent, title, stations):
+        self.stations = stations
+        self.selected_station = None
+        super().__init__(parent, title)
+
+    def body(self, master):
+        tk.Label(master, text="Select Station:").grid(row=0, column=0, padx=10, pady=10)
+        self.station_var = tk.StringVar()
+        self.station_dropdown = ttk.Combobox(master, textvariable=self.station_var, values=self.stations)
+        self.station_dropdown.grid(row=0, column=1, padx=10, pady=10)
+        return self.station_dropdown
+
+    def apply(self):
+        self.selected_station = self.station_var.get()
+
 class GamingCenterApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Gaming Center App")
         self.geometry("1200x1000")
         self.stations = []  # Keep track of all stations
+        self.waitlist = []  # List to keep track of people on the waitlist
         self.create_menu()
         self.setup_ui()
 
@@ -362,6 +402,8 @@ class GamingCenterApp(tk.Tk):
             main_frame.grid_columnconfigure(i, weight=1)
         # Add button to view and edit games at the top right
         games_button = ttk.Button(main_frame, text="View/Edit Games", command=self.open_games_window)
+        waitlist_button= ttk.Button(main_frame, text="Waitlist", command=self.show_waitlist_window)
+        waitlist_button.grid(row=0, column=3, padx=10, pady=10, sticky="ne")
         games_button.grid(row=0, column=2, padx=10, pady=10, sticky="ne")
         # Create first 4 console stations (left column) in reverse order
         for i in range(4):
@@ -391,6 +433,21 @@ class GamingCenterApp(tk.Tk):
                 col = 1
                 row += 1
 
+        # Add the "View/Edit Games List" button
+        view_edit_games_button = tk.Button(self, text="View/Edit Games List")
+        view_edit_games_button.pack(pady=10)
+
+        # Add the waitlist button with notification bubble
+        waitlist_frame = tk.Frame(self)
+        waitlist_frame.pack(pady=10)
+
+        self.waitlist_button = tk.Button(waitlist_frame, text="Waitlist", command=self.show_waitlist_window)
+        self.waitlist_button.pack(side=tk.LEFT)
+
+        self.notification_bubble = tk.Label(waitlist_frame, text="", bg="red", fg="white", font=("Arial", 10, "bold"))
+        self.notification_bubble.pack(side=tk.LEFT, padx=5)
+        self.update_notification_bubble()
+
     def get_games_for_console(self, console_type):
         try:
             with open('games_list.json', 'r') as f:
@@ -414,11 +471,72 @@ class GamingCenterApp(tk.Tk):
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit)
 
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="View", menu=view_menu)
+        view_menu.add_command(label="Toggle Dark Mode", command=toggle_dark_mode)
+        
+
     def open_stats_window(self):
         StatsWindow(self)
 
     def open_games_window(self):
         GamesWindow(self)
+
+    def update_notification_bubble(self):
+        if self.waitlist:
+            self.notification_bubble.config(text=str(len(self.waitlist)))
+            self.notification_bubble.pack(side=tk.LEFT, padx=5)
+        else:
+            self.notification_bubble.pack_forget()
+
+    def show_waitlist_window(self):
+        waitlist_window = tk.Toplevel(self)
+        waitlist_window.title("Waitlist")
+        waitlist_window.geometry("500x500")
+
+        waitlist_listbox = tk.Listbox(waitlist_window)
+        waitlist_listbox.pack(fill=tk.BOTH, expand=True)
+
+        for i, person in enumerate(self.waitlist):
+            waitlist_listbox.insert(tk.END, f"{i+1}. {person['name']} - Station: {person['station']} - Wait Time: {self.calculate_wait_time(person['station'])}")
+
+        add_button = tk.Button(waitlist_window, text="Add to Waitlist", command=lambda: self.add_to_waitlist(waitlist_listbox))
+        add_button.pack(pady=5)
+
+        remove_button = tk.Button(waitlist_window, text="Remove from Waitlist", command=lambda: self.remove_from_waitlist(waitlist_listbox))
+        remove_button.pack(pady=5)
+
+    def add_to_waitlist(self, waitlist_listbox):
+        name = simpledialog.askstring("Add to Waitlist", "Enter Name:")
+        if not name:
+            return
+
+        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+        dialog = StationSelectionDialog(self, "Select Station", station_names)
+        if not dialog.selected_station:
+            return
+
+        self.waitlist.append({"name": name, "station": dialog.selected_station})
+        self.update_notification_bubble()
+        self.update_waitlist_listbox(waitlist_listbox)
+
+    def remove_from_waitlist(self, waitlist_listbox):
+        selected_index = waitlist_listbox.curselection()
+        if not selected_index:
+            return
+
+        self.waitlist.pop(selected_index[0])
+        self.update_notification_bubble()
+        self.update_waitlist_listbox(waitlist_listbox)
+
+    def update_waitlist_listbox(self, waitlist_listbox):
+        waitlist_listbox.delete(0, tk.END)
+        for i, person in enumerate(self.waitlist):
+            waitlist_listbox.insert(tk.END, f"{i+1}. {person['name']} - Station: {person['station']} - Wait Time: {self.calculate_wait_time(person['station'])}")
+
+    def calculate_wait_time(self, station):
+        # Placeholder function to calculate wait time based on station's timer
+        return "10 mins"
 
 
 if __name__ == "__main__":
