@@ -3,14 +3,16 @@ from tkinter import ttk
 from tkinter import messagebox
 from datetime import datetime, timedelta
 from collections import defaultdict
+import textwrap
 import os
+import math
 import csv
 
 class StatsWindow(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Gaming Center Statistics")
-        self.geometry("800x600")
+        self.geometry("1000x800")  # Increase window size
         self.stats_manager = StatsManager()
         
         # Add debug button for diagnostics
@@ -27,17 +29,17 @@ class StatsWindow(tk.Toplevel):
 
     def setup_ui(self):
         # Create notebook for tabbed interface
-        notebook = ttk.Notebook(self)
-        notebook.pack(fill='both', expand=True, padx=10, pady=5)
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill='both', expand=True, padx=10, pady=5)
 
         # Create tabs
-        summary_tab = ttk.Frame(notebook)
-        station_tab = ttk.Frame(notebook)
-        games_tab = ttk.Frame(notebook)
+        summary_tab = ttk.Frame(self.notebook)
+        station_tab = ttk.Frame(self.notebook)
+        games_tab = ttk.Frame(self.notebook)
         
-        notebook.add(summary_tab, text='Summary Statistics')
-        notebook.add(station_tab, text='Station Details')
-        notebook.add(games_tab, text='Game Rankings')
+        self.notebook.add(summary_tab, text='Summary Statistics')
+        self.notebook.add(station_tab, text='Station Details')
+        self.notebook.add(games_tab, text='Game Rankings')
 
         # Setup each tab
         self.setup_summary_tab(summary_tab)
@@ -82,6 +84,10 @@ class StatsWindow(tk.Toplevel):
         self.type_tree.heading('Avg Time', text='Avg Time')
         self.type_tree.pack(fill='x', padx=5, pady=5)
 
+        # Graph for total usage
+        self.total_usage_graph = tk.Canvas(total_usage_frame, width=400, height=300)
+        self.total_usage_graph.pack(side='right', padx=5, pady=5)
+
     def setup_station_tab(self, parent):
         # Station selector
         select_frame = ttk.Frame(parent)
@@ -105,6 +111,10 @@ class StatsWindow(tk.Toplevel):
         self.station_tree.heading('Value', text='Value')
         self.station_tree.pack(fill='both', expand=True, padx=5, pady=5)
 
+        # Graph for station type breakdown
+        self.station_type_graph = tk.Canvas(stats_frame, width=400, height=300)
+        self.station_type_graph.pack(side='right', padx=5, pady=5)
+
     def setup_games_tab(self, parent):
         # Game rankings tree
         self.games_tree = ttk.Treeview(parent, columns=('Rank', 'Game', 'Sessions', 'Total Time'), show='headings', height=15)
@@ -113,6 +123,10 @@ class StatsWindow(tk.Toplevel):
         self.games_tree.heading('Sessions', text='Sessions')
         self.games_tree.heading('Total Time', text='Total Time')
         self.games_tree.pack(fill='both', expand=True, padx=10, pady=5)
+
+        # Graph for game rankings
+        self.game_rankings_graph = tk.Canvas(parent, width=9000, height=300)
+        self.game_rankings_graph.pack(side='right', padx=5, pady=5)
 
     def update_stats(self, event=None):
         period = self.period_var.get()
@@ -136,6 +150,10 @@ class StatsWindow(tk.Toplevel):
         # Update game rankings
         self.update_game_rankings()
 
+        # Update graphs
+        self.update_summary_graph(stats)
+        self.update_station_type_graph(stats['station_types'])
+
     def update_station_stats(self, event=None):
         station = self.station_var.get()
         stats = self.stats_manager.get_station_stats(station)
@@ -155,6 +173,101 @@ class StatsWindow(tk.Toplevel):
                 stats['sessions'],
                 stats['total_time']
             ))
+
+        # Update game rankings graph
+        self.update_game_rankings_graph(rankings)
+
+    def update_summary_graph(self, stats):
+        self.total_usage_graph.delete("all")
+        total_time = stats['total_time']
+        total_sessions = stats['total_sessions']
+        avg_session = stats['avg_session']
+
+        # Draw bar graph for total usage
+        bar_width = 100
+        bar_spacing = 20
+        x_start = 20
+        y_start = 250
+        max_height = 200
+
+        self.total_usage_graph.create_rectangle(x_start, y_start, x_start + bar_width, y_start - int(total_time.split(':')[0]) * 2, fill="blue")
+        self.total_usage_graph.create_text(x_start + bar_width / 2, y_start + 20, text=f"Total Time: {total_time}", anchor="center")
+
+        x_start += bar_width + bar_spacing
+        self.total_usage_graph.create_rectangle(x_start, y_start, x_start + bar_width, y_start - total_sessions * 2, fill="green")
+        self.total_usage_graph.create_text(x_start + bar_width / 2, y_start + 20, text=f"Total Sessions: {total_sessions}", anchor="center")
+
+        x_start += bar_width + bar_spacing
+        self.total_usage_graph.create_rectangle(x_start, y_start, x_start + bar_width, y_start - int(avg_session.split(':')[0]) * 2, fill="red")
+        self.total_usage_graph.create_text(x_start + bar_width / 2, y_start + 20, text=f"Avg Session: {avg_session}", anchor="center")
+
+
+
+    def update_station_type_graph(self, station_types):
+        self.station_type_graph.delete("all")
+        
+        # Calculate total sessions and ensure it's not zero
+        total_sessions = sum(type_stats['sessions'] for type_stats in station_types.values())
+        if total_sessions == 0:
+            print("Error: Total sessions is 0, cannot generate pie chart.")
+            return  # Exit early if there are no sessions to display
+
+        start_angle = 0
+        radius = 150
+        center_x, center_y = 200, 150
+
+        # Debugging: Check if station types are being processed
+        print(f"Station types: {station_types}")
+        
+        for station_type, type_stats in station_types.items():
+            sessions = type_stats['sessions']
+            angle = 360 * (sessions / total_sessions)
+
+            # Debugging: Output the calculated angles
+            print(f"Station Type: {station_type}, Sessions: {sessions}, Angle: {angle}")
+
+            # Create the pie chart section (arc)
+            self.station_type_graph.create_arc(center_x - radius, center_y - radius, center_x + radius, center_y + radius,
+                                            start=start_angle, extent=angle, fill=self.get_station_color(station_type))
+            
+            mid_angle = start_angle + angle / 2
+            text_x = center_x + radius * 0.7 * math.cos(math.radians(mid_angle))
+            text_y = center_y + radius * 0.7 * math.sin(math.radians(mid_angle))
+
+            # Create the text on the pie chart (adjust placement as needed)
+            self.station_type_graph.create_text(text_x, text_y, text=f"{station_type}: {sessions}", anchor="center")
+            
+            # Update the start_angle for the next section
+            start_angle += angle
+
+        # Debugging: Confirm the pie chart is being created
+        print("Pie chart created successfully.")
+
+
+    def update_game_rankings_graph(self, rankings):
+        self.game_rankings_graph.delete("all")
+        max_sessions = max(stats['sessions'] for stats in rankings.values())
+
+        bar_width = 50
+        bar_spacing = 50
+        x_start = -100
+        y_start = 250
+        max_height = 200
+        text_padding = 10
+
+        for rank, (game, stats) in enumerate(rankings.items(), 1):
+            sessions = stats['sessions']
+            height = (sessions / max_sessions) * max_height
+
+            # Draw bars
+            self.game_rankings_graph.create_rectangle(x_start + rank * (bar_width + bar_spacing), y_start,
+                                                    x_start + rank * (bar_width + bar_spacing) + bar_width,
+                                                    y_start - height, fill="blue")
+
+            # Wrapping the game name to ensure readability
+            wrapped_text = textwrap.fill(game, width=12)  # Adjust width for wrapping
+            self.game_rankings_graph.create_text(x_start + rank * (bar_width + bar_spacing) + bar_width / 2,
+                                                y_start + text_padding + 20, text=wrapped_text, anchor="center")
 
     def export_to_excel(self):
         self.stats_manager.export_daily_stats()

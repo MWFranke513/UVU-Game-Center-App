@@ -8,6 +8,7 @@ import math
 from StatsCompiler import StatsWindow  # Import the StatsWindow class from StatsCompiler.py
 import json
 import os
+import html5lib
 
 
 ## Still need to add ----------------------------------------------
