@@ -8,7 +8,6 @@ import math
 from StatsCompiler import StatsWindow  # Import the StatsWindow class from StatsCompiler.py
 import json
 import os
-import html5lib
 
 
 ## Still need to add ----------------------------------------------
@@ -86,6 +85,8 @@ class StationTimer:
         self.TIME_LIMIT = 40 * 60  # 35 minutes in seconds
 
     def start(self):
+        if not self.validate_fields():
+            return
         if not self.is_running:
             self.is_running = True
             self.start_time = time.time() - self.elapsed_time
@@ -107,6 +108,34 @@ class StationTimer:
 
     def check_time_limit(self):
         return self.get_time() >= self.TIME_LIMIT
+    
+    def validate_fields(self):
+        missing_fields = []
+        
+        # Validate name entry
+        if not hasattr(self, 'name_entry') or not self.name_entry.get().strip():
+            missing_fields.append("Name")
+        
+        # Validate ID entry
+        if not hasattr(self, 'id_entry') or not self.id_entry.get().strip():
+            missing_fields.append("ID Number")
+        
+        # Validate game dropdown for console stations
+        if hasattr(self, 'game_dropdown'):
+            if not self.game_var.get():
+                missing_fields.append("Game")
+        
+        # Validate controller dropdown for console stations
+        if hasattr(self, 'controller_dropdown'):
+            if not self.controller_var.get():
+                missing_fields.append("Controller")
+
+        if missing_fields:
+            messagebox.showerror("Error", f"Please fill out the following fields:\n" + "\n".join(missing_fields))
+            return False
+        return True
+
+    
 
 
 class Station(tk.Frame):
@@ -141,6 +170,8 @@ class Station(tk.Frame):
             self.name_entry = ttk.Entry(name_frame)
             self.name_entry.pack(side="left", fill="x", expand=True, padx=5)
             ttk.Label(name_frame, text="ID #").pack(side="left")
+            self.id_entry = ttk.Entry(name_frame)
+            self.id_entry.pack(side="left", fill="x", expand=True, padx=5)
 
             # Game and controller dropdowns
             game_frame = ttk.Frame(self)
@@ -159,6 +190,14 @@ class Station(tk.Frame):
             self.controller_dropdown = ttk.Combobox(controller_frame, textvariable=self.controller_var, values=controllers, width=15)
             self.controller_dropdown.pack(side="left", padx=5)
 
+            # Initialize timer with console-specific attributes
+            self.timer.name_entry = self.name_entry
+            self.timer.id_entry = self.id_entry
+            self.timer.game_dropdown = self.game_dropdown
+            self.timer.game_var = self.game_var
+            self.timer.controller_dropdown = self.controller_dropdown
+            self.timer.controller_var = self.controller_var
+
         else:  # For other station types
             ttk.Label(header_frame, text=self.station_type).pack(side="left")
                         # Name and ID fields
@@ -171,6 +210,8 @@ class Station(tk.Frame):
             self.name_entry = ttk.Entry(name_frame)
             self.name_entry.pack(side="left", fill="x", expand=True, padx=5)
             ttk.Label(name_frame, text="ID #").pack(side="left")
+            self.id_entry = ttk.Entry(name_frame)
+            self.id_entry.pack(side="left", fill="x", expand=True, padx=5)
 
             station_frame = ttk.Frame(self)
             station_frame.pack(fill="x", padx=5)
@@ -183,6 +224,9 @@ class Station(tk.Frame):
         # Timer controls with ring
         timer_frame = ttk.Frame(self)
         timer_frame.pack(side="bottom", fill="x", padx=2, pady=2)
+        # Initialize timer with basic attributes
+        self.timer.name_entry = self.name_entry
+        self.timer.id_entry = self.id_entry
         
         # Add timer ring
         self.timer_ring = TimerRing(timer_frame, width=75, height=75)  # Increase size of timer ring
@@ -276,6 +320,7 @@ class Station(tk.Frame):
             log_file.write(f"Station Type: {self.station_type}\n")
             log_file.write(f"Station Number: {self.station_num}\n")
             log_file.write(f"User Name: {user_name}\n")
+            log_file.write(f"ID Number: {self.id_entry.get()}\n")
             log_file.write(f"Duration: {formatted_duration}\n")
             log_file.write(f"Game: {game}\n")
             log_file.write(f"Controllers: {controller}\n")
