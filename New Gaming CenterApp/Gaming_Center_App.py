@@ -242,43 +242,43 @@ class Station(ctk.CTkFrame):
             # Set initial button states
             update_button_states()
 
-            # Name and ID fields
-            name_frame = ctk.CTkFrame(self, fg_color="transparent", width=200)
-            name_frame.pack(fill="x", padx=5, pady=2)
-            ctk.CTkLabel(name_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
-            self.name_entry = ctk.CTkEntry(name_frame)
+            # Create a container frame for all fields
+            fields_frame = ctk.CTkFrame(self, fg_color="transparent")
+            fields_frame.pack(fill="x", padx=5, pady=2)
+            
+            # Configure grid columns to be uniform
+            fields_frame.grid_columnconfigure(1, weight=1)  # Name entry column
+            fields_frame.grid_columnconfigure(3, weight=1)  # ID entry column
+            
+            # Name and ID fields (first row)
+            ctk.CTkLabel(fields_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
+            self.name_entry = ctk.CTkEntry(fields_frame)
             self.name_entry.grid(row=0, column=1, padx=5, sticky="ew")
-            ctk.CTkLabel(name_frame, text="ID #").grid(row=0, column=2, padx=(5,0), sticky="w")
-            self.id_entry = ctk.CTkEntry(name_frame)
+            
+            ctk.CTkLabel(fields_frame, text="ID #").grid(row=0, column=2, padx=(15,5), sticky="w")
+            self.id_entry = ctk.CTkEntry(fields_frame)
             self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
 
-            # Game dropdown
-            game_frame = ctk.CTkFrame(self, fg_color="transparent", width=20)
-            game_frame.pack(fill="x", padx=5, pady=2)
-            ctk.CTkLabel(game_frame, text="Game:").grid(row=0, column=0, padx=(0,5), sticky="w")
+            # Game and Controller fields (second row)
+            ctk.CTkLabel(fields_frame, text="Game:").grid(row=1, column=0, padx=(0,5), sticky="w")
             self.game_var = ctk.StringVar()
             games = self.app.get_games_for_console(self.station_type)
             self.game_dropdown = ctk.CTkComboBox(
-                game_frame, 
+                fields_frame, 
                 variable=self.game_var, 
-                values=games, 
-                width=200
+                values=games
             )
-            self.game_dropdown.grid(row=0, column=1, padx=5, sticky="ew")
+            self.game_dropdown.grid(row=1, column=1, padx=5, sticky="ew")
 
-            # Controller dropdown
-            controller_frame = ctk.CTkFrame(self, fg_color="transparent")
-            controller_frame.pack(fill="x", padx=5, pady=2)
-            ctk.CTkLabel(controller_frame, text="Ctrl:").grid(row=0, column=0, padx=(0,20), sticky="ew")
+            ctk.CTkLabel(fields_frame, text="Ctrl:").grid(row=1, column=2, padx=(15,5), sticky="w")
             self.controller_var = ctk.StringVar()
             controllers = ["1", "2", "3", "4"]
             self.controller_dropdown = ctk.CTkComboBox(
-                controller_frame, 
+                fields_frame, 
                 variable=self.controller_var, 
-                values=controllers, 
-                width=200
+                values=controllers
             )
-            self.controller_dropdown.grid(row=0, column=1, padx=5, sticky="ew")
+            self.controller_dropdown.grid(row=1, column=3, padx=5, sticky="ew")
 
             # Initialize timer with console-specific attributes
             self.timer.name_entry = self.name_entry
@@ -292,16 +292,21 @@ class Station(ctk.CTkFrame):
             ctk.CTkLabel(header_frame, text=self.station_type).pack(side="left")
             
             # Name and ID fields
-            name_frame = ctk.CTkFrame(self, fg_color="transparent")
-            name_frame.pack(fill="x", padx=5, pady=2)
-            ctk.CTkLabel(name_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
+            fields_frame = ctk.CTkFrame(self, fg_color="transparent")
+            fields_frame.pack(fill="x", padx=5, pady=2)
+            
+            # Configure grid columns to be uniform
+            fields_frame.grid_columnconfigure(1, weight=1)  # Name entry column
+            fields_frame.grid_columnconfigure(3, weight=1)  # ID entry column
+            
+            ctk.CTkLabel(fields_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
             self.console_var = ctk.StringVar(value=self.station_type)
             self.game_var = ctk.StringVar()
             self.controller_var = ctk.StringVar()
-            self.name_entry = ctk.CTkEntry(name_frame)
+            self.name_entry = ctk.CTkEntry(fields_frame)
             self.name_entry.grid(row=0, column=1, padx=5, sticky="ew")
-            ctk.CTkLabel(name_frame, text="ID #").grid(row=0, column=2, padx=(5,0), sticky="w")
-            self.id_entry = ctk.CTkEntry(name_frame)
+            ctk.CTkLabel(fields_frame, text="ID #").grid(row=0, column=2, padx=(15,5), sticky="w")
+            self.id_entry = ctk.CTkEntry(fields_frame)
             self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
 
         # Timer frame
