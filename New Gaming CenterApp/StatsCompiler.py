@@ -1,14 +1,18 @@
 import tkinter as tk
 from tkinter import ttk
-from tkinter import messagebox
+import customtkinter as ctk
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+import math
+import os
 from datetime import datetime, timedelta
+import csv
 from collections import defaultdict
 import textwrap
-import os
-import math
-import csv
+from tkinter import messagebox
 
-class StatsWindow(tk.Toplevel):
+class StatsWindow(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Gaming Center Statistics")
@@ -16,30 +20,49 @@ class StatsWindow(tk.Toplevel):
         self.stats_manager = StatsManager()
         
         # Add debug button for diagnostics
-        debug_button = ttk.Button(self, text="Diagnose Log Parsing", command=self.run_diagnostics)
+        debug_button = ctk.CTkButton(self, text="Diagnose Log Parsing", command=self.run_diagnostics)
         debug_button.pack(side='bottom', pady=5)
+        
+        # Customize the ttk.Style for treeviews
+        self.setup_treeview_style()
         
         self.setup_ui()
         self.update_stats()
+        self.lift()
+        self.focus_force()
+        self.grab_set()
 
     def run_diagnostics(self):
         # Run and display diagnostics
         diagnostics = self.stats_manager.diagnose_log_parsing()
         messagebox.showinfo("Log Parsing Diagnostics", diagnostics)
 
+    def setup_treeview_style(self):
+        """Customize the ttk.Style for treeviews to match the dark theme."""
+        style = ttk.Style()
+        style.theme_use("clam")  # Use a theme that supports custom colors
+        style.configure("Custom.Treeview", 
+                        background="#333333",  # Dark background
+                        foreground="white",    # Light text
+                        fieldbackground="#333333",  # Background for cells
+                        rowheight=25)
+        style.configure("Custom.Treeview.Heading", 
+                        background="#444444",  # Darker background for headings
+                        foreground="white",    # Light text for headings
+                        relief="flat")         # Flat relief for headings
+        style.map("Custom.Treeview", 
+                  background=[("selected", "#00843d")],  # Green for selected background
+                  foreground=[("selected", "white")])   # White text for selected items
+
     def setup_ui(self):
         # Create notebook for tabbed interface
-        self.notebook = ttk.Notebook(self)
+        self.notebook = ctk.CTkTabview(self)
         self.notebook.pack(fill='both', expand=True, padx=10, pady=5)
 
         # Create tabs
-        summary_tab = ttk.Frame(self.notebook)
-        station_tab = ttk.Frame(self.notebook)
-        games_tab = ttk.Frame(self.notebook)
-        
-        self.notebook.add(summary_tab, text='Summary Statistics')
-        self.notebook.add(station_tab, text='Station Details')
-        self.notebook.add(games_tab, text='Game Rankings')
+        summary_tab = self.notebook.add("Summary Statistics")
+        station_tab = self.notebook.add("Station Details")
+        games_tab = self.notebook.add("Game Rankings")
 
         # Setup each tab
         self.setup_summary_tab(summary_tab)
@@ -47,37 +70,37 @@ class StatsWindow(tk.Toplevel):
         self.setup_games_tab(games_tab)
 
         # Export button at the bottom
-        export_frame = ttk.Frame(self)
+        export_frame = ctk.CTkFrame(self)
         export_frame.pack(fill='x', padx=10, pady=5)
-        ttk.Button(export_frame, text="Export to Excel", command=self.export_to_excel).pack(side='right')
+        ctk.CTkButton(export_frame, text="Export to Excel", command=self.export_to_excel).pack(side='right')
 
     def setup_summary_tab(self, parent):
         # Time period selector
-        period_frame = ttk.Frame(parent)
+        period_frame = ctk.CTkFrame(parent)
         period_frame.pack(fill='x', padx=10, pady=5)
-        ttk.Label(period_frame, text="Time Period:").pack(side='left')
+        ctk.CTkLabel(period_frame, text="Time Period:").pack(side='left')
         period_choices = ['Today', 'Last 7 Days', 'Last 30 Days', 'All Time']
         self.period_var = tk.StringVar(value='Today')
-        period_dropdown = ttk.Combobox(period_frame, textvariable=self.period_var, values=period_choices, state='readonly')
+        period_dropdown = ctk.CTkComboBox(period_frame, variable=self.period_var, values=period_choices, state='readonly')
         period_dropdown.pack(side='left', padx=5)
-        period_dropdown.bind('<<ComboboxSelected>>', self.update_stats)
+        period_dropdown.configure(command=self.update_stats)
         
         # Create frames for different stat sections
-        total_usage_frame = ttk.LabelFrame(parent, text="Total Usage Statistics")
+        total_usage_frame = ctk.CTkFrame(parent)
         total_usage_frame.pack(fill='x', padx=10, pady=5)
         
         # Total usage stats
-        self.total_time_label = ttk.Label(total_usage_frame, text="")
+        self.total_time_label = ctk.CTkLabel(total_usage_frame, text="")
         self.total_time_label.pack(anchor='w', padx=5, pady=2)
-        self.total_sessions_label = ttk.Label(total_usage_frame, text="")
+        self.total_sessions_label = ctk.CTkLabel(total_usage_frame, text="")
         self.total_sessions_label.pack(anchor='w', padx=5, pady=2)
-        self.avg_session_label = ttk.Label(total_usage_frame, text="")
+        self.avg_session_label = ctk.CTkLabel(total_usage_frame, text="")
         self.avg_session_label.pack(anchor='w', padx=5, pady=2)
         
         # Station type breakdown
-        type_frame = ttk.LabelFrame(parent, text="Usage by Station Type")
+        type_frame = ctk.CTkFrame(parent)
         type_frame.pack(fill='x', padx=10, pady=5)
-        self.type_tree = ttk.Treeview(type_frame, columns=('Station Type', 'Sessions', 'Total Time', 'Avg Time'), show='headings', height=5)
+        self.type_tree = ttk.Treeview(type_frame, columns=('Station Type', 'Sessions', 'Total Time', 'Avg Time'), show='headings', height=5, style="Custom.Treeview")
         self.type_tree.heading('Station Type', text='Station Type')
         self.type_tree.heading('Sessions', text='Sessions')
         self.type_tree.heading('Total Time', text='Total Time')
@@ -85,39 +108,39 @@ class StatsWindow(tk.Toplevel):
         self.type_tree.pack(fill='x', padx=5, pady=5)
 
         # Graph for total usage
-        self.total_usage_graph = tk.Canvas(total_usage_frame, width=400, height=300)
-        self.total_usage_graph.pack(side='right', padx=5, pady=5)
+        self.total_usage_graph = self.create_matplotlib_graph(total_usage_frame)
+        self.total_usage_graph.get_tk_widget().pack(side='right', padx=5, pady=5)
 
     def setup_station_tab(self, parent):
         # Station selector
-        select_frame = ttk.Frame(parent)
+        select_frame = ctk.CTkFrame(parent)
         select_frame.pack(fill='x', padx=10, pady=5)
-        ttk.Label(select_frame, text="Select Station:").pack(side='left')
+        ctk.CTkLabel(select_frame, text="Select Station:").pack(side='left')
         self.station_var = tk.StringVar()
-        self.station_dropdown = ttk.Combobox(select_frame, textvariable=self.station_var, state='readonly')
+        self.station_dropdown = ctk.CTkComboBox(select_frame, variable=self.station_var, state='readonly')
         self.station_dropdown.pack(side='left', padx=5)
-        self.station_dropdown.bind('<<ComboboxSelected>>', self.update_station_stats)
+        self.station_dropdown.configure(command=self.update_station_stats)
 
         # Populate station dropdown with available stations
         stations = self.stats_manager.get_all_stations()
-        self.station_dropdown['values'] = stations
+        self.station_dropdown.configure(values=stations)
 
         # Station statistics display
-        stats_frame = ttk.LabelFrame(parent, text="Station Statistics")
+        stats_frame = ctk.CTkFrame(parent)
         stats_frame.pack(fill='both', expand=True, padx=10, pady=5)
 
-        self.station_tree = ttk.Treeview(stats_frame, columns=('Metric', 'Value'), show='headings', height=10)
+        self.station_tree = ttk.Treeview(stats_frame, columns=('Metric', 'Value'), show='headings', height=10, style="Custom.Treeview")
         self.station_tree.heading('Metric', text='Metric')
         self.station_tree.heading('Value', text='Value')
         self.station_tree.pack(fill='both', expand=True, padx=5, pady=5)
 
         # Graph for station type breakdown
-        self.station_type_graph = tk.Canvas(stats_frame, width=400, height=300)
-        self.station_type_graph.pack(side='right', padx=5, pady=5)
+        self.station_type_graph = self.create_matplotlib_graph(stats_frame)
+        self.station_type_graph.get_tk_widget().pack(side='right', padx=5, pady=5)
 
     def setup_games_tab(self, parent):
         # Game rankings tree
-        self.games_tree = ttk.Treeview(parent, columns=('Rank', 'Game', 'Sessions', 'Total Time'), show='headings', height=15)
+        self.games_tree = ttk.Treeview(parent, columns=('Rank', 'Game', 'Sessions', 'Total Time'), show='headings', height=15, style="Custom.Treeview")
         self.games_tree.heading('Rank', text='Rank')
         self.games_tree.heading('Game', text='Game')
         self.games_tree.heading('Sessions', text='Sessions')
@@ -125,17 +148,32 @@ class StatsWindow(tk.Toplevel):
         self.games_tree.pack(fill='both', expand=True, padx=10, pady=5)
 
         # Graph for game rankings
-        self.game_rankings_graph = tk.Canvas(parent, width=9000, height=300)
-        self.game_rankings_graph.pack(side='right', padx=5, pady=5)
+        self.game_rankings_graph = self.create_matplotlib_graph(parent)
+        self.game_rankings_graph.get_tk_widget().pack(side='right', padx=5, pady=5)
+
+    def create_matplotlib_graph(self, parent):
+        """Create a Matplotlib graph with a dark theme."""
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots()
+        fig.patch.set_facecolor('#333333')  # Dark background color
+        ax.set_facecolor('#333333')  # Dark background color
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
+
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        return canvas
 
     def update_stats(self, event=None):
         period = self.period_var.get()
         stats = self.stats_manager.get_summary_stats(period)
         
         # Update summary labels
-        self.total_time_label.config(text=f"Total Time: {stats['total_time']}")
-        self.total_sessions_label.config(text=f"Total Sessions: {stats['total_sessions']}")
-        self.avg_session_label.config(text=f"Average Session: {stats['avg_session']}")
+        self.total_time_label.configure(text=f"Total Time: {stats['total_time']}")
+        self.total_sessions_label.configure(text=f"Total Sessions: {stats['total_sessions']}")
+        self.avg_session_label.configure(text=f"Average Session: {stats['avg_session']}")
 
         # Update station type tree
         self.type_tree.delete(*self.type_tree.get_children())
@@ -178,100 +216,83 @@ class StatsWindow(tk.Toplevel):
         self.update_game_rankings_graph(rankings)
 
     def update_summary_graph(self, stats):
-        self.total_usage_graph.delete("all")
+        """Update the summary graph using Matplotlib."""
+        # Clear the previous graph
+        self.total_usage_graph.figure.clear()
+        
+        # Get the data
         total_time = stats['total_time']
         total_sessions = stats['total_sessions']
         avg_session = stats['avg_session']
 
-        # Draw bar graph for total usage
-        bar_width = 100
-        bar_spacing = 20
-        x_start = 20
-        y_start = 250
-        max_height = 200
+        # Convert time to minutes for plotting
+        total_time_minutes = int(total_time.split(':')[0]) * 60 + int(total_time.split(':')[1])
+        avg_session_minutes = int(avg_session.split(':')[0]) * 60 + int(avg_session.split(':')[1])
 
-        self.total_usage_graph.create_rectangle(x_start, y_start, x_start + bar_width, y_start - int(total_time.split(':')[0]) * 2, fill="blue")
-        self.total_usage_graph.create_text(x_start + bar_width / 2, y_start + 20, text=f"Total Time: {total_time}", anchor="center")
+        # Create a bar plot
+        ax = self.total_usage_graph.figure.add_subplot(111)
+        categories = ['Total Time', 'Total Sessions', 'Avg Session']
+        values = [total_time_minutes, total_sessions, avg_session_minutes]
+        colors = ['blue', 'green', 'red']
 
-        x_start += bar_width + bar_spacing
-        self.total_usage_graph.create_rectangle(x_start, y_start, x_start + bar_width, y_start - total_sessions * 2, fill="green")
-        self.total_usage_graph.create_text(x_start + bar_width / 2, y_start + 20, text=f"Total Sessions: {total_sessions}", anchor="center")
+        ax.bar(categories, values, color=colors)
+        ax.set_title("Summary Statistics", color='white')
+        ax.set_ylabel("Values", color='white')
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
 
-        x_start += bar_width + bar_spacing
-        self.total_usage_graph.create_rectangle(x_start, y_start, x_start + bar_width, y_start - int(avg_session.split(':')[0]) * 2, fill="red")
-        self.total_usage_graph.create_text(x_start + bar_width / 2, y_start + 20, text=f"Avg Session: {avg_session}", anchor="center")
-
-
+        # Update the canvas
+        self.total_usage_graph.draw()
 
     def update_station_type_graph(self, station_types):
-        self.station_type_graph.delete("all")
-        
-        # Calculate total sessions and ensure it's not zero
-        total_sessions = sum(type_stats['sessions'] for type_stats in station_types.values())
-        if total_sessions == 0:
-            print("Error: Total sessions is 0, cannot generate pie chart.")
-            return  # Exit early if there are no sessions to display
+        """Update the station type breakdown graph using Matplotlib."""
+        # Clear the previous graph
+        self.station_type_graph.figure.clear()
 
-        start_angle = 0
-        radius = 150
-        center_x, center_y = 200, 150
+        # Get the data
+        labels = list(station_types.keys())
+        sessions = [type_stats['sessions'] for type_stats in station_types.values()]
 
-        # Debugging: Check if station types are being processed
-        print(f"Station types: {station_types}")
-        
-        for station_type, type_stats in station_types.items():
-            sessions = type_stats['sessions']
-            angle = 360 * (sessions / total_sessions)
+        # Create a pie chart
+        ax = self.station_type_graph.figure.add_subplot(111)
+        ax.pie(sessions, labels=labels, autopct='%1.1f%%', startangle=90, colors=[self.get_station_color(label) for label in labels])
+        ax.set_title("Station Type Breakdown", color='white')
 
-            # Debugging: Output the calculated angles
-            print(f"Station Type: {station_type}, Sessions: {sessions}, Angle: {angle}")
-
-            # Create the pie chart section (arc)
-            self.station_type_graph.create_arc(center_x - radius, center_y - radius, center_x + radius, center_y + radius,
-                                            start=start_angle, extent=angle, fill=self.get_station_color(station_type))
-            
-            mid_angle = start_angle + angle / 2
-            text_x = center_x + radius * 0.7 * math.cos(math.radians(mid_angle))
-            text_y = center_y + radius * 0.7 * math.sin(math.radians(mid_angle))
-
-            # Create the text on the pie chart (adjust placement as needed)
-            self.station_type_graph.create_text(text_x, text_y, text=f"{station_type}: {sessions}", anchor="center")
-            
-            # Update the start_angle for the next section
-            start_angle += angle
-
-        # Debugging: Confirm the pie chart is being created
-        print("Pie chart created successfully.")
-
+        # Update the canvas
+        self.station_type_graph.draw()
 
     def update_game_rankings_graph(self, rankings):
-        self.game_rankings_graph.delete("all")
-        max_sessions = max(stats['sessions'] for stats in rankings.values())
+        """Update the game rankings graph using Matplotlib."""
+        # Clear the previous graph
+        self.game_rankings_graph.figure.clear()
 
-        bar_width = 50
-        bar_spacing = 50
-        x_start = -100
-        y_start = 250
-        max_height = 200
-        text_padding = 10
+        # Get the data
+        games = list(rankings.keys())
+        sessions = [stats['sessions'] for stats in rankings.values()]
 
-        for rank, (game, stats) in enumerate(rankings.items(), 1):
-            sessions = stats['sessions']
-            height = (sessions / max_sessions) * max_height
+        # Create a bar plot
+        ax = self.game_rankings_graph.figure.add_subplot(111)
+        ax.barh(games, sessions, color='blue')
+        ax.set_title("Game Rankings", color='white')
+        ax.set_xlabel("Sessions", color='white')
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
 
-            # Draw bars
-            self.game_rankings_graph.create_rectangle(x_start + rank * (bar_width + bar_spacing), y_start,
-                                                    x_start + rank * (bar_width + bar_spacing) + bar_width,
-                                                    y_start - height, fill="blue")
+        # Update the canvas
+        self.game_rankings_graph.draw()
 
-            # Wrapping the game name to ensure readability
-            wrapped_text = textwrap.fill(game, width=12)  # Adjust width for wrapping
-            self.game_rankings_graph.create_text(x_start + rank * (bar_width + bar_spacing) + bar_width / 2,
-                                                y_start + text_padding + 20, text=wrapped_text, anchor="center")
+    def get_station_color(self, station_type):
+        # Add your color mapping logic here
+        color_map = {
+            'PC': 'blue',
+            'Console': 'green',
+            'VR': 'purple',
+            # Add more mappings as needed
+        }
+        return color_map.get(station_type, 'gray')
 
     def export_to_excel(self):
         self.stats_manager.export_daily_stats()
-
 class StatsManager:
     def __init__(self):
         # Determine the correct path for the log file

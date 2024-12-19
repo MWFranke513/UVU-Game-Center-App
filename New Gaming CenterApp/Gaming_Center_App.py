@@ -1,54 +1,33 @@
 import tkinter as tk
+from tkinter import simpledialog, messagebox
 from tkinter import ttk
-from tkinter import simpledialog
-from tkinter import messagebox
+import customtkinter as ctk
+from customtkinter import CTkImage
+from pathlib import Path
+from PIL import Image, ImageTk
 import time
-from datetime import datetime
-import math
-from StatsCompiler import StatsWindow  # Import the StatsWindow class from StatsCompiler.py
+import requests
+from io import BytesIO
+import cairosvg
 import json
 import os
+import re
+from datetime import datetime
+from StatsCompiler import StatsWindow  # Import the StatsWindow class from StatsCompiler.py
+
+# Configure customtkinter
+ctk.set_appearance_mode("dark")  # Default to light mode
+ctk.set_default_color_theme("green")  # You can change this to other themes if desired
 
 
-## Still need to add ----------------------------------------------
-# 1. Add the ability to add and remove stations
-# 2. Add the ability to move stations around in the layout
-# 3. Add the ability to save and load the station layout
-# Finish adding the stats window
-# Polish up the UI and make it look nice, modern, and user-friendly.
-# Performance improvments and optimizations since this is a python application
-
-dark_mode_styles = {
-    "bg": "#2e2e2e",
-    "fg": "#ffffff",
-    "button_bg": "#444444",
-    "button_fg": "#ffffff"
-}
-
-def toggle_dark_mode():
-    if app.cget("bg") == "white":
-        app.config(bg=dark_mode_styles["bg"])
-        for widget in app.winfo_children():
-            try:
-                widget.config(bg=dark_mode_styles["button_bg"], fg=dark_mode_styles["button_fg"])
-            except tk.TclError:
-                pass  # Ignore widgets that do not support bg and fg options
-    else:
-        app.config(bg="white")
-        for widget in app.winfo_children():
-            try:
-                widget.config(bg="SystemButtonFace", fg="black")
-            except tk.TclError:
-                pass  # Ignore widgets that do not support bg and fg options
-
-
-class TimerRing(tk.Canvas):
+class TimerRing(ctk.CTkCanvas):
     def __init__(self, parent, width=65, height=65):
-        super().__init__(parent, width=width, height=height, highlightthickness=0)
+        super().__init__(parent, width=width, height=height, highlightthickness=0, bg="gray")
         self.width = width
         self.height = height
-        self.time_limit = 40 * 60  # 35 minutes in seconds
+        self.time_limit = 2 * 60  # 35 minutes in seconds
         self.warning_threshold = 0.8 * self.time_limit  # 28 minutes
+        self.warning_threshold2 = 0.9 * self.time_limit  # 31.5 minutes
         
     def draw_ring(self, progress):
         self.delete("all")  # Clear canvas
@@ -65,6 +44,8 @@ class TimerRing(tk.Canvas):
         if progress > 0:
             # Calculate color based on progress
             if progress * self.time_limit >= self.warning_threshold:
+                color = 'orange'
+            elif progress * self.time_limit >= self.warning_threshold2:
                 color = 'red'
             else:
                 color = '#00843d' # green
@@ -74,7 +55,6 @@ class TimerRing(tk.Canvas):
             
             # Draw the progress arc
             self.create_arc(x0, y0, x1, y1, start=90, extent=-extent, outline=color, width=4, style='arc')
-
 
 class StationTimer:
     def __init__(self):
@@ -109,38 +89,42 @@ class StationTimer:
     def check_time_limit(self):
         return self.get_time() >= self.TIME_LIMIT
     
+
     def validate_fields(self):
         missing_fields = []
         
-        # Validate name entry
+        # Debug print to check if name_entry exists
+        print(f"Checking name_entry: {'name_entry' in self.__dict__}")
         if not hasattr(self, 'name_entry') or not self.name_entry.get().strip():
             missing_fields.append("Name")
+        else:
+            print(f"name_entry value: '{self.name_entry.get().strip()}'")
         
-        # Validate ID entry
+        # Debug print to check if id_entry exists
+        print(f"Checking id_entry: {'id_entry' in self.__dict__}")
         if not hasattr(self, 'id_entry') or not self.id_entry.get().strip():
-            missing_fields.append("ID Number")
+            missing_fields.append("ID Number (Enter N/A if not applicable)")
+        else:
+            print(f"id_entry value: '{self.id_entry.get().strip()}'")
         
-        # Validate game dropdown for console stations
-        if hasattr(self, 'game_dropdown'):
-            if not self.game_var.get():
-                missing_fields.append("Game")
+        # Debug print to check if game_dropdown exists
+        print(f"Checking game_dropdown: {'game_dropdown' in self.__dict__}")
+        if hasattr(self, 'game_dropdown') and not self.game_var.get():
+            missing_fields.append("Game")
         
-        # Validate controller dropdown for console stations
-        if hasattr(self, 'controller_dropdown'):
-            if not self.controller_var.get():
-                missing_fields.append("Controller")
+        # Debug print to check if controller_dropdown exists
+        print(f"Checking controller_dropdown: {'controller_dropdown' in self.__dict__}")
+        if hasattr(self, 'controller_dropdown') and not self.controller_var.get():
+            missing_fields.append("Controller")
 
         if missing_fields:
             messagebox.showerror("Error", f"Please fill out the following fields:\n" + "\n".join(missing_fields))
             return False
         return True
 
-    
-
-
-class Station(tk.Frame):
+class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
-        super().__init__(parent, borderwidth=2, relief="groove")  # Add border
+        super().__init__(parent, border_width=2, corner_radius=10)  # Add border and rounded corners
         self.parent = parent
         self.app = app  # Store reference to the app
         self.station_type = station_type
@@ -150,45 +134,151 @@ class Station(tk.Frame):
         self.update_timer()
 
     def setup_ui(self):
-        header_frame = ttk.Frame(self)
+        # Header frame
+        header_frame = ctk.CTkFrame(self, fg_color="transparent")
         header_frame.pack(fill="x", padx=5, pady=5)
-        
-        # Console type toggle
-        self.console_var = tk.StringVar(value=self.station_type)
-        # ttk.Radiobutton(header_frame, text="XBOX", variable=self.console_var, value="XBOX", command=self.change_console_type).pack(side="left")
-        # ttk.Radiobutton(header_frame, text="Switch", variable=self.console_var, value="Switch", command=self.change_console_type).pack(side="left")
-        
-        ttk.Label(header_frame, text=f"Station {self.station_num}").pack(side="right")  # Move station number to the right
+
+        # Station number label
+        ctk.CTkLabel(header_frame, text=f"Station {self.station_num}", anchor="e").pack(side="right")
+
+        icon_errors = set()
+
+        def download_icon(icon_name, size=(20, 20), retries=3):
+            """Download an SVG icon, cache it locally, and return a CTkImage."""
+            cache_dir = Path("./icon_cache")
+            cache_dir.mkdir(exist_ok=True)
+
+            cached_file = cache_dir / f"{icon_name}.png"
+            if cached_file.exists():
+                return CTkImage(Image.open(cached_file), size=size)
+
+            url = f"https://cdn.jsdelivr.net/npm/lucide-static@0.298.0/icons/{icon_name}.svg"
+
+            for attempt in range(retries):
+                try:
+                    response = requests.get(url, timeout=5)
+                    if response.status_code == 200:
+                        svg_content = response.content.decode("utf-8")
+                        svg_content = re.sub(r'stroke="[^"]*"', 'stroke="white"', svg_content)
+                        svg_content = re.sub(r'fill="[^"]*"', 'fill="none"', svg_content)
+                        png_data = cairosvg.svg2png(bytestring=svg_content.encode("utf-8"))
+                        img = Image.open(BytesIO(png_data))
+                        img.save(cached_file)
+                        return CTkImage(img, size=size)
+                except Exception as e:
+                    if icon_name not in icon_errors:
+                        icon_errors.add(icon_name)
+                        print(f"Failed to fetch icon {icon_name} on attempt {attempt + 1}: {e}")
+                    time.sleep(1)
+
+            print(f"Failed to fetch icon {icon_name} after {retries} attempts. Using fallback.")
+            fallback_path = "./icon_cache/fallback.png"
+            fallback_img = Image.new("RGB", size, color="gray")
+            if Path(fallback_path).exists():
+                fallback_img = Image.open(fallback_path)
+            return CTkImage(fallback_img, size=size)
 
         if self.station_type in ["XBOX", "Switch"]:
-            ttk.Radiobutton(header_frame, text="XBOX", variable=self.console_var, value="XBOX", command=self.change_console_type).pack(side="left")
-            ttk.Radiobutton(header_frame, text="Switch", variable=self.console_var, value="Switch", command=self.change_console_type).pack(side="left")
+            # Console type toggle frame with icons
+            console_toggle_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+            console_toggle_frame.pack(side="left", fill="x")
+
+            # Load icon images
+            xbox_image = Image.open("./icon_cache/xbox-logo.png")
+            switch_image = Image.open("./icon_cache/switch-logo.png")
+            
+            # Create CTkImages with consistent size
+            icon_size = (20, 20)
+            xbox_icon = ctk.CTkImage(xbox_image, size=icon_size)
+            switch_icon = ctk.CTkImage(switch_image, size=icon_size)
+
+            # Initialize the console variable
+            self.console_var = ctk.StringVar(value=self.station_type)
+
+            # Function to handle button state updates
+            def update_button_states():
+                xbox_button.configure(
+                    fg_color=("gray75", "gray25") if self.console_var.get() == "XBOX" else "transparent",
+                    hover_color=("gray65", "gray35")
+                )
+                switch_button.configure(
+                    fg_color=("gray75", "gray25") if self.console_var.get() == "Switch" else "transparent",
+                    hover_color=("gray65", "gray35")
+                )
+
+            # Function to handle console selection
+            def select_console(console_type):
+                self.console_var.set(console_type)
+                update_button_states()
+                self.change_console_type()
+
+            # Create toggle buttons with icons
+            xbox_button = ctk.CTkButton(
+                console_toggle_frame,
+                image=xbox_icon,
+                text="",
+                width=40,
+                height=40,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color=("gray65", "gray35"),
+                command=lambda: select_console("XBOX")
+            )
+            xbox_button.pack(side="left", padx=2)
+
+            switch_button = ctk.CTkButton(
+                console_toggle_frame,
+                image=switch_icon,
+                text="",
+                width=40,
+                height=40,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color=("gray65", "gray35"),
+                command=lambda: select_console("Switch")
+            )
+            switch_button.pack(side="left", padx=2)
+
+            # Set initial button states
+            update_button_states()
+
             # Name and ID fields
-            name_frame = ttk.Frame(self)
+            name_frame = ctk.CTkFrame(self, fg_color="transparent", width=200)
             name_frame.pack(fill="x", padx=5, pady=2)
-            ttk.Label(name_frame, text="Name:\t").pack(side="left")
-            self.name_entry = ttk.Entry(name_frame)
-            self.name_entry.pack(side="left", fill="x", expand=True, padx=5)
-            ttk.Label(name_frame, text="ID #").pack(side="left")
-            self.id_entry = ttk.Entry(name_frame)
-            self.id_entry.pack(side="left", fill="x", expand=True, padx=5)
+            ctk.CTkLabel(name_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
+            self.name_entry = ctk.CTkEntry(name_frame)
+            self.name_entry.grid(row=0, column=1, padx=5, sticky="ew")
+            ctk.CTkLabel(name_frame, text="ID #").grid(row=0, column=2, padx=(5,0), sticky="w")
+            self.id_entry = ctk.CTkEntry(name_frame)
+            self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
 
-            # Game and controller dropdowns
-            game_frame = ttk.Frame(self)
+            # Game dropdown
+            game_frame = ctk.CTkFrame(self, fg_color="transparent", width=20)
             game_frame.pack(fill="x", padx=5, pady=2)
-            ttk.Label(game_frame, text="Game:\t").pack(side="left")
-            self.game_var = tk.StringVar()
-            games = self.app.get_games_for_console(self.station_type)  # Use app to get games
-            self.game_dropdown = ttk.Combobox(game_frame, textvariable=self.game_var, values=games, width=15)
-            self.game_dropdown.pack(side="left", padx=5)
+            ctk.CTkLabel(game_frame, text="Game:").grid(row=0, column=0, padx=(0,5), sticky="w")
+            self.game_var = ctk.StringVar()
+            games = self.app.get_games_for_console(self.station_type)
+            self.game_dropdown = ctk.CTkComboBox(
+                game_frame, 
+                variable=self.game_var, 
+                values=games, 
+                width=200
+            )
+            self.game_dropdown.grid(row=0, column=1, padx=5, sticky="ew")
 
-            controller_frame = ttk.Frame(self)
+            # Controller dropdown
+            controller_frame = ctk.CTkFrame(self, fg_color="transparent")
             controller_frame.pack(fill="x", padx=5, pady=2)
-            ttk.Label(controller_frame, text="Ctrl:\t").pack(side="left")
-            self.controller_var = tk.StringVar()
+            ctk.CTkLabel(controller_frame, text="Ctrl:").grid(row=0, column=0, padx=(0,20), sticky="ew")
+            self.controller_var = ctk.StringVar()
             controllers = ["1", "2", "3", "4"]
-            self.controller_dropdown = ttk.Combobox(controller_frame, textvariable=self.controller_var, values=controllers, width=15)
-            self.controller_dropdown.pack(side="left", padx=5)
+            self.controller_dropdown = ctk.CTkComboBox(
+                controller_frame, 
+                variable=self.controller_var, 
+                values=controllers, 
+                width=200
+            )
+            self.controller_dropdown.grid(row=0, column=1, padx=5, sticky="ew")
 
             # Initialize timer with console-specific attributes
             self.timer.name_entry = self.name_entry
@@ -199,62 +289,62 @@ class Station(tk.Frame):
             self.timer.controller_var = self.controller_var
 
         else:  # For other station types
-            ttk.Label(header_frame, text=self.station_type).pack(side="left")
-                        # Name and ID fields
-            name_frame = ttk.Frame(self)
+            ctk.CTkLabel(header_frame, text=self.station_type).pack(side="left")
+            
+            # Name and ID fields
+            name_frame = ctk.CTkFrame(self, fg_color="transparent")
             name_frame.pack(fill="x", padx=5, pady=2)
-            ttk.Label(name_frame, text="Name:\t").pack(side="left")
-            self.console_var = tk.StringVar(value=self.station_type)
-            self.game_var = tk.StringVar()
-            self.controller_var = tk.StringVar()
-            self.name_entry = ttk.Entry(name_frame)
-            self.name_entry.pack(side="left", fill="x", expand=True, padx=5)
-            ttk.Label(name_frame, text="ID #").pack(side="left")
-            self.id_entry = ttk.Entry(name_frame)
-            self.id_entry.pack(side="left", fill="x", expand=True, padx=5)
+            ctk.CTkLabel(name_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
+            self.console_var = ctk.StringVar(value=self.station_type)
+            self.game_var = ctk.StringVar()
+            self.controller_var = ctk.StringVar()
+            self.name_entry = ctk.CTkEntry(name_frame)
+            self.name_entry.grid(row=0, column=1, padx=5, sticky="ew")
+            ctk.CTkLabel(name_frame, text="ID #").grid(row=0, column=2, padx=(5,0), sticky="w")
+            self.id_entry = ctk.CTkEntry(name_frame)
+            self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
 
-            station_frame = ttk.Frame(self)
-            station_frame.pack(fill="x", padx=5)
-            ttk.Label(station_frame, text="Station\t").pack(side="left")
-            self.station_num_entry = ttk.Entry(station_frame, width=5)
-            self.station_num_entry.insert(0, str(self.station_num))
-            self.station_num_entry.configure(state="readonly")
-            self.station_num_entry.pack(side="left", padx=5)
-
-        # Timer controls with ring
-        timer_frame = ttk.Frame(self)
-        timer_frame.pack(side="bottom", fill="x", padx=2, pady=2)
-        # Initialize timer with basic attributes
-        self.timer.name_entry = self.name_entry
-        self.timer.id_entry = self.id_entry
+        # Timer frame
+        timer_frame = ctk.CTkFrame(self, fg_color="transparent")
+        timer_frame.pack(fill="x", padx=2, pady=2)
         
-        # Add timer ring
-        self.timer_ring = TimerRing(timer_frame, width=75, height=75)  # Increase size of timer ring
-        self.timer_ring.pack(side="right", padx=5)
+        # Timer ring
+        self.timer_ring = TimerRing(timer_frame, width=75, height=75)
+        self.timer_ring.pack(side="left", padx=5)
         
-        self.timer_label = ttk.Label(self.timer_ring, text="00:00:00", font=("Helvetica", 12))  # Increase font size of timer label
-        self.timer_label.pack(side="right", padx=5, pady=25)
+        self.timer_label = ctk.CTkLabel(
+            timer_frame, 
+            text="00:00:00", 
+            font=ctk.CTkFont(family="Helvetica", size=14)
+        )
+        self.timer_label.pack(side="left", padx=5)
 
-        # Stopwatch buttons
-        button_frame = ttk.Frame(self)
+        # Load control icons
+        self.start_icon = download_icon('play', size=(15, 15))
+        self.stop_icon = download_icon('square', size=(15, 15))
+        self.reset_icon = download_icon('refresh-ccw', size=(15, 15))
+
+        # Control buttons
+        button_frame = ctk.CTkFrame(self, fg_color="transparent")
         button_frame.pack(side="bottom", fill="x", padx=2, pady=2)
-        ttk.Button(button_frame, text="Start", command=self.start_timer).pack(side="left", padx=2)
-        ttk.Button(button_frame, text="Stop", command=self.stop_timer).pack(side="left", padx=2)
-        ttk.Button(button_frame, text="Reset", command=self.reset_timer).pack(side="left", padx=2)
-
+        ctk.CTkButton(button_frame, image=self.start_icon, text="Start", command=self.timer.start, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
+        ctk.CTkButton(button_frame, image=self.stop_icon, text="Stop", command=self.timer.stop, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
+        ctk.CTkButton(button_frame, image=self.reset_icon, text="Reset", command=self.timer.reset, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
     def change_console_type(self):
+        # Rest of the method remains the same as in original script
         self.station_type = self.console_var.get()
         games = self.app.get_games_for_console(self.station_type)
-        self.game_dropdown['values'] = games
+        self.game_dropdown.configure(values=games)
         self.game_var.set('')
 
     def update_timer(self):
+        # Most of this method remains the same as in original script
         if self.timer.is_running:
             elapsed = self.timer.get_time()
             hours = int(elapsed // 3600)
             minutes = int((elapsed % 3600) // 60)
             seconds = int(elapsed % 60)
-            self.timer_label.config(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+            self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             
             # Update progress ring
             progress = min(elapsed / self.timer.TIME_LIMIT, 1.0)
@@ -262,17 +352,18 @@ class Station(tk.Frame):
             
             # Update timer color based on elapsed time
             if elapsed >= self.timer.TIME_LIMIT:
-                self.timer_label.config(foreground="red")
+                self.timer_label.configure(text_color="red")
                 if not self.timer.alert_shown:
                     self.show_time_alert()
                     self.timer.alert_shown = True
             elif elapsed >= (self.timer.TIME_LIMIT * 0.8):
-                self.timer_label.config(foreground="orange")
+                self.timer_label.configure(text_color="orange")
             else:
-                self.timer_label.config(foreground="green")
+                self.timer_label.configure(text_color="green")
         
         self.after(1000, self.update_timer)
 
+    # Rest of the methods remain the same as in the original script
     def show_time_alert(self):
         station_info = f"Station {self.station_num} ({self.station_type})"
         user_name = self.name_entry.get()
@@ -290,7 +381,7 @@ class Station(tk.Frame):
     def reset_timer(self):
         self.log_usage()
         self.timer.reset()
-        self.timer_label.config(text="00:00:00", foreground="black")
+        self.timer_label.configure(text="00:00:00", text_color="black")
         self.timer_ring.draw_ring(0)  # Reset progress ring
         self.name_entry.delete(0, tk.END)
         
@@ -298,18 +389,8 @@ class Station(tk.Frame):
             self.game_dropdown.set("")
             self.controller_dropdown.set("")
 
-    def reset_station(self):
-        self.log_usage()
-        self.timer.reset()
-        self.timer_label.config(text="00:00:00", foreground="black")
-        self.timer_ring.draw_ring(0)  # Reset progress ring
-        self.name_entry.delete(0, tk.END)
-        
-        if self.station_type in ["XBOX One", "Switch"]:
-            self.game_dropdown.set("")
-            self.controller_dropdown.set("")
-
     def log_usage(self):
+        # Remains the same as in original script
         user_name = self.name_entry.get()
         game = self.game_var.get()
         controller = self.controller_var.get()
@@ -327,39 +408,47 @@ class Station(tk.Frame):
             log_file.write("--------------------------------------------------\n")
 
     def update_games_list(self):
-        if self.station_type in ["XBOX One", "Switch"]:
-            console_type = "XBOX" if self.station_type == "XBOX One" else "Switch"
+        if self.station_type in ["XBOX", "Switch"]:
+            console_type = "XBOX" if self.station_type == "XBOX" else "Switch"
             games = self.parent.get_games_for_console(console_type)
-            self.game_dropdown['values'] = games
+            self.game_dropdown.configure(values=games)
             if self.game_var.get() not in games:
-                self.game_var.set('')
-class GamesWindow(tk.Toplevel):
+                self.game_var.set(games[0] if games else '')
+class GamesWindow(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
-        self.title("View/Edit Games")
-        self.geometry("400x300")
-        self.parent = parent  # Store reference to parent
-        self.games = self.load_games()  # Load games from file
+        self.title("Games List")
+        self.geometry("600x400")
+        self.games = self.load_games()
         self.setup_ui()
+        
+        self.lift()
+        self.focus_force()
+        self.grab_set()
 
     def load_games(self):
-        try:
+        if os.path.exists('games_list.json'):
             with open('games_list.json', 'r') as f:
                 return json.load(f)
-        except FileNotFoundError:
-            # Default games if file doesn't exist
-            default_games = {
-                "Switch": ["Mario Kart 8", "Animal Crossing"],
-                "XBOX": ["Halo Infinite", "Forza Horizon 5"]
-            }
-            self.save_games(default_games)
-            return default_games
+        return {"Switch": [], "XBOX": []}
 
     def save_games(self, games_dict):
         with open('games_list.json', 'w') as f:
             json.dump(games_dict, f)
 
     def setup_ui(self):
+        # Customize the ttk.Notebook style to match the dark theme
+        style = ttk.Style()
+        style.theme_use("clam")  # Use a theme that supports custom colors
+        style.configure("TNotebook", background="#333333", borderwidth=0)  # Dark background for the notebook, remove border
+        style.configure("TNotebook.Tab", 
+                        background="#444444",  # Dark background for the tabs
+                        foreground="white",    # Light text for the tabs
+                        padding=[10, 5])       # Padding for the tabs
+        style.map("TNotebook.Tab", 
+                  background=[("selected", "#00843d")],  # Green for selected tab background
+                  foreground=[("selected", "white")])   # White text for selected tab
+
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill='both', expand=True, padx=10, pady=10)
 
@@ -373,65 +462,164 @@ class GamesWindow(tk.Toplevel):
         self.setup_games_tab(self.xbox_tab, "XBOX")
 
     def setup_games_tab(self, parent, console):
-        frame = ttk.Frame(parent)
-        frame.pack(fill='both', expand=True, padx=10, pady=10)
+        frame = ctk.CTkFrame(parent)
+        frame.pack(fill='both', expand=True, padx=0, pady=0)
 
-        games_listbox = tk.Listbox(frame)
-        games_listbox.pack(side='left', fill='both', expand=True)
+        # Use CTkTextbox with state="disabled" to make it read-only
+        games_textbox = ctk.CTkTextbox(frame, state="disabled")
+        games_textbox.pack(side='left', fill='both', expand=True)
 
+        # Enable the textbox temporarily to insert games
+        games_textbox.configure(state="normal")
         for game in self.games[console]:
-            games_listbox.insert('end', game)
+            games_textbox.insert('end', game + "\n")
+        games_textbox.configure(state="disabled")
 
-        button_frame = ttk.Frame(frame)
+        button_frame = ctk.CTkFrame(frame)
         button_frame.pack(side='right', fill='y')
 
-        add_button = ttk.Button(button_frame, text="Add", command=lambda: self.add_game(console, games_listbox))
+        add_button = ctk.CTkButton(button_frame, text="Add", command=lambda: self.add_game(console, games_textbox))
         add_button.pack(pady=5)
-        remove_button = ttk.Button(button_frame, text="Remove", command=lambda: self.remove_game(console, games_listbox))
+        remove_button = ctk.CTkButton(button_frame, text="Remove", command=lambda: self.remove_game(console, games_textbox))
         remove_button.pack(pady=5)
 
-    def add_game(self, console, games_listbox):
-        new_game = simpledialog.askstring("Add Game", f"Enter new game for {console}:")
+    def add_game(self, console, games_textbox):
+        dialog = CustomDialog(self, title="Add Game", prompt=f"Enter new game for {console}:")
+        new_game = dialog.show()
         if new_game:
             self.games[console].append(new_game)
-            self.update_games_listbox(console, games_listbox)
+            self.update_games_textbox(console, games_textbox)
             self.save_games(self.games)
-            self.parent.update_all_stations_games()  # Update all station dropdowns
 
-    def remove_game(self, console, games_listbox):
-        selected_game = games_listbox.get(tk.ACTIVE)
+    def remove_game(self, console, games_textbox):
+        selected_game = games_textbox.get("1.0", "end-1c").splitlines()[-1]
         if selected_game:
             self.games[console].remove(selected_game)
-            self.update_games_listbox(console, games_listbox)
+            self.update_games_textbox(console, games_textbox)
             self.save_games(self.games)
-            self.parent.update_all_stations_games()  # Update all station dropdowns
 
-    def update_games_listbox(self, console, games_listbox):
-        games_listbox.delete(0, tk.END)
+    def update_games_textbox(self, console, games_textbox):
+        # Enable the textbox temporarily to update its content
+        games_textbox.configure(state="normal")
+        games_textbox.delete("1.0", "end")
         for game in self.games[console]:
-            games_listbox.insert('end', game)
+            games_textbox.insert('end', game + "\n")
+        games_textbox.configure(state="disabled")
+class CustomDialog(ctk.CTkToplevel):
+    def __init__(self, parent, title="Add Game", prompt="Enter new game:"):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("300x150")
+        self.resizable(False, False)
 
-class StationSelectionDialog(simpledialog.Dialog):
+        self.result = None
+
+        self.label = ctk.CTkLabel(self, text=prompt)
+        self.label.pack(pady=10)
+
+        self.entry = ctk.CTkEntry(self)
+        self.entry.pack(pady=10, padx=10, fill="x")
+
+        self.button_frame = ctk.CTkFrame(self)
+        self.button_frame.pack(pady=10)
+
+        self.ok_button = ctk.CTkButton(self.button_frame, text="OK", command=self.on_ok)
+        self.ok_button.pack(side="left", padx=5)
+
+        self.cancel_button = ctk.CTkButton(self.button_frame, text="Cancel", command=self.on_cancel)
+        self.cancel_button.pack(side="left", padx=5)
+
+        self.entry.bind("<Return>", lambda event: self.on_ok())
+        self.entry.bind("<Escape>", lambda event: self.on_cancel())
+
+    def on_ok(self):
+        self.result = self.entry.get()
+        self.destroy()
+
+    def on_cancel(self):
+        self.result = None
+        self.destroy()
+
+    def show(self):
+        self.grab_set()
+        self.wait_window()
+        return self.result
+
+class StationSelectionDialog(ctk.CTkToplevel):
     def __init__(self, parent, title, stations):
+        super().__init__(parent)
+        self.title(title)
         self.stations = stations
         self.selected_station = None
-        super().__init__(parent, title)
+        self.setup_ui()
 
-    def body(self, master):
-        tk.Label(master, text="Select Station:").grid(row=0, column=0, padx=10, pady=10)
-        self.station_var = tk.StringVar()
-        self.station_dropdown = ttk.Combobox(master, textvariable=self.station_var, values=self.stations)
+    def setup_ui(self):
+        ctk.CTkLabel(self, text="Select Station:").grid(row=0, column=0, padx=10, pady=10)
+        self.station_var = ctk.StringVar()
+        self.station_dropdown = ctk.CTkComboBox(self, values=self.stations, variable=self.station_var)
         self.station_dropdown.grid(row=0, column=1, padx=10, pady=10)
-        return self.station_dropdown
 
-    def apply(self):
+        ctk.CTkButton(self, text="OK", command=self.on_ok).grid(row=1, column=0, columnspan=2, pady=10)
+
+    def on_ok(self):
         self.selected_station = self.station_var.get()
+        self.destroy()
 
-class GamingCenterApp(tk.Tk):
+class WaitlistDialog(ctk.CTkToplevel):
+    def __init__(self, parent, stations, title="Add to Waitlist", prompt="Enter details:"):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("300x200")
+        self.resizable(False, False)
+
+        self.result = None
+
+        self.label = ctk.CTkLabel(self, text=prompt)
+        self.label.pack(pady=10)
+
+        self.name_entry = ctk.CTkEntry(self, placeholder_text="Name")
+        self.name_entry.pack(pady=10, padx=10, fill="x")
+
+        self.station_var = tk.StringVar()
+        self.station_dropdown = ctk.CTkComboBox(self, variable=self.station_var, values=stations)
+        self.station_dropdown.pack(pady=10, padx=10, fill="x")
+
+        self.button_frame = ctk.CTkFrame(self)
+        self.button_frame.pack(pady=10)
+
+        self.ok_button = ctk.CTkButton(self.button_frame, text="OK", command=self.on_ok)
+        self.ok_button.pack(side="left", padx=5)
+
+        self.cancel_button = ctk.CTkButton(self.button_frame, text="Cancel", command=self.on_cancel)
+        self.cancel_button.pack(side="left", padx=5)
+
+        self.name_entry.bind("<Return>", lambda event: self.on_ok())
+        self.name_entry.bind("<Escape>", lambda event: self.on_cancel())
+
+    def on_ok(self):
+        name = self.name_entry.get().strip()
+        station = self.station_var.get()
+        if name and station:
+            self.result = {"name": name, "station": station}
+            self.grab_release()  # Release the grab before destroying
+            self.destroy()
+        else:
+            messagebox.showerror("Error", "Please fill out all fields.")
+
+    def on_cancel(self):
+        self.result = None
+        self.grab_release()  # Release the grab before destroying
+        self.destroy()
+
+    def show(self):
+        self.grab_set()
+        self.wait_window(self)  # Wait for the dialog to close
+        return self.result
+class GamingCenterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Gaming Center App")
-        self.geometry("1200x1000")
+        self.geometry("1500x950")
         self.stations = []  # Keep track of all stations
         self.waitlist = []  # List to keep track of people on the waitlist
         self.create_menu()
@@ -439,7 +627,7 @@ class GamingCenterApp(tk.Tk):
 
     def setup_ui(self):
         # Create main container with more padding
-        main_frame = ttk.Frame(self)
+        main_frame = ctk.CTkFrame(self)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         # Configure grid weights
         for i in range(6):  # 6 rows
@@ -447,10 +635,14 @@ class GamingCenterApp(tk.Tk):
         for i in range(3):  # 3 columns
             main_frame.grid_columnconfigure(i, weight=1)
         # Add button to view and edit games at the top right
-        games_button = ttk.Button(main_frame, text="View/Edit Games", command=self.open_games_window)
-        waitlist_button= ttk.Button(main_frame, text="Waitlist", command=self.show_waitlist_window)
+        games_button = ctk.CTkButton(main_frame, text="View/Edit Games", command=self.open_games_window, corner_radius=20)
+        waitlist_button= ctk.CTkButton(main_frame, text="Waitlist", command=self.show_waitlist_window, corner_radius=20)
         waitlist_button.grid(row=0, column=3, padx=10, pady=10, sticky="ne")
         games_button.grid(row=0, column=2, padx=10, pady=10, sticky="ne")
+
+        # Notification bubble for waitlist
+        self.notification_bubble = ctk.CTkLabel(main_frame, text="", fg_color="red", text_color="white", corner_radius=10)
+        self.notification_bubble.grid(row=0, column=1, padx=10, pady=10, sticky="ne")
         # Create first 4 console stations (left column) in reverse order
         for i in range(4):
             station = Station(main_frame, self, "XBOX", 4 - i)  # Pass self to Station
@@ -479,21 +671,6 @@ class GamingCenterApp(tk.Tk):
                 col = 1
                 row += 1
 
-        # Add the "View/Edit Games List" button
-        view_edit_games_button = tk.Button(self, text="View/Edit Games List")
-        view_edit_games_button.pack(pady=10)
-
-        # Add the waitlist button with notification bubble
-        waitlist_frame = tk.Frame(self)
-        waitlist_frame.pack(pady=10)
-
-        self.waitlist_button = tk.Button(waitlist_frame, text="Waitlist", command=self.show_waitlist_window)
-        self.waitlist_button.pack(side=tk.LEFT)
-
-        self.notification_bubble = tk.Label(waitlist_frame, text="", bg="red", fg="white", font=("Arial", 10, "bold"))
-        self.notification_bubble.pack(side=tk.LEFT, padx=5)
-        self.update_notification_bubble()
-
     def get_games_for_console(self, console_type):
         try:
             with open('games_list.json', 'r') as f:
@@ -508,18 +685,28 @@ class GamingCenterApp(tk.Tk):
                 station.update_games_list()
 
     def create_menu(self):
-        menubar = tk.Menu(self)
-        self.config(menu=menubar)
+        menubar = ctk.CTkFrame(self, fg_color="gray20")
+        menubar.pack(side="top", fill="x")
 
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="View Statistics", command=self.open_stats_window)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.quit)
+        file_button = ctk.CTkButton(menubar, text="File", command=self.show_file_menu, fg_color="gray20", corner_radius=0)
+        file_button.pack(side="left", padx=0, pady=0)
 
-        view_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Toggle Dark Mode", command=toggle_dark_mode)
+        view_button = ctk.CTkButton(menubar, text="View", command=self.show_view_menu, fg_color="gray20", corner_radius=0)
+        view_button.pack(side="left", padx=0, pady=0)
+
+    def show_file_menu(self):
+        menu = tk.Menu(self, tearoff=0)
+        menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
+        menu.add_command(label="View Statistics", command=self.open_stats_window)
+        menu.add_separator()
+        menu.add_command(label="Exit", command=self.quit)
+        menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+
+    def show_view_menu(self):
+        menu = tk.Menu(self, tearoff=0)
+        menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
+        # Add view menu items here
+        menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
         
 
     def open_stats_window(self):
@@ -530,61 +717,87 @@ class GamingCenterApp(tk.Tk):
 
     def update_notification_bubble(self):
         if self.waitlist:
-            self.notification_bubble.config(text=str(len(self.waitlist)))
+            self.notification_bubble.configure(text=str(len(self.waitlist)))
             self.notification_bubble.pack(side=tk.LEFT, padx=5)
         else:
             self.notification_bubble.pack_forget()
 
     def show_waitlist_window(self):
-        waitlist_window = tk.Toplevel(self)
+        waitlist_window = ctk.CTkToplevel(self)
         waitlist_window.title("Waitlist")
         waitlist_window.geometry("500x500")
 
-        waitlist_listbox = tk.Listbox(waitlist_window)
-        waitlist_listbox.pack(fill=tk.BOTH, expand=True)
+        waitlist_window.lift()
+        waitlist_window.focus_force()
+        waitlist_window.grab_set()
 
-        for i, person in enumerate(self.waitlist):
-            waitlist_listbox.insert(tk.END, f"{i+1}. {person['name']} - Station: {person['station']} - Wait Time: {self.calculate_wait_time(person['station'])}")
+        # Create Treeview with custom style
+        style = ttk.Style()
+        style.theme_use("clam")  # Use a theme that supports custom colors
+        style.configure("Custom.Treeview", 
+                        background="#333333",  # Dark background
+                        foreground="white",    # Light text
+                        fieldbackground="#333333",  # Background for cells
+                        rowheight=25)
+        style.configure("Custom.Treeview.Heading", 
+                        background="#444444",  # Darker background for headings
+                        foreground="white",    # Light text for headings
+                        relief="flat")         # Flat relief for headings
+        style.map("Custom.Treeview", 
+                background=[("selected", "#00843d")],  # Green for selected background
+                foreground=[("selected", "white")])   # White text for selected items
 
-        add_button = tk.Button(waitlist_window, text="Add to Waitlist", command=lambda: self.add_to_waitlist(waitlist_listbox))
+        columns = ("Name", "Station", "Wait Time")
+        waitlist_tree = ttk.Treeview(waitlist_window, columns=columns, show="headings", style="Custom.Treeview")
+        waitlist_tree.heading("Name", text="Name", command=lambda: self.sort_treeview_column(waitlist_tree, "Name", False))
+        waitlist_tree.heading("Station", text="Station", command=lambda: self.sort_treeview_column(waitlist_tree, "Station", False))
+        waitlist_tree.heading("Wait Time", text="Wait Time", command=lambda: self.sort_treeview_column(waitlist_tree, "Wait Time", False))
+        waitlist_tree.pack(fill=tk.BOTH, expand=True)
+
+        # Insert waitlist data
+        self.update_waitlist_tree(waitlist_tree)
+
+        add_button = ctk.CTkButton(waitlist_window, text="Add to Waitlist", command=lambda: self.add_to_waitlist(waitlist_tree))
         add_button.pack(pady=5)
 
-        remove_button = tk.Button(waitlist_window, text="Remove from Waitlist", command=lambda: self.remove_from_waitlist(waitlist_listbox))
+        remove_button = ctk.CTkButton(waitlist_window, text="Remove from Waitlist", command=lambda: self.remove_from_waitlist(waitlist_tree))
         remove_button.pack(pady=5)
 
-    def add_to_waitlist(self, waitlist_listbox):
-        name = simpledialog.askstring("Add to Waitlist", "Enter Name:")
-        if not name:
-            return
+    def update_waitlist_tree(self, waitlist_tree):
+        # Clear existing items
+        for item in waitlist_tree.get_children():
+            waitlist_tree.delete(item)
+        
+        # Insert new items
+        for person in self.waitlist:
+            wait_time = self.calculate_wait_time(person['station'])
+            waitlist_tree.insert("", "end", values=(person['name'], person['station'], wait_time))
 
+    def add_to_waitlist(self, waitlist_tree):
         station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
-        dialog = StationSelectionDialog(self, "Select Station", station_names)
-        if not dialog.selected_station:
+        dialog = WaitlistDialog(self, station_names, title="Add to Waitlist", prompt="Enter details:")
+        result = dialog.show()
+        if result:
+            self.waitlist.append(result)
+            self.update_waitlist_tree(waitlist_tree)  # Update the tree immediately
+
+    def remove_from_waitlist(self, waitlist_tree):
+        selected_item = waitlist_tree.selection()
+        if not selected_item:
             return
 
-        self.waitlist.append({"name": name, "station": dialog.selected_station})
-        self.update_notification_bubble()
-        self.update_waitlist_listbox(waitlist_listbox)
+        item_index = waitlist_tree.index(selected_item[0])
+        self.waitlist.pop(item_index)
+        self.update_waitlist_tree(waitlist_tree)  # Update the tree immediately
 
-    def remove_from_waitlist(self, waitlist_listbox):
-        selected_index = waitlist_listbox.curselection()
-        if not selected_index:
-            return
-
-        self.waitlist.pop(selected_index[0])
-        self.update_notification_bubble()
-        self.update_waitlist_listbox(waitlist_listbox)
-
-    def update_waitlist_listbox(self, waitlist_listbox):
-        waitlist_listbox.delete(0, tk.END)
-        for i, person in enumerate(self.waitlist):
-            waitlist_listbox.insert(tk.END, f"{i+1}. {person['name']} - Station: {person['station']} - Wait Time: {self.calculate_wait_time(person['station'])}")
-
-    def calculate_wait_time(self, station):
-        # Placeholder function to calculate wait time based on station's timer
-        return "10 mins"
-
-
+    def calculate_wait_time(self, station_name):
+        for station in self.stations:
+            if f"{station.station_type} {station.station_num}" == station_name:
+                elapsed_time = station.timer.get_time()
+                remaining_time = max(station.timer.TIME_LIMIT - elapsed_time, 0)
+                minutes, seconds = divmod(remaining_time, 60)
+                return f"{int(minutes)} mins {int(seconds)} secs"
+        return "N/A"
 if __name__ == "__main__":
     app = GamingCenterApp()
     app.mainloop()
