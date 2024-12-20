@@ -233,7 +233,7 @@ class StatsWindow(ctk.CTkToplevel):
         ax = self.total_usage_graph.figure.add_subplot(111)
         categories = ['Total Time', 'Total Sessions', 'Avg Session']
         values = [total_time_minutes, total_sessions, avg_session_minutes]
-        colors = ['blue', 'green', 'red']
+        colors = ['yellow', 'green', 'gray']
 
         ax.bar(categories, values, color=colors)
         ax.set_title("Summary Statistics", color='white')
@@ -272,7 +272,7 @@ class StatsWindow(ctk.CTkToplevel):
 
         # Create a bar plot
         ax = self.game_rankings_graph.figure.add_subplot(111)
-        ax.barh(games, sessions, color='blue')
+        ax.barh(games, sessions, color='green')
         ax.set_title("Game Rankings", color='white')
         ax.set_xlabel("Sessions", color='white')
         ax.tick_params(axis='x', colors='white')
@@ -284,12 +284,15 @@ class StatsWindow(ctk.CTkToplevel):
     def get_station_color(self, station_type):
         # Add your color mapping logic here
         color_map = {
-            'PC': 'blue',
-            'Console': 'green',
-            'VR': 'purple',
+            'XBOX': 'green',
+            'Switch': 'red',
+            'Ping-Pong': 'purple',
+            'PoolTable': 'yellow',
+            'Air Hockey': 'blue',
+            'Foosball': 'orange'
             # Add more mappings as needed
         }
-        return color_map.get(station_type, 'gray')
+        return color_map.get(station_type, 'purple')
 
     def export_to_excel(self):
         self.stats_manager.export_daily_stats()

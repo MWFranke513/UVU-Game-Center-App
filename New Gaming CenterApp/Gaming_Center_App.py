@@ -3,6 +3,7 @@ from tkinter import simpledialog, messagebox
 from tkinter import ttk
 import customtkinter as ctk
 from customtkinter import CTkImage
+from CTkListbox import *
 from pathlib import Path
 from PIL import Image, ImageTk
 import time
@@ -17,18 +18,71 @@ from StatsCompiler import StatsWindow  # Import the StatsWindow class from Stats
 
 # Configure customtkinter
 ctk.set_appearance_mode("dark")  # Default to light mode
-ctk.set_default_color_theme("green")  # You can change this to other themes if desired
+ctk.set_default_color_theme("./uvu_green.json")  # You can change this to other themes if desired
 
 
-class TimerRing(ctk.CTkCanvas):
-    def __init__(self, parent, width=65, height=65):
+class CombinedTimer(ctk.CTkCanvas):
+    def __init__(self, parent, width=150, height=150):  # Increased size
         super().__init__(parent, width=width, height=height, highlightthickness=0, bg="gray")
         self.width = width
         self.height = height
-        self.time_limit = 2 * 60  # 35 minutes in seconds
-        self.warning_threshold = 0.8 * self.time_limit  # 28 minutes
-        self.warning_threshold2 = 0.9 * self.time_limit  # 31.5 minutes
+        self.time_limit = 2 * 60  # 2 minutes in seconds for testing
+        self.warning_threshold = 0.8 * self.time_limit  # 1.6 minutes
+        self.warning_threshold2 = 0.9 * self.time_limit  # 1.8 minutes
         
+        self.is_running = False
+        self.start_time = 0
+        self.elapsed_time = 0
+        self.alert_shown = False
+        
+        self.timer_label = ctk.CTkLabel(self, text="00:00:00", font=ctk.CTkFont(family="Helvetica", size=14))
+        self.timer_label.place(relx=0.5, rely=0.5, anchor="center")
+        
+    def start(self):
+        if not self.validate_fields():
+            return
+        if not self.is_running:
+            self.is_running = True
+            self.start_time = time.time() - self.elapsed_time
+            self.update_timer()
+
+    def stop(self):
+        if self.is_running:
+            self.is_running = False
+            self.elapsed_time = time.time() - self.start_time
+
+    def reset(self):
+        self.is_running = False
+        self.elapsed_time = 0
+        self.alert_shown = False
+        self.timer_label.configure(text="00:00:00")
+        self.draw_ring(0)
+
+    def get_time(self):
+        if self.is_running:
+            return time.time() - self.start_time
+        return self.elapsed_time
+
+    def check_time_limit(self):
+        return self.get_time() >= self.time_limit
+
+    def validate_fields(self):
+        missing_fields = []
+        
+        if not hasattr(self, 'name_entry') or not self.name_entry.get().strip():
+            missing_fields.append("Name")
+        if not hasattr(self, 'id_entry') or not self.id_entry.get().strip():
+            missing_fields.append("ID Number (Enter N/A if not applicable)")
+        if hasattr(self, 'game_dropdown') and not self.game_var.get():
+            missing_fields.append("Game")
+        if hasattr(self, 'controller_dropdown') and not self.controller_var.get():
+            missing_fields.append("Controller")
+
+        if missing_fields:
+            messagebox.showerror("Error", f"Please fill out the following fields:\n" + "\n".join(missing_fields))
+            return False
+        return True
+
     def draw_ring(self, progress):
         self.delete("all")  # Clear canvas
         
@@ -56,71 +110,38 @@ class TimerRing(ctk.CTkCanvas):
             # Draw the progress arc
             self.create_arc(x0, y0, x1, y1, start=90, extent=-extent, outline=color, width=4, style='arc')
 
-class StationTimer:
-    def __init__(self):
-        self.is_running = False
-        self.start_time = 0
-        self.elapsed_time = 0
-        self.alert_shown = False
-        self.TIME_LIMIT = 40 * 60  # 35 minutes in seconds
-
-    def start(self):
-        if not self.validate_fields():
-            return
-        if not self.is_running:
-            self.is_running = True
-            self.start_time = time.time() - self.elapsed_time
-
-    def stop(self):
+    def update_timer(self):
         if self.is_running:
-            self.is_running = False
-            self.elapsed_time = time.time() - self.start_time
-
-    def reset(self):
-        self.is_running = False
-        self.elapsed_time = 0
-        self.alert_shown = False
-
-    def get_time(self):
-        if self.is_running:
-            return time.time() - self.start_time
-        return self.elapsed_time
-
-    def check_time_limit(self):
-        return self.get_time() >= self.TIME_LIMIT
-    
-
-    def validate_fields(self):
-        missing_fields = []
+            elapsed = self.get_time()
+            hours = int(elapsed // 3600)
+            minutes = int((elapsed % 3600) // 60)
+            seconds = int(elapsed % 60)
+            self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+            
+            # Update progress ring
+            progress = min(elapsed / self.time_limit, 1.0)
+            self.draw_ring(progress)
+            
+            # Update timer color based on elapsed time
+            if elapsed >= self.time_limit:
+                self.timer_label.configure(text_color="red")
+                if not self.alert_shown:
+                    self.show_time_alert()
+                    self.alert_shown = True
+            elif elapsed >= (self.time_limit * 0.8):
+                self.timer_label.configure(text_color="orange")
+            else:
+                self.timer_label.configure(text_color="green")
         
-        # Debug print to check if name_entry exists
-        print(f"Checking name_entry: {'name_entry' in self.__dict__}")
-        if not hasattr(self, 'name_entry') or not self.name_entry.get().strip():
-            missing_fields.append("Name")
-        else:
-            print(f"name_entry value: '{self.name_entry.get().strip()}'")
-        
-        # Debug print to check if id_entry exists
-        print(f"Checking id_entry: {'id_entry' in self.__dict__}")
-        if not hasattr(self, 'id_entry') or not self.id_entry.get().strip():
-            missing_fields.append("ID Number (Enter N/A if not applicable)")
-        else:
-            print(f"id_entry value: '{self.id_entry.get().strip()}'")
-        
-        # Debug print to check if game_dropdown exists
-        print(f"Checking game_dropdown: {'game_dropdown' in self.__dict__}")
-        if hasattr(self, 'game_dropdown') and not self.game_var.get():
-            missing_fields.append("Game")
-        
-        # Debug print to check if controller_dropdown exists
-        print(f"Checking controller_dropdown: {'controller_dropdown' in self.__dict__}")
-        if hasattr(self, 'controller_dropdown') and not self.controller_var.get():
-            missing_fields.append("Controller")
+        self.after(1000, self.update_timer)
 
-        if missing_fields:
-            messagebox.showerror("Error", f"Please fill out the following fields:\n" + "\n".join(missing_fields))
-            return False
-        return True
+    def show_time_alert(self):
+        station_info = f"Station {self.station_num} ({self.station_type})"
+        user_name = self.name_entry.get()
+        if user_name:
+            station_info += f" - {user_name}"
+        messagebox.showwarning("Time Limit Exceeded", 
+                             f"{station_info}\nhas exceeded the 2-minute time limit.\nPlease ask the user to wrap up their session.")
 
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
@@ -129,7 +150,7 @@ class Station(ctk.CTkFrame):
         self.app = app  # Store reference to the app
         self.station_type = station_type
         self.station_num = station_num
-        self.timer = StationTimer()
+        self.timer = CombinedTimer(self, width=75, height=75)
         self.setup_ui()
         self.update_timer()
 
@@ -150,7 +171,7 @@ class Station(ctk.CTkFrame):
 
             cached_file = cache_dir / f"{icon_name}.png"
             if cached_file.exists():
-                return CTkImage(Image.open(cached_file), size=size)
+                return ctk.CTkImage(Image.open(cached_file), size=size)
 
             url = f"https://cdn.jsdelivr.net/npm/lucide-static@0.298.0/icons/{icon_name}.svg"
 
@@ -164,7 +185,7 @@ class Station(ctk.CTkFrame):
                         png_data = cairosvg.svg2png(bytestring=svg_content.encode("utf-8"))
                         img = Image.open(BytesIO(png_data))
                         img.save(cached_file)
-                        return CTkImage(img, size=size)
+                        return ctk.CTkImage(img, size=size)
                 except Exception as e:
                     if icon_name not in icon_errors:
                         icon_errors.add(icon_name)
@@ -176,7 +197,7 @@ class Station(ctk.CTkFrame):
             fallback_img = Image.new("RGB", size, color="gray")
             if Path(fallback_path).exists():
                 fallback_img = Image.open(fallback_path)
-            return CTkImage(fallback_img, size=size)
+            return ctk.CTkImage(fallback_img, size=size)
 
         if self.station_type in ["XBOX", "Switch"]:
             # Console type toggle frame with icons
@@ -314,9 +335,9 @@ class Station(ctk.CTkFrame):
         timer_frame.pack(fill="x", padx=2, pady=2)
         
         # Timer ring
-        self.timer_ring = TimerRing(timer_frame, width=75, height=75)
-        self.timer_ring.pack(side="left", padx=5)
-        
+        self.timer.pack(side="left", padx=5)
+
+        # Timer label
         self.timer_label = ctk.CTkLabel(
             timer_frame, 
             text="00:00:00", 
@@ -336,46 +357,22 @@ class Station(ctk.CTkFrame):
         ctk.CTkButton(button_frame, image=self.stop_icon, text="Stop", command=self.timer.stop, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
         ctk.CTkButton(button_frame, image=self.reset_icon, text="Reset", command=self.timer.reset, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
     def change_console_type(self):
-        # Rest of the method remains the same as in original script
         self.station_type = self.console_var.get()
         games = self.app.get_games_for_console(self.station_type)
         self.game_dropdown.configure(values=games)
         self.game_var.set('')
 
     def update_timer(self):
-        # Most of this method remains the same as in original script
-        if self.timer.is_running:
-            elapsed = self.timer.get_time()
-            hours = int(elapsed // 3600)
-            minutes = int((elapsed % 3600) // 60)
-            seconds = int(elapsed % 60)
-            self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
-            
-            # Update progress ring
-            progress = min(elapsed / self.timer.TIME_LIMIT, 1.0)
-            self.timer_ring.draw_ring(progress)
-            
-            # Update timer color based on elapsed time
-            if elapsed >= self.timer.TIME_LIMIT:
-                self.timer_label.configure(text_color="red")
-                if not self.timer.alert_shown:
-                    self.show_time_alert()
-                    self.timer.alert_shown = True
-            elif elapsed >= (self.timer.TIME_LIMIT * 0.8):
-                self.timer_label.configure(text_color="orange")
-            else:
-                self.timer_label.configure(text_color="green")
-        
+        self.timer.update_timer()
         self.after(1000, self.update_timer)
 
-    # Rest of the methods remain the same as in the original script
     def show_time_alert(self):
         station_info = f"Station {self.station_num} ({self.station_type})"
         user_name = self.name_entry.get()
         if user_name:
             station_info += f" - {user_name}"
         messagebox.showwarning("Time Limit Exceeded", 
-                             f"{station_info}\nhas exceeded the 35-minute time limit.\nPlease ask the user to wrap up their session.")
+                             f"{station_info}\nhas exceeded the 2-minute time limit.\nPlease ask the user to wrap up their session.")
 
     def start_timer(self):
         self.timer.start()
@@ -384,10 +381,10 @@ class Station(ctk.CTkFrame):
         self.timer.stop()
 
     def reset_timer(self):
-        self.log_usage()
         self.timer.reset()
+        self.log_usage()
         self.timer_label.configure(text="00:00:00", text_color="black")
-        self.timer_ring.draw_ring(0)  # Reset progress ring
+        self.timer.draw_ring(0)  # Reset progress ring
         self.name_entry.delete(0, tk.END)
         
         if self.station_type in ["XBOX", "Switch"]:
@@ -395,7 +392,6 @@ class Station(ctk.CTkFrame):
             self.controller_dropdown.set("")
 
     def log_usage(self):
-        # Remains the same as in original script
         user_name = self.name_entry.get()
         game = self.game_var.get()
         controller = self.controller_var.get()
@@ -424,6 +420,7 @@ class GamesWindow(ctk.CTkToplevel):
         super().__init__(parent)
         self.title("Games List")
         self.geometry("600x400")
+        self.configure(bg="#333333")  # Set background color to match the dark theme
         self.games = self.load_games()
         self.setup_ui()
         
@@ -442,23 +439,37 @@ class GamesWindow(ctk.CTkToplevel):
             json.dump(games_dict, f)
 
     def setup_ui(self):
-        # Customize the ttk.Notebook style to match the dark theme
         style = ttk.Style()
-        style.theme_use("clam")  # Use a theme that supports custom colors
-        style.configure("TNotebook", background="#333333", borderwidth=0)  # Dark background for the notebook, remove border
+        style.theme_use("clam")
+        
+        # Configure notebook without creating custom elements
+        style.configure("TNotebook", 
+            background="#333333",  # Match the dark theme
+            borderwidth=0,          # Remove border
+            padding=0               # Remove padding
+        )
+        
+        # Configure the tab style with larger padding and font
         style.configure("TNotebook.Tab", 
-                        background="#444444",  # Dark background for the tabs
-                        foreground="white",    # Light text for the tabs
-                        padding=[10, 5])       # Padding for the tabs
+            background="#444444",  # Dark background for the tabs
+            foreground="white",    # Light text for the tabs
+            padding=[12, 10],      # Increase padding to make the tabs larger
+            borderwidth=0,         # Remove border
+            font=("Helvetica", 14) # Increase font size
+        )
+            
         style.map("TNotebook.Tab", 
-                  background=[("selected", "#00843d")],  # Green for selected tab background
-                  foreground=[("selected", "white")])   # White text for selected tab
+            background=[("selected", "#00843d")],  # Green for selected tab background
+            foreground=[("selected", "white")]    # White text for selected tab
+        )
+
+        style.configure("TFrame", background="#333333")  # Match the dark theme
 
         self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill='both', expand=True, padx=10, pady=10)
+        self.notebook.pack(fill='both', expand=True, padx=0, pady=0)
 
-        self.switch_tab = ttk.Frame(self.notebook)
-        self.xbox_tab = ttk.Frame(self.notebook)
+        self.switch_tab = ttk.Frame(self.notebook, style="TFrame")
+        self.xbox_tab = ttk.Frame(self.notebook, style="TFrame")
         
         self.notebook.add(self.switch_tab, text='Switch Games')
         self.notebook.add(self.xbox_tab, text='XBOX Games')
@@ -467,49 +478,68 @@ class GamesWindow(ctk.CTkToplevel):
         self.setup_games_tab(self.xbox_tab, "XBOX")
 
     def setup_games_tab(self, parent, console):
-        frame = ctk.CTkFrame(parent)
+        frame = ctk.CTkFrame(parent, border_width=0, corner_radius=0)
         frame.pack(fill='both', expand=True, padx=0, pady=0)
 
-        # Use CTkTextbox with state="disabled" to make it read-only
-        games_textbox = ctk.CTkTextbox(frame, state="disabled")
-        games_textbox.pack(side='left', fill='both', expand=True)
+        # Define a custom font with a larger size
+        custom_font = ("Helvetica", 16)  # Change the size as needed
 
-        # Enable the textbox temporarily to insert games
-        games_textbox.configure(state="normal")
+        # Use tk.Listbox wrapped in a CTkFrame
+        games_listbox = tk.Listbox(
+            frame,
+            bg="#333333",
+            fg="white",
+            selectbackground="#00843d",
+            selectforeground="white",
+            font=custom_font  # Set the custom font here
+        )
+        games_listbox.pack(side='left', fill='both', expand=True)
+
         for game in self.games[console]:
-            games_textbox.insert('end', game + "\n")
-        games_textbox.configure(state="disabled")
+            games_listbox.insert('end', game)
 
-        button_frame = ctk.CTkFrame(frame)
-        button_frame.pack(side='right', fill='y')
+        button_frame = ctk.CTkFrame(frame, border_width=0, corner_radius=20)
+        button_frame.pack(side='right', fill='y', padx=5)  # Added padx for spacing
 
-        add_button = ctk.CTkButton(button_frame, text="Add", command=lambda: self.add_game(console, games_textbox))
+        add_button = ctk.CTkButton(
+            button_frame, 
+            text="Add",
+            fg_color="#00843d",  # Match the tab color
+            hover_color="#006e33",
+            command=lambda: self.add_game(console, games_listbox),
+            corner_radius=20
+        )
         add_button.pack(pady=5)
-        remove_button = ctk.CTkButton(button_frame, text="Remove", command=lambda: self.remove_game(console, games_textbox))
+
+        remove_button = ctk.CTkButton(
+            button_frame, 
+            text="Remove",
+            fg_color="#00843d",
+            hover_color="#006e33",
+            command=lambda: self.remove_game(console, games_listbox),
+            corner_radius=20
+        )
         remove_button.pack(pady=5)
 
-    def add_game(self, console, games_textbox):
+    def add_game(self, console, games_listbox):
         dialog = CustomDialog(self, title="Add Game", prompt=f"Enter new game for {console}:")
         new_game = dialog.show()
         if new_game:
             self.games[console].append(new_game)
-            self.update_games_textbox(console, games_textbox)
+            self.update_games_listbox(console, games_listbox)
             self.save_games(self.games)
 
-    def remove_game(self, console, games_textbox):
-        selected_game = games_textbox.get("1.0", "end-1c").splitlines()[-1]
+    def remove_game(self, console, games_listbox):
+        selected_game = games_listbox.get(tk.ACTIVE)
         if selected_game:
             self.games[console].remove(selected_game)
-            self.update_games_textbox(console, games_textbox)
+            self.update_games_listbox(console, games_listbox)
             self.save_games(self.games)
 
-    def update_games_textbox(self, console, games_textbox):
-        # Enable the textbox temporarily to update its content
-        games_textbox.configure(state="normal")
-        games_textbox.delete("1.0", "end")
+    def update_games_listbox(self, console, games_listbox):
+        games_listbox.delete(0, tk.END)
         for game in self.games[console]:
-            games_textbox.insert('end', game + "\n")
-        games_textbox.configure(state="disabled")
+            games_listbox.insert('end', game)
 class CustomDialog(ctk.CTkToplevel):
     def __init__(self, parent, title="Add Game", prompt="Enter new game:"):
         super().__init__(parent)
@@ -743,11 +773,13 @@ class GamingCenterApp(ctk.CTk):
                         background="#333333",  # Dark background
                         foreground="white",    # Light text
                         fieldbackground="#333333",  # Background for cells
-                        rowheight=25)
+                        rowheight=25,
+                        font=("Helvetica", 14))  # Larger font size
         style.configure("Custom.Treeview.Heading", 
                         background="#444444",  # Darker background for headings
                         foreground="white",    # Light text for headings
-                        relief="flat")         # Flat relief for headings
+                        relief="flat",
+                        font=("Helvetica", 16))         # Flat relief for headings
         style.map("Custom.Treeview", 
                 background=[("selected", "#00843d")],  # Green for selected background
                 foreground=[("selected", "white")])   # White text for selected items
@@ -805,4 +837,5 @@ class GamingCenterApp(ctk.CTk):
         return "N/A"
 if __name__ == "__main__":
     app = GamingCenterApp()
+    app.iconbitmap("icon_cache/gamingcenter-icon.ico")
     app.mainloop()
