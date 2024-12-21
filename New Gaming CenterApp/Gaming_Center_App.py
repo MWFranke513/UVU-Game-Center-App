@@ -20,6 +20,145 @@ from StatsCompiler import StatsWindow  # Import the StatsWindow class from Stats
 ctk.set_appearance_mode("dark")  # Default to light mode
 ctk.set_default_color_theme("./uvu_green.json")  # You can change this to other themes if desired
 
+import tkinter as tk
+import customtkinter as ctk
+from PIL import Image, ImageTk
+
+class CustomErrorBox(tk.Toplevel):
+    def __init__(self, parent, title, message):
+        super().__init__(parent)
+        
+        # Window setup
+        self.title(title)
+        self.configure(bg="#fff")
+        self.resizable(False, False)
+        
+        # Make window modal
+        self.transient(parent)
+        self.grab_set()
+        
+        # Calculate position for center of screen
+        window_width = 630
+        window_height = 220
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        center_x = int(screen_width/2 - window_width/2)
+        center_y = int(screen_height/2 - window_height/2)
+        
+        # Set initial window size and position
+        self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
+        
+        # Create main frame with grid
+        main_frame = ctk.CTkFrame(self, fg_color="#fff")
+        main_frame.pack(expand=True, fill="both", padx=20, pady=20)
+        
+        # Configure grid columns and rows
+        main_frame.grid_columnconfigure(1, weight=1)  # Text column expands
+        main_frame.grid_rowconfigure(0, weight=1)     # Content row expands
+        
+        # Create left frame for GIF
+        left_frame = ctk.CTkFrame(main_frame, fg_color="#fff")
+        left_frame.grid(row=0, column=0, padx=(0, 20), sticky="n")
+        
+        # Create right frame for text
+        right_frame = ctk.CTkFrame(main_frame, fg_color="#fff")
+        right_frame.grid(row=0, column=1, sticky="nsew")
+        main_frame.grid_rowconfigure(0, weight=1)  # Allow row to expand
+        main_frame.grid_columnconfigure(1, weight=1)  # Allow column to expand
+        
+        # Create bottom frame for button
+        bottom_frame = ctk.CTkFrame(main_frame, fg_color="#fff")
+        bottom_frame.grid(row=1, column=0, columnspan=2, sticky="e", pady=(20, 0))
+        
+        # Load and animate GIF
+        try:
+            self.gif_path = "./icon_cache/finger_wag.gif"
+            self.frames = []
+            self.current_frame = 0
+            
+            # Load all frames of the GIF and resize them
+            gif = Image.open(self.gif_path)
+            # Set fixed size for the GIF
+            desired_height = 100
+            aspect_ratio = gif.width / gif.height
+            new_width = int(desired_height * aspect_ratio)
+            
+            for frame in range(0, gif.n_frames):
+                gif.seek(frame)
+                resized_frame = gif.copy().resize((new_width, desired_height), Image.Resampling.LANCZOS)
+                frame_image = ImageTk.PhotoImage(resized_frame)
+                self.frames.append(frame_image)
+            
+            # Create label for GIF
+            self.gif_label = tk.Label(left_frame, image=self.frames[0], bg="#fff")
+            self.gif_label.pack(padx=10)
+            
+            # Start animation
+            self.animate_gif()
+            
+        except Exception as e:
+            print(f"Error loading GIF: {str(e)}")
+        
+        # Title message
+        title_label = ctk.CTkLabel(
+            right_frame,
+            text="Please fill out the following fields:",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#000",
+            justify="left"
+        )
+        title_label.pack(anchor="w")
+        
+        # Message (missing fields)
+        message_label = ctk.CTkLabel(
+            right_frame,
+            text=message,
+            font=ctk.CTkFont(size=14),
+            text_color="#000",
+            wraplength=250,
+            justify="left"
+        )
+        message_label.pack(anchor="w", pady=(10, 0))
+        
+        # Calculate the required height based on the message length
+        lines = message.count('\n') + 1
+        additional_height = lines * 20  # Adjust this value based on your font size and line spacing
+        new_window_height = window_height + additional_height
+        
+        # Set the new window size and position
+        self.geometry(f'{window_width}x{new_window_height}+{center_x}+{center_y}')
+        
+        # OK Button
+        ok_button = ctk.CTkButton(
+            bottom_frame,
+            text="OK",
+            command=self.destroy,
+            fg_color="#FF5252",
+            hover_color="#FF7070",
+            width=100,
+            height=32
+        )
+        ok_button.pack(side="right")
+        
+        # Bind Enter and Escape to close the window
+        self.bind("<Return>", lambda event: self.destroy())
+        self.bind("<Escape>", lambda event: self.destroy())
+        
+        # Position the window and set focus
+        self.focus_set()
+        
+    def animate_gif(self):
+        """Handles GIF animation"""
+        try:
+            self.current_frame = (self.current_frame + 1) % len(self.frames)
+            self.gif_label.configure(image=self.frames[self.current_frame])
+            self.after(12, self.animate_gif)
+        except Exception as e:
+            print(f"Error animating GIF: {str(e)}")
+
+def show_custom_error(parent, title, message):
+    message = message.replace("Please fill out the following fields:\n", "")
+    return CustomErrorBox(parent, title, message)
 
 class CombinedTimer(ctk.CTkCanvas):
     def __init__(self, parent, width=100, height=100):
@@ -108,7 +247,8 @@ class CombinedTimer(ctk.CTkCanvas):
                 missing_fields.append("Controller")
 
         if missing_fields:
-            messagebox.showerror("Error", f"Please fill out the following fields:\n" + "\n".join(missing_fields))
+            error_message = f"Please fill out the following fields:\n" + "\n".join(missing_fields)
+            show_custom_error(self.winfo_toplevel(), "Error", error_message)
             return False
         
         return True
