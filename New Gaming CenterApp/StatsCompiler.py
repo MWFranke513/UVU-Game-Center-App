@@ -155,8 +155,8 @@ class StatsWindow(ctk.CTkToplevel):
         """Create a Matplotlib graph with a dark theme."""
         plt.style.use('dark_background')
         fig, ax = plt.subplots()
-        fig.patch.set_facecolor('#333333')  # Dark background color
-        ax.set_facecolor('#333333')  # Dark background color
+        fig.patch.set_facecolor('#212120')  # Dark background color
+        ax.set_facecolor('#212120')  # Dark background color
         ax.xaxis.label.set_color('white')
         ax.yaxis.label.set_color('white')
         ax.tick_params(axis='x', colors='white')
