@@ -22,23 +22,34 @@ ctk.set_default_color_theme("./uvu_green.json")  # You can change this to other 
 
 
 class CombinedTimer(ctk.CTkCanvas):
-    def __init__(self, parent, width=150, height=150):  # Increased size
+    def __init__(self, parent, width=100, height=100):
         super().__init__(parent, width=width, height=height, highlightthickness=0, bg="gray")
         self.width = width
         self.height = height
-        self.time_limit = 2 * 60  # 2 minutes in seconds for testing
-        self.warning_threshold = 0.8 * self.time_limit  # 1.6 minutes
-        self.warning_threshold2 = 0.9 * self.time_limit  # 1.8 minutes
+        self.time_limit = 2 * 60
+        self.warning_threshold = 0.8 * self.time_limit
+        self.warning_threshold2 = 0.9 * self.time_limit
         
         self.is_running = False
         self.start_time = 0
         self.elapsed_time = 0
         self.alert_shown = False
         
-        self.timer_label = ctk.CTkLabel(self, text="00:00:00", font=ctk.CTkFont(family="Helvetica", size=14))
+        # Initialize fields as None
+        self.name_entry = None
+        self.id_entry = None
+        self.game_dropdown = None
+        self.controller_dropdown = None
+        self.game_var = None
+        self.controller_var = None
+        self.station_type = None
+        self.station_num = None
+        
+        self.timer_label = ctk.CTkLabel(self, text="00:00:00", font=ctk.CTkFont(family="Helvetica", size=16))
         self.timer_label.place(relx=0.5, rely=0.5, anchor="center")
         
     def start(self):
+        print("start method called")
         if not self.validate_fields():
             return
         if not self.is_running:
@@ -67,20 +78,26 @@ class CombinedTimer(ctk.CTkCanvas):
         return self.get_time() >= self.time_limit
 
     def validate_fields(self):
+        print("validate_fields called")
         missing_fields = []
         
-        if not hasattr(self, 'name_entry') or not self.name_entry.get().strip():
+        # Always check name and ID for all station types
+        if not self.name_entry or not self.name_entry.get().strip():
             missing_fields.append("Name")
-        if not hasattr(self, 'id_entry') or not self.id_entry.get().strip():
+        if not self.id_entry or not self.id_entry.get().strip():
             missing_fields.append("ID Number (Enter N/A if not applicable)")
-        if hasattr(self, 'game_dropdown') and not self.game_var.get():
-            missing_fields.append("Game")
-        if hasattr(self, 'controller_dropdown') and not self.controller_var.get():
-            missing_fields.append("Controller")
+        
+        # Only check game and controller fields for console stations
+        if self.station_type in ["XBOX", "Switch"]:
+            if not self.game_var or not self.game_var.get():
+                missing_fields.append("Game")
+            if not self.controller_var or not self.controller_var.get():
+                missing_fields.append("Controller")
 
         if missing_fields:
             messagebox.showerror("Error", f"Please fill out the following fields:\n" + "\n".join(missing_fields))
             return False
+        
         return True
 
     def draw_ring(self, progress):
@@ -150,7 +167,12 @@ class Station(ctk.CTkFrame):
         self.app = app  # Store reference to the app
         self.station_type = station_type
         self.station_num = station_num
-        self.timer = CombinedTimer(self, width=75, height=75)
+        self.timer = CombinedTimer(self, width=100, height=100)
+
+        # self.timer.pack(pady=(10,20))
+        self.timer.station_type = station_type
+        self.timer.station_num = station_num
+
         self.setup_ui()
         self.update_timer()
 
@@ -161,6 +183,7 @@ class Station(ctk.CTkFrame):
 
         # Station number label
         ctk.CTkLabel(header_frame, text=f"Station {self.station_num}", anchor="e").pack(side="right")
+
 
         icon_errors = set()
 
@@ -280,6 +303,10 @@ class Station(ctk.CTkFrame):
             self.id_entry = ctk.CTkEntry(fields_frame)
             self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
 
+            # Debug prints to check if attributes are assigned
+            print(f"Assigned name_entry: {hasattr(self, 'name_entry')}")
+            print(f"Assigned id_entry: {hasattr(self, 'id_entry')}")
+
             # Game and Controller fields (second row)
             ctk.CTkLabel(fields_frame, text="Game:").grid(row=1, column=0, padx=(0,5), sticky="w")
             self.game_var = ctk.StringVar()
@@ -321,14 +348,19 @@ class Station(ctk.CTkFrame):
             fields_frame.grid_columnconfigure(3, weight=1)  # ID entry column
             
             ctk.CTkLabel(fields_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
-            self.console_var = ctk.StringVar(value=self.station_type)
-            self.game_var = ctk.StringVar()
-            self.controller_var = ctk.StringVar()
             self.name_entry = ctk.CTkEntry(fields_frame)
             self.name_entry.grid(row=0, column=1, padx=5, sticky="ew")
+            
             ctk.CTkLabel(fields_frame, text="ID #").grid(row=0, column=2, padx=(15,5), sticky="w")
             self.id_entry = ctk.CTkEntry(fields_frame)
             self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
+
+            self.timer.name_entry = self.name_entry
+            self.timer.id_entry = self.id_entry
+
+            # Debug prints to check if attributes are assigned
+            print(f"Assigned name_entry: {hasattr(self, 'name_entry')}")
+            print(f"Assigned id_entry: {hasattr(self, 'id_entry')}")
 
         # Timer frame
         timer_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -340,10 +372,10 @@ class Station(ctk.CTkFrame):
         # Timer label
         self.timer_label = ctk.CTkLabel(
             timer_frame, 
-            text="00:00:00", 
+            text="", 
             font=ctk.CTkFont(family="Helvetica", size=14)
         )
-        self.timer_label.pack(side="left", padx=5)
+        self.timer_label.pack(side="left", padx=0)
 
         # Load control icons
         self.start_icon = download_icon('play', size=(15, 15))
@@ -356,6 +388,9 @@ class Station(ctk.CTkFrame):
         ctk.CTkButton(button_frame, image=self.start_icon, text="Start", command=self.timer.start, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
         ctk.CTkButton(button_frame, image=self.stop_icon, text="Stop", command=self.timer.stop, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
         ctk.CTkButton(button_frame, image=self.reset_icon, text="Reset", command=self.timer.reset, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
+
+        # Debug print to confirm setup_ui is complete
+        print("setup_ui completed")
     def change_console_type(self):
         self.station_type = self.console_var.get()
         games = self.app.get_games_for_console(self.station_type)
