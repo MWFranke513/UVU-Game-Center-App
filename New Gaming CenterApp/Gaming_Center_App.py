@@ -162,7 +162,7 @@ def show_custom_error(parent, title, message):
 
 class CombinedTimer(ctk.CTkCanvas):
     def __init__(self, parent, width=100, height=100):
-        super().__init__(parent, width=width, height=height, highlightthickness=0, bg="gray")
+        super().__init__(parent, width=width, height=height, highlightthickness=0, bg="#292929")
         self.width = width
         self.height = height
         self.time_limit = 2 * 60
