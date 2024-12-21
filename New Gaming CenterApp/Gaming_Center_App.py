@@ -63,11 +63,24 @@ class CombinedTimer(ctk.CTkCanvas):
             self.elapsed_time = time.time() - self.start_time
 
     def reset(self):
+        if self.is_running or self.elapsed_time > 0:  # Only log if timer was actually used
+            self.parent_station.log_usage()  # Log before resetting
+        
         self.is_running = False
         self.elapsed_time = 0
         self.alert_shown = False
         self.timer_label.configure(text="00:00:00")
         self.draw_ring(0)
+        
+        # Clear fields after logging
+        if self.name_entry:
+            self.name_entry.delete(0, tk.END)
+        if self.id_entry:
+            self.id_entry.delete(0, tk.END)
+        if self.game_var:
+            self.game_var.set("")
+        if self.controller_var:
+            self.controller_var.set("")
 
     def get_time(self):
         if self.is_running:
@@ -172,6 +185,7 @@ class Station(ctk.CTkFrame):
         # self.timer.pack(pady=(10,20))
         self.timer.station_type = station_type
         self.timer.station_num = station_num
+        self.timer.parent_station = self
 
         self.setup_ui()
         self.update_timer()
@@ -391,6 +405,8 @@ class Station(ctk.CTkFrame):
 
         # Debug print to confirm setup_ui is complete
         print("setup_ui completed")
+
+
     def change_console_type(self):
         self.station_type = self.console_var.get()
         games = self.app.get_games_for_console(self.station_type)
@@ -427,21 +443,39 @@ class Station(ctk.CTkFrame):
             self.controller_dropdown.set("")
 
     def log_usage(self):
-        user_name = self.name_entry.get()
-        game = self.game_var.get()
-        controller = self.controller_var.get()
-        duration = self.timer.get_time()
-        formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
-        with open("usage_log.txt", "a") as log_file:
-            log_file.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}\n")
-            log_file.write(f"Station Type: {self.station_type}\n")
-            log_file.write(f"Station Number: {self.station_num}\n")
-            log_file.write(f"User Name: {user_name}\n")
-            log_file.write(f"ID Number: {self.id_entry.get()}\n")
-            log_file.write(f"Duration: {formatted_duration}\n")
-            log_file.write(f"Game: {game}\n")
-            log_file.write(f"Controllers: {controller}\n")
-            log_file.write("--------------------------------------------------\n")
+            try:
+                # Get values safely using getattr to avoid attribute errors
+                user_name = self.timer.name_entry.get() if self.timer.name_entry else "Unknown"
+                id_number = self.timer.id_entry.get() if self.timer.id_entry else "Unknown"
+                game = self.timer.game_var.get() if self.timer.game_var else "N/A"
+                controller = self.timer.controller_var.get() if self.timer.controller_var else "N/A"
+                duration = self.timer.get_time()
+                formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
+                
+                # Prepare log entry
+                log_entry = [
+                    f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}",
+                    f"Station Type: {self.station_type}",
+                    f"Station Number: {self.station_num}",
+                    f"User Name: {user_name}",
+                    f"ID Number: {id_number}",
+                    f"Duration: {formatted_duration}",
+                    f"Game: {game}",
+                    f"Controllers: {controller}",
+                    "--------------------------------------------------"
+                ]
+                
+                # Write to log file
+                with open("usage_log.txt", "a") as log_file:
+                    log_file.write("\n".join(log_entry) + "\n")
+                
+                print(f"Successfully logged usage for Station {self.station_num}")
+                
+            except Exception as e:
+                print(f"Error logging usage: {str(e)}")
+                # Optionally show error message to user
+                messagebox.showerror("Logging Error", 
+                                f"Failed to log station usage. Please notify administrator.\nError: {str(e)}")
 
     def update_games_list(self):
         if self.station_type in ["XBOX", "Switch"]:

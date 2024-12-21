@@ -692,3 +692,21 @@ Duration: 00:00:16
 Game: Call of Duty: Black Ops 6
 Controllers: 2
 --------------------------------------------------
+Date: 2024-12-20 20:21:49.58
+Station Type: Switch
+Station Number: 5
+User Name: Boe Jiden
+ID Number: 10933023
+Duration: 00:00:54
+Game: Super Smash Bros
+Controllers: 4
+--------------------------------------------------
+Date: 2024-12-20 20:22:35.56
+Station Type: Ping-Pong
+Station Number: 1
+User Name: Ronald McDonald
+ID Number: 123456789
+Duration: 00:00:29
+Game: N/A
+Controllers: N/A
+--------------------------------------------------
