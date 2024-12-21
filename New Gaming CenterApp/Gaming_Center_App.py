@@ -67,7 +67,7 @@ class CustomErrorBox(tk.Toplevel):
         main_frame.grid_columnconfigure(1, weight=1)  # Allow column to expand
         
         # Create bottom frame for button
-        bottom_frame = ctk.CTkFrame(main_frame, fg_color="#fff")
+        bottom_frame = ctk.CTkFrame(main_frame, fg_color="#edeeed")
         bottom_frame.grid(row=1, column=0, columnspan=2, sticky="e", pady=(20, 0))
         
         # Load and animate GIF
