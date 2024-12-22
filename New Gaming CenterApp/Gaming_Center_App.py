@@ -13,6 +13,8 @@ import cairosvg
 import json
 import os
 import re
+import threading
+import cProfile
 from datetime import datetime
 from StatsCompiler import StatsWindow  # Import the StatsWindow class from StatsCompiler.py
 
@@ -173,6 +175,7 @@ class CombinedTimer(ctk.CTkCanvas):
         self.start_time = 0
         self.elapsed_time = 0
         self.alert_shown = False
+        self.last_progress = 0
         
         # Initialize fields as None
         self.name_entry = None
@@ -184,8 +187,16 @@ class CombinedTimer(ctk.CTkCanvas):
         self.station_type = None
         self.station_num = None
         
-        self.timer_label = ctk.CTkLabel(self, text="00:00:00", font=ctk.CTkFont(family="Helvetica", size=16))
-        self.timer_label.place(relx=0.5, rely=0.5, anchor="center")
+        # Create a frame to hold the timer label for better centering
+        self.label_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.label_frame.place(relx=0.5, rely=0.5, anchor="center")
+        
+        self.timer_label = ctk.CTkLabel(
+            self.label_frame, 
+            text="00:00:00", 
+            font=ctk.CTkFont(family="Helvetica", size=16)
+        )
+        self.timer_label.pack(expand=True)
         
     def start(self):
         print("start method called")
@@ -208,7 +219,7 @@ class CombinedTimer(ctk.CTkCanvas):
         self.is_running = False
         self.elapsed_time = 0
         self.alert_shown = False
-        self.timer_label.configure(text="00:00:00")
+        self.timer_label.configure(text="00:00:00", text_color="white")
         self.draw_ring(0)
         
         # Clear fields after logging
@@ -288,9 +299,11 @@ class CombinedTimer(ctk.CTkCanvas):
             seconds = int(elapsed % 60)
             self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             
-            # Update progress ring
+            # Update progress ring only if progress has changed
             progress = min(elapsed / self.time_limit, 1.0)
-            self.draw_ring(progress)
+            if abs(progress - self.last_progress) > 0.01:  # Only update if progress changes by 1%
+                self.draw_ring(progress)
+                self.last_progress = progress
             
             # Update timer color based on elapsed time
             if elapsed >= self.time_limit:
@@ -303,16 +316,24 @@ class CombinedTimer(ctk.CTkCanvas):
             else:
                 self.timer_label.configure(text_color="green")
         
-        self.after(1000, self.update_timer)
+        self.after(500, self.update_timer)  # Update every 500ms instead of 1000ms
 
     def show_time_alert(self):
+        if not hasattr(self, 'last_alert_time'):
+            self.last_alert_time = 0
+
+        current_time = time.time()
+        if current_time - self.last_alert_time < 300:  # 300 seconds = 5 minutes
+            return
+
+        self.last_alert_time = current_time
+
         station_info = f"Station {self.station_num} ({self.station_type})"
         user_name = self.name_entry.get()
         if user_name:
             station_info += f" - {user_name}"
         messagebox.showwarning("Time Limit Exceeded", 
                              f"{station_info}\nhas exceeded the 2-minute time limit.\nPlease ask the user to wrap up their session.")
-
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
         super().__init__(parent, border_width=2, corner_radius=10)  # Add border and rounded corners
@@ -350,32 +371,34 @@ class Station(ctk.CTkFrame):
             if cached_file.exists():
                 return ctk.CTkImage(Image.open(cached_file), size=size)
 
-            url = f"https://cdn.jsdelivr.net/npm/lucide-static@0.298.0/icons/{icon_name}.svg"
-
-            for attempt in range(retries):
-                try:
-                    response = requests.get(url, timeout=5)
-                    if response.status_code == 200:
-                        svg_content = response.content.decode("utf-8")
-                        svg_content = re.sub(r'stroke="[^"]*"', 'stroke="white"', svg_content)
-                        svg_content = re.sub(r'fill="[^"]*"', 'fill="none"', svg_content)
-                        png_data = cairosvg.svg2png(bytestring=svg_content.encode("utf-8"))
-                        img = Image.open(BytesIO(png_data))
-                        img.save(cached_file)
-                        return ctk.CTkImage(img, size=size)
-                except Exception as e:
-                    if icon_name not in icon_errors:
-                        icon_errors.add(icon_name)
+            def download():
+                url = f"https://cdn.jsdelivr.net/npm/lucide-static@0.298.0/icons/{icon_name}.svg"
+                for attempt in range(retries):
+                    try:
+                        response = requests.get(url, timeout=5)
+                        if response.status_code == 200:
+                            svg_content = response.content.decode("utf-8")
+                            svg_content = re.sub(r'stroke="[^"]*"', 'stroke="white"', svg_content)
+                            svg_content = re.sub(r'fill="[^"]*"', 'fill="none"', svg_content)
+                            png_data = cairosvg.svg2png(bytestring=svg_content.encode("utf-8"))
+                            img = Image.open(BytesIO(png_data))
+                            img.save(cached_file)
+                            return ctk.CTkImage(img, size=size)
+                    except Exception as e:
                         print(f"Failed to fetch icon {icon_name} on attempt {attempt + 1}: {e}")
-                    time.sleep(1)
+                        time.sleep(1)
 
-            print(f"Failed to fetch icon {icon_name} after {retries} attempts. Using fallback.")
-            fallback_path = "./icon_cache/fallback.png"
-            fallback_img = Image.new("RGB", size, color="gray")
-            if Path(fallback_path).exists():
-                fallback_img = Image.open(fallback_path)
-            return ctk.CTkImage(fallback_img, size=size)
+                print(f"Failed to fetch icon {icon_name} after {retries} attempts. Using fallback.")
+                fallback_path = "./icon_cache/fallback.png"
+                fallback_img = Image.new("RGB", size, color="gray")
+                if Path(fallback_path).exists():
+                    fallback_img = Image.open(fallback_path)
+                return ctk.CTkImage(fallback_img, size=size)
 
+            # Run the download in a separate thread
+            thread = threading.Thread(target=download)
+            thread.start()
+            return None  # Return None initially, and handle the result later
         if self.station_type in ["XBOX", "Switch"]:
             # Console type toggle frame with icons
             console_toggle_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
@@ -440,13 +463,13 @@ class Station(ctk.CTkFrame):
             # Set initial button states
             update_button_states()
 
-            # Create a container frame for all fields
+            # Create a container frame for all input fields
             fields_frame = ctk.CTkFrame(self, fg_color="transparent")
             fields_frame.pack(fill="x", padx=5, pady=2)
             
-            # Configure grid columns to be uniform
-            fields_frame.grid_columnconfigure(1, weight=1)  # Name entry column
-            fields_frame.grid_columnconfigure(3, weight=1)  # ID entry column
+            # Configure grid columns
+            fields_frame.grid_columnconfigure(1, weight=1)
+            fields_frame.grid_columnconfigure(3, weight=1)
             
             # Name and ID fields (first row)
             ctk.CTkLabel(fields_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
@@ -457,29 +480,17 @@ class Station(ctk.CTkFrame):
             self.id_entry = ctk.CTkEntry(fields_frame)
             self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
 
-            # Debug prints to check if attributes are assigned
-            print(f"Assigned name_entry: {hasattr(self, 'name_entry')}")
-            print(f"Assigned id_entry: {hasattr(self, 'id_entry')}")
-
             # Game and Controller fields (second row)
             ctk.CTkLabel(fields_frame, text="Game:").grid(row=1, column=0, padx=(0,5), sticky="w")
             self.game_var = ctk.StringVar()
             games = self.app.get_games_for_console(self.station_type)
-            self.game_dropdown = ctk.CTkComboBox(
-                fields_frame, 
-                variable=self.game_var, 
-                values=games
-            )
+            self.game_dropdown = ctk.CTkComboBox(fields_frame, variable=self.game_var, values=games)
             self.game_dropdown.grid(row=1, column=1, padx=5, sticky="ew")
 
             ctk.CTkLabel(fields_frame, text="Ctrl:").grid(row=1, column=2, padx=(15,5), sticky="w")
             self.controller_var = ctk.StringVar()
             controllers = ["1", "2", "3", "4"]
-            self.controller_dropdown = ctk.CTkComboBox(
-                fields_frame, 
-                variable=self.controller_var, 
-                values=controllers
-            )
+            self.controller_dropdown = ctk.CTkComboBox(fields_frame, variable=self.controller_var, values=controllers)
             self.controller_dropdown.grid(row=1, column=3, padx=5, sticky="ew")
 
             # Initialize timer with console-specific attributes
@@ -1040,7 +1051,7 @@ class GamingCenterApp(ctk.CTk):
         for station in self.stations:
             if f"{station.station_type} {station.station_num}" == station_name:
                 elapsed_time = station.timer.get_time()
-                remaining_time = max(station.timer.TIME_LIMIT - elapsed_time, 0)
+                remaining_time = max(station.timer.time_limit - elapsed_time, 0)
                 minutes, seconds = divmod(remaining_time, 60)
                 return f"{int(minutes)} mins {int(seconds)} secs"
         return "N/A"
@@ -1048,3 +1059,4 @@ if __name__ == "__main__":
     app = GamingCenterApp()
     app.iconbitmap("icon_cache/gamingcenter-icon.ico")
     app.mainloop()
+cProfile.run('app.mainloop()', 'restats')

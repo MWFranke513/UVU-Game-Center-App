@@ -710,3 +710,102 @@ Duration: 00:00:29
 Game: N/A
 Controllers: N/A
 --------------------------------------------------
+Date: 2024-12-21 16:55:15.15
+Station Type: Switch
+Station Number: 5
+User Name: Johnny
+ID Number: 1234534
+Duration: 00:00:56
+Game: Super Smash Bros
+Controllers: 4
+--------------------------------------------------
+Date: 2024-12-21 17:25:11.52
+Station Type: Switch
+Station Number: 4
+User Name: Joe Schmoe
+ID Number: 5555
+Duration: 00:01:43
+Game: Mario Kart 8
+Controllers: 4
+--------------------------------------------------
+Date: 2024-12-21 17:25:12.40
+Station Type: XBOX
+Station Number: 5
+User Name: Boe Jiden
+ID Number: 10933023
+Duration: 00:02:32
+Game: Fortnite
+Controllers: 1
+--------------------------------------------------
+Date: 2024-12-21 17:25:13.72
+Station Type: Ping-Pong
+Station Number: 2
+User Name: Boe Jiden
+ID Number: 12345645
+Duration: 00:01:44
+Game: N/A
+Controllers: N/A
+--------------------------------------------------
+Date: 2024-12-21 17:25:14.73
+Station Type: Ping-Pong
+Station Number: 1
+User Name: Ronald McDonald
+ID Number: 12344566
+Duration: 00:01:54
+Game: N/A
+Controllers: N/A
+--------------------------------------------------
+Date: 2024-12-21 17:25:15.93
+Station Type: Switch
+Station Number: 2
+User Name: Steve
+ID Number: 10933023
+Duration: 00:01:28
+Game: Minecraft
+Controllers: 1
+--------------------------------------------------
+Date: 2024-12-21 17:25:16.85
+Station Type: PoolTable
+Station Number: 1
+User Name: Santiana
+ID Number: 98789565
+Duration: 00:01:18
+Game: N/A
+Controllers: N/A
+--------------------------------------------------
+Date: 2024-12-21 17:25:44.97
+Station Type: XBOX
+Station Number: 3
+User Name: Donny lieberman
+ID Number: 1111111
+Duration: 00:02:07
+Game: Forza Horizon 5
+Controllers: 2
+--------------------------------------------------
+Date: 2024-12-21 17:27:07.11
+Station Type: XBOX
+Station Number: 5
+User Name: Boe Jiden
+ID Number: 10933023
+Duration: 00:00:42
+Game: Halo Infinite
+Controllers: 1
+--------------------------------------------------
+Date: 2024-12-21 17:29:46.28
+Station Type: XBOX
+Station Number: 5
+User Name: Boe Jiden
+ID Number: 10933023
+Duration: 00:00:22
+Game: Forza Horizon 5
+Controllers: 2
+--------------------------------------------------
+Date: 2024-12-21 18:07:29.28
+Station Type: Ping-Pong
+Station Number: 2
+User Name: Boe Jiden
+ID Number: 10933023
+Duration: 00:00:11
+Game: N/A
+Controllers: N/A
+--------------------------------------------------
