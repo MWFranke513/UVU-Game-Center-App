@@ -162,9 +162,23 @@ def show_custom_error(parent, title, message):
     message = message.replace("Please fill out the following fields:\n", "")
     return CustomErrorBox(parent, title, message)
 
+
 class CombinedTimer(ctk.CTkCanvas):
-    def __init__(self, parent, width=100, height=100):
-        super().__init__(parent, width=width, height=height, highlightthickness=0, bg="#292929")
+    def __init__(self, parent, width=120, height=120):
+
+
+        parent_fg = parent.cget("fg_color")
+
+        if isinstance(parent_fg, str):
+            parent_bg = parent_fg
+        else:
+            appearance_mode = ctk.get_appearance_mode()
+            parent_bg = parent_fg[1] if appearance_mode == "Dark" else parent_fg[0]
+
+
+
+
+        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent_bg)
         self.width = width
         self.height = height
         self.time_limit = 2 * 60
@@ -176,6 +190,7 @@ class CombinedTimer(ctk.CTkCanvas):
         self.elapsed_time = 0
         self.alert_shown = False
         self.last_progress = 0
+        self._update_loop_id = None  # Store the ID of the update loop
         
         # Initialize fields as None
         self.name_entry = None
@@ -211,6 +226,9 @@ class CombinedTimer(ctk.CTkCanvas):
         if self.is_running:
             self.is_running = False
             self.elapsed_time = time.time() - self.start_time
+        if self._update_loop_id:
+            self.after_cancel(self._update_loop_id)  # Cancel the update loop
+            self._update_loop_id = None
 
     def reset(self):
         if self.is_running or self.elapsed_time > 0:  # Only log if timer was actually used
@@ -274,7 +292,7 @@ class CombinedTimer(ctk.CTkCanvas):
         y1 = self.height - 6
         
         # Draw background ring
-        self.create_oval(x0, y0, x1, y1, outline='#fff', width=4)
+        self.create_oval(x0, y0, x1, y1, outline='gray20', width=8)
         
         if progress > 0:
             # Calculate color based on progress
@@ -289,7 +307,7 @@ class CombinedTimer(ctk.CTkCanvas):
             extent = 360 * progress
             
             # Draw the progress arc
-            self.create_arc(x0, y0, x1, y1, start=90, extent=-extent, outline=color, width=4, style='arc')
+            self.create_arc(x0, y0, x1, y1, start=-180, extent=-extent, outline=color, width=9, style='arc')
 
     def update_timer(self):
         if self.is_running:
@@ -316,7 +334,9 @@ class CombinedTimer(ctk.CTkCanvas):
             else:
                 self.timer_label.configure(text_color="green")
         
-        self.after(500, self.update_timer)  # Update every 500ms instead of 1000ms
+        # Schedule the next update only if the timer is still running
+        if self.is_running:
+            self._update_loop_id = self.after(500, self.update_timer)  # Update every 500ms
 
     def show_time_alert(self):
         if not hasattr(self, 'last_alert_time'):
@@ -334,6 +354,7 @@ class CombinedTimer(ctk.CTkCanvas):
             station_info += f" - {user_name}"
         messagebox.showwarning("Time Limit Exceeded", 
                              f"{station_info}\nhas exceeded the 2-minute time limit.\nPlease ask the user to wrap up their session.")
+
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
         super().__init__(parent, border_width=2, corner_radius=10)  # Add border and rounded corners
@@ -341,9 +362,8 @@ class Station(ctk.CTkFrame):
         self.app = app  # Store reference to the app
         self.station_type = station_type
         self.station_num = station_num
-        self.timer = CombinedTimer(self, width=100, height=100)
+        self.timer = CombinedTimer(self, width=120, height=120)
 
-        # self.timer.pack(pady=(10,20))
         self.timer.station_type = station_type
         self.timer.station_num = station_num
         self.timer.parent_station = self
@@ -358,7 +378,6 @@ class Station(ctk.CTkFrame):
 
         # Station number label
         ctk.CTkLabel(header_frame, text=f"Station {self.station_num}", anchor="e").pack(side="right")
-
 
         icon_errors = set()
 
@@ -399,6 +418,8 @@ class Station(ctk.CTkFrame):
             thread = threading.Thread(target=download)
             thread.start()
             return None  # Return None initially, and handle the result later
+
+
         if self.station_type in ["XBOX", "Switch"]:
             # Console type toggle frame with icons
             console_toggle_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
@@ -523,16 +544,12 @@ class Station(ctk.CTkFrame):
             self.timer.name_entry = self.name_entry
             self.timer.id_entry = self.id_entry
 
-            # Debug prints to check if attributes are assigned
-            print(f"Assigned name_entry: {hasattr(self, 'name_entry')}")
-            print(f"Assigned id_entry: {hasattr(self, 'id_entry')}")
-
         # Timer frame
         timer_frame = ctk.CTkFrame(self, fg_color="transparent")
-        timer_frame.pack(fill="x", padx=2, pady=2)
+        timer_frame.pack(fill="x", padx=2, pady=0)
         
         # Timer ring
-        self.timer.pack(side="left", padx=5)
+        self.timer.pack(side="left", padx=5, pady=0)
 
         # Timer label
         self.timer_label = ctk.CTkLabel(
@@ -553,10 +570,6 @@ class Station(ctk.CTkFrame):
         ctk.CTkButton(button_frame, image=self.start_icon, text="Start", command=self.timer.start, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
         ctk.CTkButton(button_frame, image=self.stop_icon, text="Stop", command=self.timer.stop, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
         ctk.CTkButton(button_frame, image=self.reset_icon, text="Reset", command=self.timer.reset, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
-
-        # Debug print to confirm setup_ui is complete
-        print("setup_ui completed")
-
 
     def change_console_type(self):
         self.station_type = self.console_var.get()
@@ -877,8 +890,23 @@ class GamingCenterApp(ctk.CTk):
         self.geometry("1500x950")
         self.stations = []  # Keep track of all stations
         self.waitlist = []  # List to keep track of people on the waitlist
+        self.waitlist_tree = None  # Initialize waitlist_tree as None
         self.create_menu()
         self.setup_ui()
+
+        
+        # Bind the close event to the stop_timers method
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def on_close(self):
+        """Handle the application close event."""
+        self.stop_timers()  # Stop all timers
+        self.destroy()  # Close the application
+
+    def stop_timers(self):
+        """Stop all timers in the stations."""
+        for station in self.stations:
+            station.stop_timer()  # Stop the timer in each station
 
     def setup_ui(self):
         # Create main container with more padding
@@ -891,7 +919,7 @@ class GamingCenterApp(ctk.CTk):
             main_frame.grid_columnconfigure(i, weight=1)
         # Add button to view and edit games at the top right
         games_button = ctk.CTkButton(main_frame, text="View/Edit Games", command=self.open_games_window, corner_radius=20)
-        waitlist_button= ctk.CTkButton(main_frame, text="Waitlist", command=self.show_waitlist_window, corner_radius=20)
+        waitlist_button = ctk.CTkButton(main_frame, text="Waitlist", command=self.show_waitlist_window, corner_radius=20)
         waitlist_button.grid(row=0, column=3, padx=10, pady=10, sticky="ne")
         games_button.grid(row=0, column=2, padx=10, pady=10, sticky="ne")
 
@@ -962,7 +990,6 @@ class GamingCenterApp(ctk.CTk):
         menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
         # Add view menu items here
         menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
-        
 
     def open_stats_window(self):
         StatsWindow(self)
@@ -980,7 +1007,7 @@ class GamingCenterApp(ctk.CTk):
     def show_waitlist_window(self):
         waitlist_window = ctk.CTkToplevel(self)
         waitlist_window.title("Waitlist")
-        waitlist_window.geometry("500x500")
+        waitlist_window.geometry("800x500")
 
         waitlist_window.lift()
         waitlist_window.focus_force()
@@ -1004,48 +1031,64 @@ class GamingCenterApp(ctk.CTk):
                 background=[("selected", "#00843d")],  # Green for selected background
                 foreground=[("selected", "white")])   # White text for selected items
 
-        columns = ("Name", "Station", "Wait Time")
-        waitlist_tree = ttk.Treeview(waitlist_window, columns=columns, show="headings", style="Custom.Treeview")
-        waitlist_tree.heading("Name", text="Name", command=lambda: self.sort_treeview_column(waitlist_tree, "Name", False))
-        waitlist_tree.heading("Station", text="Station", command=lambda: self.sort_treeview_column(waitlist_tree, "Station", False))
-        waitlist_tree.heading("Wait Time", text="Wait Time", command=lambda: self.sort_treeview_column(waitlist_tree, "Wait Time", False))
-        waitlist_tree.pack(fill=tk.BOTH, expand=True)
+        columns = ("Party", "Size", "Notes", "Service", "Table", "Quoted Time", "Arrival", "Actions")
+        self.waitlist_tree = ttk.Treeview(waitlist_window, columns=columns, show="headings", style="Custom.Treeview")
+        for col in columns:
+            self.waitlist_tree.heading(col, text=col)
+        self.waitlist_tree.pack(fill=tk.BOTH, expand=True)
 
         # Insert waitlist data
-        self.update_waitlist_tree(waitlist_tree)
+        self.update_waitlist_tree()
 
-        add_button = ctk.CTkButton(waitlist_window, text="Add to Waitlist", command=lambda: self.add_to_waitlist(waitlist_tree))
+        add_button = ctk.CTkButton(waitlist_window, text="Add to Waitlist", command=self.add_to_waitlist)
         add_button.pack(pady=5)
 
-        remove_button = ctk.CTkButton(waitlist_window, text="Remove from Waitlist", command=lambda: self.remove_from_waitlist(waitlist_tree))
-        remove_button.pack(pady=5)
-
-    def update_waitlist_tree(self, waitlist_tree):
+    def update_waitlist_tree(self):
         # Clear existing items
-        for item in waitlist_tree.get_children():
-            waitlist_tree.delete(item)
+        for item in self.waitlist_tree.get_children():
+            self.waitlist_tree.delete(item)
         
         # Insert new items
         for person in self.waitlist:
-            wait_time = self.calculate_wait_time(person['station'])
-            waitlist_tree.insert("", "end", values=(person['name'], person['station'], wait_time))
+            actions_frame = tk.Frame(self.waitlist_tree)
+            edit_button = tk.Button(actions_frame, text="Edit", command=lambda p=person: self.edit_waitlist_entry(p))
+            remove_button = tk.Button(actions_frame, text="Remove", command=lambda p=person: self.remove_waitlist_entry(p))
+            complete_button = tk.Button(actions_frame, text="Complete", command=lambda p=person: self.complete_waitlist_entry(p))
+            edit_button.pack(side=tk.LEFT)
+            remove_button.pack(side=tk.LEFT)
+            complete_button.pack(side=tk.LEFT)
+            
+            self.waitlist_tree.insert("", "end", values=(
+                person.get('Party', ''),
+                person.get('Size', ''),
+                person.get('Notes', ''),
+                person.get('Service', ''),
+                person.get('Table', ''),
+                person.get('Quoted Time', ''),
+                person.get('Arrival', ''),
+                actions_frame
+            ))
 
-    def add_to_waitlist(self, waitlist_tree):
+    def add_to_waitlist(self):
         station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
         dialog = WaitlistDialog(self, station_names, title="Add to Waitlist", prompt="Enter details:")
         result = dialog.show()
         if result:
             self.waitlist.append(result)
-            self.update_waitlist_tree(waitlist_tree)  # Update the tree immediately
+            self.update_waitlist_tree()
 
-    def remove_from_waitlist(self, waitlist_tree):
-        selected_item = waitlist_tree.selection()
-        if not selected_item:
-            return
+    def edit_waitlist_entry(self, entry):
+        # Implement your logic to edit an existing entry
+        print(f"Editing entry: {entry}")
 
-        item_index = waitlist_tree.index(selected_item[0])
-        self.waitlist.pop(item_index)
-        self.update_waitlist_tree(waitlist_tree)  # Update the tree immediately
+    def remove_waitlist_entry(self, entry):
+        # Implement your logic to remove an entry
+        self.waitlist.remove(entry)
+        self.update_waitlist_tree()
+
+    def complete_waitlist_entry(self, entry):
+        # Implement your logic to mark an entry as complete
+        print(f"Completing entry: {entry}")
 
     def calculate_wait_time(self, station_name):
         for station in self.stations:
