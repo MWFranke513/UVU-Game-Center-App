@@ -458,7 +458,7 @@ class StatsManager:
         games = defaultdict(lambda: {'sessions': 0, 'total_time': timedelta(0)})
         
         for entry in data:
-            if 'game' in entry and entry['game']:
+            if 'game' in entry and entry['game'] and entry['game'] != 'N/A':
                 game = entry['game']
                 duration = self._parse_duration(entry['duration'])
                 games[game]['sessions'] += 1
