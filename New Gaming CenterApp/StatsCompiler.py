@@ -12,6 +12,8 @@ from collections import defaultdict
 import textwrap
 from tkinter import messagebox
 
+## NOTE: More date range filters need to be added. All options should include: Today, Yesterday, Last 7 Days, Last 30 Days, This Month, Last Month, This Semester, Last Semester,This Year, Last Year, All Time
+
 class StatsWindow(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -79,7 +81,7 @@ class StatsWindow(ctk.CTkToplevel):
         period_frame = ctk.CTkFrame(parent)
         period_frame.pack(fill='x', padx=10, pady=5)
         ctk.CTkLabel(period_frame, text="Time Period:").pack(side='left')
-        period_choices = ['Today', 'Last 7 Days', 'Last 30 Days', 'All Time']
+        period_choices = ['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Last Month', 'This Semester', 'Last Semester', 'This Year', 'Last Year', 'All Time']
         self.period_var = tk.StringVar(value='Today')
         period_dropdown = ctk.CTkComboBox(period_frame, variable=self.period_var, values=period_choices, state='readonly')
         period_dropdown.pack(side='left', padx=5)
@@ -225,9 +227,39 @@ class StatsWindow(ctk.CTkToplevel):
         total_sessions = stats['total_sessions']
         avg_session = stats['avg_session']
 
-        # Convert time to minutes for plotting
-        total_time_minutes = int(total_time.split(':')[0]) * 60 + int(total_time.split(':')[1])
-        avg_session_minutes = int(avg_session.split(':')[0]) * 60 + int(avg_session.split(':')[1])
+        # Convert total_time to minutes
+        try:
+            # Handle the case where total_time includes days (e.g., '3 days, 1:23:45')
+            if 'day' in total_time:
+                days, time_part = total_time.split(', ')
+                days = int(days.split()[0])  # Extract the number of days
+                hours, minutes, seconds = map(int, time_part.split(':'))
+                total_time_minutes = days * 24 * 60 + hours * 60 + minutes
+            else:
+                # Handle the case where total_time is in 'HH:MM:SS' format
+                hours, minutes, seconds = map(int, total_time.split(':'))
+                total_time_minutes = hours * 60 + minutes
+        except Exception as e:
+            print(f"Error parsing total_time: {total_time}")
+            print(f"Error details: {e}")
+            total_time_minutes = 0  # Default to 0 if parsing fails
+
+        # Convert avg_session to minutes
+        try:
+            # Handle the case where avg_session includes days (e.g., '3 days, 1:23:45')
+            if 'day' in avg_session:
+                days, time_part = avg_session.split(', ')
+                days = int(days.split()[0])  # Extract the number of days
+                hours, minutes, seconds = map(int, time_part.split(':'))
+                avg_session_minutes = days * 24 * 60 + hours * 60 + minutes
+            else:
+                # Handle the case where avg_session is in 'HH:MM:SS' format
+                hours, minutes, seconds = map(int, avg_session.split(':'))
+                avg_session_minutes = hours * 60 + minutes
+        except Exception as e:
+            print(f"Error parsing avg_session: {avg_session}")
+            print(f"Error details: {e}")
+            avg_session_minutes = 0  # Default to 0 if parsing fails
 
         # Create a bar plot
         ax = self.total_usage_graph.figure.add_subplot(111)
@@ -367,7 +399,13 @@ class StatsManager:
                     
                     try:
                         if line.startswith('Date:'):
-                            entry['timestamp'] = datetime.strptime(line[6:], '%Y-%m-%d %H:%M:%S.%f')
+                            timestamp_str = line[6:]  # Extract the timestamp string
+                            try:
+                                # Try parsing with microseconds
+                                entry['timestamp'] = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+                            except ValueError:
+                                # If that fails, try parsing without microseconds
+                                entry['timestamp'] = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
                         elif line.startswith('Station Type:'):
                             entry['station_type'] = line[13:]
                         elif line.startswith('Station Number:'):
@@ -409,10 +447,36 @@ class StatsManager:
         
         if period == 'Today':
             return date == today
+        elif period == 'Yesterday':
+            return date == today - timedelta(days=1)
         elif period == 'Last 7 Days':
             return (today - date).days <= 7
         elif period == 'Last 30 Days':
             return (today - date).days <= 30
+        elif period == 'This Month':
+            return date.year == today.year and date.month == today.month
+        elif period == 'Last Month':
+            last_month = today.replace(day=1) - timedelta(days=1)
+            return date.year == last_month.year and date.month == last_month.month
+        elif period == 'This Semester':
+            # Assuming semesters are Jan-Apr and Sep-Dec
+            if today.month >= 1 and today.month <= 4:
+                return date.year == today.year and date.month >= 1 and date.month <= 4
+            elif today.month >= 9 and today.month <= 12:
+                return date.year == today.year and date.month >= 9 and date.month <= 12
+        elif period == 'Last Semester':
+            # Assuming semesters are Jan-Apr and Sep-Dec
+            if today.month >= 1 and today.month <= 4:
+                last_semester_start = today.replace(year=today.year - 1, month=9, day=1)
+                last_semester_end = today.replace(year=today.year - 1, month=12, day=31)
+            else:
+                last_semester_start = today.replace(month=1, day=1)
+                last_semester_end = today.replace(month=4, day=30)
+            return last_semester_start <= date <= last_semester_end
+        elif period == 'This Year':
+            return date.year == today.year
+        elif period == 'Last Year':
+            return date.year == today.year - 1
         else:  # All Time
             return True
 
