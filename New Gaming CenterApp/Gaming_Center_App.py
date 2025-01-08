@@ -699,8 +699,15 @@ class GamesWindow(ctk.CTkToplevel):
 
         style.configure("TFrame", background="#333333")  # Match the dark theme
 
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill='both', expand=True, padx=0, pady=0)
+        # Create a container frame to hold the notebook and scrollbar
+        container = ttk.Frame(self)
+        container.pack(fill='both', expand=True, padx=0, pady=0)
+
+        self.notebook = ttk.Notebook(container)
+        self.notebook.pack(side="left", fill='both', expand=True, padx=0, pady=0)
+
+        self.scrollbar = ctk.CTkScrollbar(container, orientation="vertical")
+        self.scrollbar.pack(side="right", fill="y")
 
         self.switch_tab = ttk.Frame(self.notebook, style="TFrame")
         self.xbox_tab = ttk.Frame(self.notebook, style="TFrame")
@@ -1215,7 +1222,6 @@ class GamingCenterApp(ctk.CTk):
         title_frame.pack(side="left")
         
         ctk.CTkLabel(title_frame, text="Gaming Center Waitlist", font=("Helvetica", 20, "bold")).pack(side="left", padx=5)
-        # Store the count label as an instance variable
         self.count_label = ctk.CTkLabel(title_frame, text=str(len(self.waitlist)), 
                                         fg_color="blue", text_color="white",
                                         corner_radius=10, width=30)
@@ -1227,77 +1233,122 @@ class GamingCenterApp(ctk.CTk):
         search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
         search_entry.pack(side="right", padx=5)
 
+        # Create a frame to hold both the treeview and buttons side by side
+        content_frame = ctk.CTkFrame(main_frame)
+        content_frame.pack(fill="both", expand=True)
+
         # Create custom style for Treeview
         style = ttk.Style()
-        style.theme_use("default")  # Use the default theme as a base
+        style.theme_use("default")
 
-        # Configure the Treeview style
         style.configure(
             "Waitlist.Treeview",
-            background="#2b2b2b",  # Dark background for the Treeview
-            foreground="white",    # White text for the Treeview
-            fieldbackground="#2b2b2b",  # Background for the cells
+            background="#2b2b2b",
+            foreground="white",
+            fieldbackground="#2b2b2b",
             rowheight=50,
             font=("Helvetica", 12)
         )
         style.configure(
             "Waitlist.Treeview.Heading",
-            background="#333333",  # Darker background for the headers
-            foreground="white",    # White text for the headers
+            background="#333333",
+            foreground="white",
             font=("Helvetica", 12, "bold"),
-            relief="flat"          # Flat relief for the headers
+            relief="flat"
         )
         style.map(
             "Waitlist.Treeview",
-            background=[("selected", "#1f538d")],  # Background color for selected rows
-            foreground=[("selected", "white")]     # Text color for selected rows
+            background=[("selected", "#1f538d")],
+            foreground=[("selected", "white")]
         )
 
         # Create columns
-        columns = ("party", "size", "notes", "station", "quotedTime", "arrival", "actions")
+        columns = ("party", "size", "notes", "station", "quotedTime", "arrival")
         self.waitlist_tree = ttk.Treeview(
-            main_frame,
+            content_frame,
             columns=columns,
             show="headings",
             style="Waitlist.Treeview"
         )
-
-        # Configure column headings
+        
+        # Configure column headings and widths
         headings = {
             "party": "PARTY",
             "size": "SIZE",
             "notes": "NOTES",
             "station": "STATION",
             "quotedTime": "QUOTED TIME",
-            "arrival": "ARRIVAL",
-            "actions": "ACTIONS"
+            "arrival": "ARRIVAL"
         }
         
         for col, heading in headings.items():
             self.waitlist_tree.heading(col, text=heading)
-            if col in ["size"]:
-                self.waitlist_tree.column(col, width=50, anchor="center")
-            elif col in ["actions"]:
-                self.waitlist_tree.column(col, width=200, anchor="center")
+            if col == "size":
+                self.waitlist_tree.column(col, width=50, anchor="center")  # Narrow size column
             else:
-                self.waitlist_tree.column(col, width=150, anchor="w")
+                self.waitlist_tree.column(col, width=150, anchor="w")  # Adjust width of other columns
+
+        # Create a frame for the buttons column
+        buttons_frame = ctk.CTkFrame(content_frame, width=200)  # Set a fixed width for the actions column
+        buttons_frame.pack(side="right", fill="y", padx=(10, 0))
+        
+        # Add a header for the actions column
+        ctk.CTkLabel(buttons_frame, text="ACTIONS", font=("Helvetica", 11, "bold")).pack(pady=(0, 0))
+
+        # Add a single row of placeholder buttons (grayed-out and un-clickable)
+        self.placeholder_buttons_frame = ctk.CTkFrame(buttons_frame)
+        self.placeholder_buttons_frame.pack(pady=10, padx=5)
+
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✓",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"  # Disable the button
+        ).pack(side="left", padx=2)
+
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✕",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"  # Disable the button
+        ).pack(side="left", padx=2)
+
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✎",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"  # Disable the button
+        ).pack(side="left", padx=2)
 
         # Pack the treeview with scrollbar
-        tree_scroll = ttk.Scrollbar(main_frame, orient="vertical", command=self.waitlist_tree.yview)
+        tree_scroll = ctk.CTkScrollbar(content_frame, orientation="vertical", command=self.waitlist_tree.yview)
         self.waitlist_tree.configure(yscrollcommand=tree_scroll.set)
         
         self.waitlist_tree.pack(side="left", fill="both", expand=True)
         tree_scroll.pack(side="right", fill="y")
 
+        # Store reference to buttons_frame for updating
+        self.buttons_frame = buttons_frame
+
         # Add floating action button
+        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
         add_button = ctk.CTkButton(
             waitlist_window,
             text="+",
             width=60,
             height=60,
-            corner_radius=30,
+            corner_radius=60,
             font=("Helvetica", 24, "bold"),
-            command=self.add_to_waitlist
+            command=lambda: self.add_to_waitlist(station_names)
         )
         add_button.place(relx=0.95, rely=0.95, anchor="se")
 
@@ -1310,55 +1361,160 @@ class GamingCenterApp(ctk.CTk):
         # Update the waitlist display
         self.update_waitlist_tree()
 
-    def add_to_waitlist(self):
-        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+    def add_to_waitlist(self, station_names):
+        """Modified to accept station_names parameter"""
         dialog = WaitlistDialog(self, station_names, title="Add to Waitlist", prompt="Enter details:")
         result = dialog.show()
         if result:
             self.waitlist.append(result)
             self.update_waitlist_tree()
-            self.update_count_label()  # Update the count label
+            self.update_count_label()
+
+    def handle_click(self, event):
+        """Handle clicks on the treeview to show action buttons"""
+        region = self.waitlist_tree.identify_region(event.x, event.y)
+        if region == "cell":
+            column = self.waitlist_tree.identify_column(event.x)
+            if column == "#7":  # Actions column
+                item = self.waitlist_tree.identify_row(event.y)
+                if item:
+                    # Get the item's bbox
+                    bbox = self.waitlist_tree.bbox(item, column)
+                    if bbox:
+                        self.show_action_buttons(item, bbox)
+
+    def show_action_buttons(self, item, bbox):
+        """Show action buttons in a popup window"""
+        # Get the corresponding entry from waitlist
+        idx = self.waitlist_tree.index(item)
+        if idx >= len(self.waitlist):
+            return
+        entry = self.waitlist[idx]
+        
+        # Create popup window for buttons
+        popup = tk.Toplevel(self.waitlist_window)
+        popup.overrideredirect(True)
+        
+        # Position popup at the cell location
+        tree_x = self.waitlist_tree.winfo_rootx()
+        tree_y = self.waitlist_tree.winfo_rooty()
+        popup.geometry(f"+{tree_x + bbox[0]}+{tree_y + bbox[1]}")
+        
+        # Create frame for buttons
+        button_frame = ctk.CTkFrame(popup)
+        button_frame.pack(padx=2, pady=2)
+        
+        # Create buttons
+        complete_btn = ctk.CTkButton(
+            button_frame, 
+            text="✓", 
+            width=30, 
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen",
+            command=lambda: [self.complete_waitlist_entry(entry), popup.destroy()]
+        )
+        
+        remove_btn = ctk.CTkButton(
+            button_frame,
+            text="✕",
+            width=30,
+            height=30,
+            fg_color="red",
+            hover_color="darkred",
+            command=lambda: [self.remove_waitlist_entry(entry), popup.destroy()]
+        )
+        
+        edit_btn = ctk.CTkButton(
+            button_frame,
+            text="✎",
+            width=30,
+            height=30,
+            fg_color="blue",
+            hover_color="darkblue",
+            command=lambda: [self.edit_waitlist_entry(entry), popup.destroy()]
+        )
+        
+        complete_btn.pack(side="left", padx=2)
+        remove_btn.pack(side="left", padx=2)
+        edit_btn.pack(side="left", padx=2)
+        
+        # Auto-close popup when mouse leaves
+        def on_leave(e):
+            popup.destroy()
+        
+        popup.bind('<Leave>', on_leave)
 
     def update_waitlist_tree(self, search_text=""):
-        """Method for GamingCenterApp class"""
+        """Updated method to handle placeholder buttons"""
+        # Clear existing entries and buttons
         for item in self.waitlist_tree.get_children():
             self.waitlist_tree.delete(item)
         
+        # Clear existing buttons (except placeholders)
+        for widget in self.buttons_frame.winfo_children()[1:]:  # Skip the header label
+            if widget != self.placeholder_buttons_frame:  # Don't remove the placeholder buttons frame
+                widget.destroy()
+        
+        # If there are entries in the waitlist, hide placeholder buttons
+        if self.waitlist:
+            self.placeholder_buttons_frame.pack_forget()  # Hide placeholder buttons
+        else:
+            self.placeholder_buttons_frame.pack(pady=10, padx=5)  # Show placeholder buttons
+        
+        # Add entries and their corresponding buttons
         for entry in self.waitlist:
             if search_text and search_text not in entry['party'].lower():
                 continue
-                
-            # Create a frame for action buttons
-            actions_frame = ctk.CTkFrame(self.waitlist_tree)
-            
-            # Add buttons to the frame
-            complete_btn = ctk.CTkButton(actions_frame, text="✓", width=30, height=30, 
-                                    fg_color="green", hover_color="darkgreen",
-                                    command=lambda e=entry: self.complete_waitlist_entry(e))
-            remove_btn = ctk.CTkButton(actions_frame, text="✕", width=30, height=30,
-                                    fg_color="red", hover_color="darkred",
-                                    command=lambda e=entry: self.remove_waitlist_entry(e))
-            edit_btn = ctk.CTkButton(actions_frame, text="✎", width=30, height=30,
-                                fg_color="blue", hover_color="darkblue",
-                                command=lambda e=entry: self.edit_waitlist_entry(e))
-            
-            complete_btn.pack(side="left", padx=2)
-            remove_btn.pack(side="left", padx=2)
-            edit_btn.pack(side="left", padx=2)
             
             # Calculate wait time
             wait_time = self.calculate_wait_time(entry['station'])
             quoted_time = f"{entry['quotedTime']} ({wait_time})"
             
+            # Insert row
             self.waitlist_tree.insert("", "end", values=(
                 f"{entry['party']}\n{entry['phone']}",
                 entry['size'],
                 entry['notes'],
                 entry['station'],
                 quoted_time,
-                entry['arrival'],
-                ""  # Placeholder for actions frame
+                entry['arrival']
             ))
+            
+            # Create a frame for this entry's buttons
+            entry_buttons = ctk.CTkFrame(self.buttons_frame)
+            entry_buttons.pack(pady=10, padx=5)
+            
+            # Create buttons for this entry
+            ctk.CTkButton(
+                entry_buttons,
+                text="✓",
+                width=30,
+                height=30,
+                fg_color="green",
+                hover_color="darkgreen",
+                command=lambda e=entry: self.complete_waitlist_entry(e)
+            ).pack(side="left", padx=2)
+            
+            ctk.CTkButton(
+                entry_buttons,
+                text="✕",
+                width=30,
+                height=30,
+                fg_color="red",
+                hover_color="darkred",
+                command=lambda e=entry: self.remove_waitlist_entry(e)
+            ).pack(side="left", padx=2)
+            
+            ctk.CTkButton(
+                entry_buttons,
+                text="✎",
+                width=30,
+                height=30,
+                fg_color="blue",
+                hover_color="darkblue",
+                command=lambda e=entry: self.edit_waitlist_entry(e)
+            ).pack(side="left", padx=2)
 
     def edit_waitlist_entry(self, entry):
         # Implement your logic to edit an existing entry
