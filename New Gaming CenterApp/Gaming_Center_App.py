@@ -1176,13 +1176,13 @@ class GamingCenterApp(ctk.CTk):
             # Create tooltip window
             tooltip = tk.Toplevel()
             tooltip.wm_overrideredirect(True)
-            tooltip.wm_geometry(f"+{event.x_root+20}+{event.y_root}")
+            tooltip.wm_geometry(f"+{event.x_root+40}+{event.y_root}")
             
             # Create tooltip label
-            label = tk.Label(tooltip, text=text, justify='left',
+            label = tk.Label(tooltip, text=text, justify='left', padx=12, pady=12,
                            background="#333333", foreground="white",
                            relief='solid', borderwidth=1,
-                           font=("Helvetica", "10", "normal"))
+                           font=("Helvetica", "16", "normal"))
             label.pack()
             
             # Store tooltip reference
@@ -1659,7 +1659,7 @@ class GamingCenterApp(ctk.CTk):
 
             # Refresh the waitlist display
             self.update_waitlist_tree()
-            
+
     def remove_waitlist_entry(self, entry):
         """Remove an entry from the waitlist."""
         self.waitlist.remove(entry)
