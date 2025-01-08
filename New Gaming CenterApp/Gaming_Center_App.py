@@ -1209,6 +1209,10 @@ class GamingCenterApp(ctk.CTk):
         waitlist_window = ctk.CTkToplevel(self)
         waitlist_window.title("Waitlist")
         waitlist_window.geometry("1200x800")
+
+        waitlist_window.lift()
+        waitlist_window.focus_force()
+        waitlist_window.grab_set()
         
         # Create main container
         main_frame = ctk.CTkFrame(waitlist_window)

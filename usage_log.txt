@@ -1328,4 +1328,21 @@ User Name: Ryan Roberts
 Duration: 00:45:10
 Game: Mario Kart 8
 Controllers: 4
+--------------------------------------------------Date: 2025-01-07 19:18:00.13
+Station Type: XBOX
+Station Number: 3
+User Name: zach
+ID Number: na
+Duration: 00:00:12
+Game: Call of Duty: Black Ops 6
+Controllers: 3
+--------------------------------------------------
+Date: 2025-01-07 19:18:50.47
+Station Type: XBOX
+Station Number: 4
+User Name: zach
+ID Number: na
+Duration: 00:00:02
+Game: Halo Infinite
+Controllers: 1
 --------------------------------------------------
