@@ -1087,11 +1087,119 @@ class GamingCenterApp(ctk.CTk):
         self.stations = []  # Keep track of all stations
         self.waitlist = []  # List to keep track of people on the waitlist
         self.waitlist_tree = None  # Initialize waitlist_tree as None
+
+        # Create the main content frame that will contain everything else
+        self.main_container = ctk.CTkFrame(self)
+        self.main_container.pack(fill="both", expand=True)
+
+        # Create and setup the sidebar
+        self.setup_sidebar()
+
+                # Create the content area
+        self.content_area = ctk.CTkFrame(self.main_container)
+        self.content_area.pack(side="left", fill="both", expand=True)
+
+        #         # Create main container with more padding
+        # main_frame = ctk.CTkFrame(self.content_area)
+        # main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+
         self.create_menu()
         self.setup_ui()
 
         # Bind the close event to the stop_timers method
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+
+    def setup_sidebar(self):
+        # Create the sidebar frame with dark background
+        self.sidebar = ctk.CTkFrame(self.main_container, fg_color="gray12", width=85)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)  # Prevent the sidebar from shrinking
+        
+        # Add the main logo at the top
+        logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent", height=60)
+        logo_frame.pack(fill="x", pady=(10, 20))
+        logo_frame.pack_propagate(False)
+        
+        # Load logo image
+        logo_image_path = "./icon_cache/GamingCenterApp.png"
+        try:
+            logo_image = Image.open(logo_image_path)
+            logo_ctk_image = ctk.CTkImage(logo_image, size=(60, 60))
+        except Exception as e:
+            print(f"Error loading logo image: {e}")
+            # Use a placeholder image or skip the logo if the image fails to load
+            logo_ctk_image = None
+
+        # Create logo label with image
+        logo_label = ctk.CTkLabel(
+            logo_frame,
+            image=logo_ctk_image,
+            text="",  # Ensure no default text is displayed
+            width=85,
+            height=85
+        )
+        logo_label.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Create sidebar buttons with hover effects
+        self.create_sidebar_button("🏠", "Home", 0, command=self.show_home)
+        self.create_sidebar_button("🎮", "Games", 1, command=self.open_games_window)
+        self.create_sidebar_button("⌛", "Waitlist", 2, command=self.show_waitlist_window)
+        self.create_sidebar_button("📊", "Stats", 3, command=self.open_stats_window)
+
+    def create_sidebar_button(self, icon, tooltip, position, command=None):
+        # Create button frame
+        btn_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        btn_frame.pack(fill="x", pady=5)
+        
+        # Create the actual button
+        btn = ctk.CTkButton(
+            btn_frame,
+            text=icon,
+            width=40,
+            height=40,
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color="#333333",
+            command=command
+        )
+        btn.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Create tooltip
+        self.create_tooltip(btn, tooltip)
+        
+        return btn
+
+    def create_tooltip(self, widget, text):
+        def enter(event):
+            # Create tooltip window
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{event.x_root+20}+{event.y_root}")
+            
+            # Create tooltip label
+            label = tk.Label(tooltip, text=text, justify='left',
+                           background="#333333", foreground="white",
+                           relief='solid', borderwidth=1,
+                           font=("Helvetica", "10", "normal"))
+            label.pack()
+            
+            # Store tooltip reference
+            widget.tooltip = tooltip
+            
+        def leave(event):
+            # Destroy tooltip if it exists
+            if hasattr(widget, "tooltip"):
+                widget.tooltip.destroy()
+                del widget.tooltip
+        
+        widget.bind('<Enter>', enter)
+        widget.bind('<Leave>', leave)
+
+    def show_home(self):
+        # Implement home view functionality
+        pass
 
     def on_close(self):
         """Handle the application close event."""
@@ -1105,7 +1213,7 @@ class GamingCenterApp(ctk.CTk):
 
     def setup_ui(self):
         # Create main container with more padding
-        main_frame = ctk.CTkFrame(self)
+        main_frame = ctk.CTkFrame(self.content_area)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         # Configure grid weights
         for i in range(6):  # 6 rows
@@ -1521,9 +1629,37 @@ class GamingCenterApp(ctk.CTk):
             ).pack(side="left", padx=2)
 
     def edit_waitlist_entry(self, entry):
-        # Implement your logic to edit an existing entry
-        print(f"Editing entry: {entry}")
+        """
+        Open a dialog to edit an existing waitlist entry.
+        """
+        # Get the list of station names for the dropdown
+        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
 
+        # Create the edit dialog with the current entry's data
+        dialog = WaitlistDialog(
+            self,
+            station_names,
+            title="Edit Waitlist Entry",
+            prompt="Edit details:"
+        )
+
+        # Pre-populate the dialog fields with the current entry's data
+        dialog.name_entry.insert(0, entry["party"])
+        dialog.phone_entry.insert(0, entry["phone"])
+        dialog.size_entry.insert(0, str(entry["size"]))
+        dialog.notes_entry.insert(0, entry["notes"])
+        dialog.station_var.set(entry["station"])
+
+        # Show the dialog and get the result
+        result = dialog.show()
+        if result:
+            # Update the entry in the waitlist
+            index = self.waitlist.index(entry)
+            self.waitlist[index] = result
+
+            # Refresh the waitlist display
+            self.update_waitlist_tree()
+            
     def remove_waitlist_entry(self, entry):
         """Remove an entry from the waitlist."""
         self.waitlist.remove(entry)
@@ -1547,6 +1683,6 @@ class GamingCenterApp(ctk.CTk):
 
 if __name__ == "__main__":
     app = GamingCenterApp()
-    app.iconbitmap("icon_cache/gamingcenter-icon.ico")
+    app.iconbitmap("icon_cache/GamingCenterApp.ico")
     app.mainloop()
 cProfile.run('app.mainloop()', 'restats')
