@@ -1136,18 +1136,17 @@ class GamingCenterApp(ctk.CTk):
     #     menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
 
 
-
     def setup_sidebar(self):
         # Create the sidebar frame with dark background
         self.sidebar = ctk.CTkFrame(self.main_container, fg_color="gray16", width=85, corner_radius=20)
         self.sidebar.pack(side="left", fill="y", padx=(0, 20))
         self.sidebar.pack_propagate(False)  # Prevent the sidebar from shrinking
-        
+
         # Add the main logo at the top
         logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent", height=60)
         logo_frame.pack(fill="x", pady=(10, 20))
         logo_frame.pack_propagate(False)
-        
+
         # Load logo image
         logo_image_path = "./icon_cache/GamingCenterApp.png"
         try:
@@ -1172,18 +1171,43 @@ class GamingCenterApp(ctk.CTk):
         games = ctk.CTkImage(Image.open("./icon_cache/gamepad-2.png"), size=(24, 24))
         waitlist = ctk.CTkImage(Image.open("./icon_cache/list-plus.png"), size=(24, 24))
         stats = ctk.CTkImage(Image.open("./icon_cache/chart-pie.png"), size=(24, 24))
-        
+
         # Create sidebar buttons with hover effects
         self.create_sidebar_button(home, "Home", command=self.show_home)
         self.create_sidebar_button(games, "Games", command=self.open_games_window)
-        self.create_sidebar_button(waitlist, "Waitlist", command=self.show_waitlist_window)
+        self.waitlist_button = self.create_sidebar_button(waitlist, "Waitlist", command=self.show_waitlist_window)
         self.create_sidebar_button(stats, "Stats", command=self.open_stats_window)
+
+        # Add a count label to the Waitlist button
+        self.waitlist_count_label = ctk.CTkLabel(
+            self.waitlist_button,
+            text="0",
+            fg_color="red",
+            text_color="white",
+            corner_radius=10,
+            width=20,
+            height=20,
+            font=("Helvetica", 10, "bold")
+        )
+        self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Position in the top-right corner
+        self.update_waitlist_count()  # Initialize the counter
+
+        # Initialize the notification bubble in the sidebar
+        self.notification_bubble = ctk.CTkLabel(
+            self.sidebar,
+            text="",
+            fg_color="red",
+            text_color="white",
+            corner_radius=10
+        )
+        self.notification_bubble.place(relx=0.9, rely=0.1, anchor="ne")  # Position in the top-right corner of the sidebar
+        self.notification_bubble.place_forget()  # Hide the notification bubble initially
 
     def create_sidebar_button(self, icon, tooltip, command=None):
         # Create button frame
         btn_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         btn_frame.pack(fill="x", pady=5)
-        
+
         # Create the actual button
         btn = ctk.CTkButton(
             btn_frame,
@@ -1197,11 +1221,11 @@ class GamingCenterApp(ctk.CTk):
             command=command
         )
         btn.place(relx=0.5, rely=0.5, anchor="center")
-        
+
         # Create tooltip
         self.create_tooltip(btn, tooltip)
-        
-        return btn
+
+        return btn  # Return the button widget for further customization
 
     def create_tooltip(self, widget, text):
         def enter(event):
@@ -1258,9 +1282,9 @@ class GamingCenterApp(ctk.CTk):
         # waitlist_button.grid(row=0, column=3, padx=10, pady=10, sticky="ne")
         # games_button.grid(row=0, column=2, padx=10, pady=10, sticky="ne")
 
-        # Notification bubble for waitlist
-        self.notification_bubble = ctk.CTkLabel(main_frame, text="", fg_color="red", text_color="white", corner_radius=10)
-        self.notification_bubble.grid(row=0, column=1, padx=10, pady=10, sticky="ne")
+        # # Notification bubble for waitlist
+        # self.notification_bubble = ctk.CTkLabel(main_frame, text="", fg_color="red", text_color="white", corner_radius=10)
+        # self.notification_bubble.grid(row=0, column=1, padx=10, pady=10, sticky="ne")
         # Create first 4 console stations (left column) in reverse order
         for i in range(4):
             station = Station(main_frame, self, "XBOX", 4 - i)  # Pass self to Station
@@ -1309,16 +1333,26 @@ class GamingCenterApp(ctk.CTk):
         GamesWindow(self)
 
     def update_notification_bubble(self):
+        """Update the notification bubble to reflect the current number of parties in the waitlist."""
         if self.waitlist:
-            self.notification_bubble.configure(text=str(len(self.waitlist)))
-            self.notification_bubble.pack(side=tk.LEFT, padx=5)
+            self.waitlist_count_label.configure(text=str(len(self.waitlist)))  # Update the Waitlist button counter
+            self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Ensure the label is visible
         else:
-            self.notification_bubble.pack_forget()
+            self.waitlist_count_label.place_forget()  # Hide the label when there are no parties
 
     def update_count_label(self):
         """Update the count label to reflect the current number of parties in the waitlist."""
         if hasattr(self, 'count_label'):  # Check if the count label exists
             self.count_label.configure(text=str(len(self.waitlist)))
+
+    def update_waitlist_count(self):
+        """Update the count label on the Waitlist button."""
+        count = len(self.waitlist)
+        if count > 0:
+            self.waitlist_count_label.configure(text=str(count), fg_color="red")  # Show and highlight if there are parties
+            self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Ensure the label is visible
+        else:
+            self.waitlist_count_label.place_forget()  # Hide the label when there are no parties     
 
     def show_waitlist_window(self):
         """Method for GamingCenterApp class"""
@@ -1489,6 +1523,8 @@ class GamingCenterApp(ctk.CTk):
             self.waitlist.append(result)
             self.update_waitlist_tree()
             self.update_count_label()
+            self.update_waitlist_count()  # Update the count label
+            self.update_notification_bubble()  # Update the notification bubble
 
     def send_sms(phone_number, carrier, message):
         carrier_gateways = {
@@ -1704,12 +1740,15 @@ class GamingCenterApp(ctk.CTk):
         self.waitlist.remove(entry)
         self.update_waitlist_tree()
         self.update_count_label()  # Update the count label
+        self.update_waitlist_count()  # Update the count label
+        self.update_notification_bubble()  # Update the notification bubble
 
     def complete_waitlist_entry(self, entry):
         """Mark an entry as complete."""
         self.waitlist.remove(entry)
         self.update_waitlist_tree()
         self.update_count_label()  # Update the count label
+        self.update_waitlist_count()  # Update the count label
 
     def calculate_wait_time(self, station_name):
         for station in self.stations:
