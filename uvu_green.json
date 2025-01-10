@@ -10,7 +10,7 @@
     "border_width": 0,
     "fg_color": ["#e6f2ec", "gray13"],
     "top_fg_color": ["#d9ede3", "gray16"],
-    "border_color": ["#b3d9c6", "gray28"]
+    "border_color": ["#d9ede3", "gray16"]
   },
   "CTkCanvas": {
     "corner_radius": 6,
@@ -139,9 +139,11 @@
     "label_fg_color": ["#e6f2ec", "gray21"]
   },
   "DropdownMenu": {
+    "border_width": 0,
     "fg_color": ["#e6f2ec", "gray20"],
     "hover_color": ["#d9ede3", "gray28"],
-    "text_color": ["gray14", "gray84"]
+    "text_color": ["gray14", "gray84"],
+    "border_color": ["#e6f2ec", "gray20"]
   },
   "CTkFont": {
     "macOS": {

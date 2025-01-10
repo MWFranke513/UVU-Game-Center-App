@@ -13,6 +13,7 @@ import cairosvg
 import json
 import os
 import re
+import smtplib
 import threading
 import cProfile
 from datetime import datetime, timedelta
@@ -1110,11 +1111,36 @@ class GamingCenterApp(ctk.CTk):
         # Bind the close event to the stop_timers method
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
+    # def create_menu(self):
+    #     menubar = ctk.CTkFrame(self, fg_color="gray20")
+    #     menubar.pack(side="top", fill="x")
+
+    #     file_button = ctk.CTkButton(menubar, text="File", command=self.show_file_menu, fg_color="gray20", corner_radius=0)
+    #     file_button.pack(side="left", padx=0, pady=0)
+
+    #     view_button = ctk.CTkButton(menubar, text="View", command=self.show_view_menu, fg_color="gray20", corner_radius=0)
+    #     view_button.pack(side="left", padx=0, pady=0)
+
+    # def show_file_menu(self):
+    #     menu = tk.Menu(self, tearoff=0)
+    #     menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
+    #     menu.add_command(label="View Statistics", command=self.open_stats_window)
+    #     menu.add_separator()
+    #     menu.add_command(label="Exit", command=self.quit)
+    #     menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+
+    # def show_view_menu(self):
+    #     menu = tk.Menu(self, tearoff=0)
+    #     menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
+    #     # Add view menu items here
+    #     menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+
+
 
     def setup_sidebar(self):
         # Create the sidebar frame with dark background
-        self.sidebar = ctk.CTkFrame(self.main_container, fg_color="gray12", width=85)
-        self.sidebar.pack(side="left", fill="y")
+        self.sidebar = ctk.CTkFrame(self.main_container, fg_color="gray16", width=85, corner_radius=20)
+        self.sidebar.pack(side="left", fill="y", padx=(0, 20))
         self.sidebar.pack_propagate(False)  # Prevent the sidebar from shrinking
         
         # Add the main logo at the top
@@ -1141,14 +1167,19 @@ class GamingCenterApp(ctk.CTk):
             height=85
         )
         logo_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        home = ctk.CTkImage(Image.open("./icon_cache/house.png"), size=(24, 24))
+        games = ctk.CTkImage(Image.open("./icon_cache/gamepad-2.png"), size=(24, 24))
+        waitlist = ctk.CTkImage(Image.open("./icon_cache/list-plus.png"), size=(24, 24))
+        stats = ctk.CTkImage(Image.open("./icon_cache/chart-pie.png"), size=(24, 24))
         
         # Create sidebar buttons with hover effects
-        self.create_sidebar_button("🏠", "Home", 0, command=self.show_home)
-        self.create_sidebar_button("🎮", "Games", 1, command=self.open_games_window)
-        self.create_sidebar_button("⌛", "Waitlist", 2, command=self.show_waitlist_window)
-        self.create_sidebar_button("📊", "Stats", 3, command=self.open_stats_window)
+        self.create_sidebar_button(home, "Home", command=self.show_home)
+        self.create_sidebar_button(games, "Games", command=self.open_games_window)
+        self.create_sidebar_button(waitlist, "Waitlist", command=self.show_waitlist_window)
+        self.create_sidebar_button(stats, "Stats", command=self.open_stats_window)
 
-    def create_sidebar_button(self, icon, tooltip, position, command=None):
+    def create_sidebar_button(self, icon, tooltip, command=None):
         # Create button frame
         btn_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         btn_frame.pack(fill="x", pady=5)
@@ -1156,9 +1187,10 @@ class GamingCenterApp(ctk.CTk):
         # Create the actual button
         btn = ctk.CTkButton(
             btn_frame,
-            text=icon,
-            width=40,
-            height=40,
+            image=icon,
+            text="",
+            width=52,
+            height=52,
             corner_radius=8,
             fg_color="transparent",
             hover_color="#333333",
@@ -1214,17 +1246,17 @@ class GamingCenterApp(ctk.CTk):
     def setup_ui(self):
         # Create main container with more padding
         main_frame = ctk.CTkFrame(self.content_area)
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        main_frame.pack(fill="both", expand=True, padx=0, pady=0)
         # Configure grid weights
         for i in range(6):  # 6 rows
             main_frame.grid_rowconfigure(i, weight=1)
         for i in range(3):  # 3 columns
             main_frame.grid_columnconfigure(i, weight=1)
-        # Add button to view and edit games at the top right
-        games_button = ctk.CTkButton(main_frame, text="View/Edit Games", command=self.open_games_window, corner_radius=20)
-        waitlist_button = ctk.CTkButton(main_frame, text="Waitlist", command=self.show_waitlist_window, corner_radius=20)
-        waitlist_button.grid(row=0, column=3, padx=10, pady=10, sticky="ne")
-        games_button.grid(row=0, column=2, padx=10, pady=10, sticky="ne")
+        # # Add button to view and edit games at the top right
+        # games_button = ctk.CTkButton(main_frame, text="View/Edit Games", command=self.open_games_window, corner_radius=20)
+        # waitlist_button = ctk.CTkButton(main_frame, text="Waitlist", command=self.show_waitlist_window, corner_radius=20)
+        # waitlist_button.grid(row=0, column=3, padx=10, pady=10, sticky="ne")
+        # games_button.grid(row=0, column=2, padx=10, pady=10, sticky="ne")
 
         # Notification bubble for waitlist
         self.notification_bubble = ctk.CTkLabel(main_frame, text="", fg_color="red", text_color="white", corner_radius=10)
@@ -1269,30 +1301,6 @@ class GamingCenterApp(ctk.CTk):
         for station in self.stations:
             if hasattr(station, 'update_games_list'):
                 station.update_games_list()
-
-    def create_menu(self):
-        menubar = ctk.CTkFrame(self, fg_color="gray20")
-        menubar.pack(side="top", fill="x")
-
-        file_button = ctk.CTkButton(menubar, text="File", command=self.show_file_menu, fg_color="gray20", corner_radius=0)
-        file_button.pack(side="left", padx=0, pady=0)
-
-        view_button = ctk.CTkButton(menubar, text="View", command=self.show_view_menu, fg_color="gray20", corner_radius=0)
-        view_button.pack(side="left", padx=0, pady=0)
-
-    def show_file_menu(self):
-        menu = tk.Menu(self, tearoff=0)
-        menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
-        menu.add_command(label="View Statistics", command=self.open_stats_window)
-        menu.add_separator()
-        menu.add_command(label="Exit", command=self.quit)
-        menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
-
-    def show_view_menu(self):
-        menu = tk.Menu(self, tearoff=0)
-        menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
-        # Add view menu items here
-        menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
 
     def open_stats_window(self):
         StatsWindow(self)
@@ -1481,6 +1489,37 @@ class GamingCenterApp(ctk.CTk):
             self.waitlist.append(result)
             self.update_waitlist_tree()
             self.update_count_label()
+
+    def send_sms(phone_number, carrier, message):
+        carrier_gateways = {
+            "Verizon": "@vtext.com",
+            "AT&T": "@txt.att.net",
+            "T-Mobile": "@tmomail.net",
+            "Sprint": "@messaging.sprintpcs.com"
+        }
+        
+        if carrier not in carrier_gateways:
+            return "Carrier not supported."
+
+        sms_address = f"{phone_number}{carrier_gateways[carrier]}"
+        email = "yourappname@gmail.com"
+        password = "your_app_password"  # Replace with your app password
+
+        try:
+            with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                server.starttls()
+                server.login(email, password)
+                server.sendmail(email, sms_address, message)
+            return "Notification sent successfully!"
+        except Exception as e:
+            return f"Failed to send notification: {e}"
+
+    # def on_send_button_click():
+    #     phone = phone_entry.get()
+    #     carrier = carrier_dropdown.get()
+    #     message = message_entry.get("1.0", "end-1c")
+    #     status = send_sms(phone, carrier, message)
+    #     status_label.config(text=status)
 
     def handle_click(self, event):
         """Handle clicks on the treeview to show action buttons"""
