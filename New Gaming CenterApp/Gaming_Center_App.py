@@ -1105,7 +1105,7 @@ class GamingCenterApp(ctk.CTk):
         # main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
 
-        self.create_menu()
+        # self.create_menu()
         self.setup_ui()
 
         # Bind the close event to the stop_timers method
