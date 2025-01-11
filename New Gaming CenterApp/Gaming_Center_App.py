@@ -383,45 +383,45 @@ class Station(ctk.CTkFrame):
         # Station number label
         ctk.CTkLabel(header_frame, text=f"Station {self.station_num}", anchor="e").pack(side="right")
 
-        icon_errors = set()
+        # icon_errors = set()
 
-        def download_icon(icon_name, size=(20, 20), retries=3):
-            """Download an SVG icon, cache it locally, and return a CTkImage."""
-            cache_dir = Path("./icon_cache")
-            cache_dir.mkdir(exist_ok=True)
+        # def download_icon(icon_name, size=(20, 20), retries=3):
+        #     """Download an SVG icon, cache it locally, and return a CTkImage."""
+        #     cache_dir = Path("./icon_cache")
+        #     cache_dir.mkdir(exist_ok=True)
 
-            cached_file = cache_dir / f"{icon_name}.png"
-            if cached_file.exists():
-                return ctk.CTkImage(Image.open(cached_file), size=size)
+        #     cached_file = cache_dir / f"{icon_name}.png"
+        #     if cached_file.exists():
+        #         return ctk.CTkImage(Image.open(cached_file), size=size)
 
-            def download():
-                url = f"https://cdn.jsdelivr.net/npm/lucide-static@0.298.0/icons/{icon_name}.svg"
-                for attempt in range(retries):
-                    try:
-                        response = requests.get(url, timeout=5)
-                        if response.status_code == 200:
-                            svg_content = response.content.decode("utf-8")
-                            svg_content = re.sub(r'stroke="[^"]*"', 'stroke="white"', svg_content)
-                            svg_content = re.sub(r'fill="[^"]*"', 'fill="none"', svg_content)
-                            png_data = cairosvg.svg2png(bytestring=svg_content.encode("utf-8"))
-                            img = Image.open(BytesIO(png_data))
-                            img.save(cached_file)
-                            return ctk.CTkImage(img, size=size)
-                    except Exception as e:
-                        print(f"Failed to fetch icon {icon_name} on attempt {attempt + 1}: {e}")
-                        time.sleep(1)
+        #     def download():
+        #         url = f"https://cdn.jsdelivr.net/npm/lucide-static@0.298.0/icons/{icon_name}.svg"
+        #         for attempt in range(retries):
+        #             try:
+        #                 response = requests.get(url, timeout=5)
+        #                 if response.status_code == 200:
+        #                     svg_content = response.content.decode("utf-8")
+        #                     svg_content = re.sub(r'stroke="[^"]*"', 'stroke="white"', svg_content)
+        #                     svg_content = re.sub(r'fill="[^"]*"', 'fill="none"', svg_content)
+        #                     png_data = cairosvg.svg2png(bytestring=svg_content.encode("utf-8"))
+        #                     img = Image.open(BytesIO(png_data))
+        #                     img.save(cached_file)
+        #                     return ctk.CTkImage(img, size=size)
+        #             except Exception as e:
+        #                 print(f"Failed to fetch icon {icon_name} on attempt {attempt + 1}: {e}")
+        #                 time.sleep(1)
 
-                print(f"Failed to fetch icon {icon_name} after {retries} attempts. Using fallback.")
-                fallback_path = "./icon_cache/fallback.png"
-                fallback_img = Image.new("RGB", size, color="gray")
-                if Path(fallback_path).exists():
-                    fallback_img = Image.open(fallback_path)
-                return ctk.CTkImage(fallback_img, size=size)
+        #         print(f"Failed to fetch icon {icon_name} after {retries} attempts. Using fallback.")
+        #         fallback_path = "./icon_cache/fallback.png"
+        #         fallback_img = Image.new("RGB", size, color="gray")
+        #         if Path(fallback_path).exists():
+        #             fallback_img = Image.open(fallback_path)
+        #         return ctk.CTkImage(fallback_img, size=size)
 
-            # Run the download in a separate thread
-            thread = threading.Thread(target=download)
-            thread.start()
-            return None  # Return None initially, and handle the result later
+        #     # Run the download in a separate thread
+        #     thread = threading.Thread(target=download)
+        #     thread.start()
+        #     return None  # Return None initially, and handle the result later
 
 
         if self.station_type in ["XBOX", "Switch"]:
@@ -564,9 +564,10 @@ class Station(ctk.CTkFrame):
         self.timer_label.pack(side="left", padx=0)
 
         # Load control icons
-        self.start_icon = download_icon('play', size=(15, 15))
-        self.stop_icon = download_icon('square', size=(15, 15))
-        self.reset_icon = download_icon('refresh-ccw', size=(15, 15))
+
+        self.start_icon = ctk.CTkImage(Image.open("./icon_cache/play.png"), size=(15, 15))
+        self.stop_icon = ctk.CTkImage(Image.open("./icon_cache/square.png"), size=(15, 15))
+        self.reset_icon = ctk.CTkImage(Image.open("./icon_cache/refresh-ccw.png"), size=(15, 15))
 
         # Control buttons
         button_frame = ctk.CTkFrame(self, fg_color="transparent")
