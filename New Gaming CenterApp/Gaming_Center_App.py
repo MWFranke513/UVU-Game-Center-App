@@ -956,153 +956,6 @@ class WaitlistDialog(ctk.CTkToplevel):
         if result:
             self.waitlist.append(result)
             self.update_waitlist_tree()
-
-# def show_waitlist_window(self):s
-#     """Method for GamingCenterApp class"""
-#     waitlist_window = ctk.CTkToplevel(self)
-#     waitlist_window.title("Waitlist")
-#     waitlist_window.geometry("1200x800")
-    
-#     # Create main container
-#     main_frame = ctk.CTkFrame(waitlist_window)
-#     main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-
-#     # Header frame with title and count
-#     header_frame = ctk.CTkFrame(main_frame)
-#     header_frame.pack(fill="x", pady=(0, 20))
-    
-#     title_frame = ctk.CTkFrame(header_frame)
-#     title_frame.pack(side="left")
-    
-#     ctk.CTkLabel(title_frame, text="Gaming Center Waitlist", font=("Helvetica", 20, "bold")).pack(side="left", padx=5)
-#     count_label = ctk.CTkLabel(title_frame, text=str(len(self.waitlist)), 
-#                               fg_color="blue", text_color="white",
-#                               corner_radius=10, width=30)
-#     count_label.pack(side="left", padx=5)
-
-#     # Search frame
-#     search_frame = ctk.CTkFrame(header_frame)
-#     search_frame.pack(side="right")
-#     search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
-#     search_entry.pack(side="right", padx=5)
-
-#     # Create custom style for Treeview
-#     style = ttk.Style()
-#     style.configure(
-#         "Waitlist.Treeview",
-#         background="#2b2b2b",
-#         foreground="white",
-#         fieldbackground="#2b2b2b",
-#         rowheight=50,
-#         font=("Helvetica", 12)
-#     )
-#     style.configure(
-#         "Waitlist.Treeview.Heading",
-#         background="#333333",
-#         foreground="white",
-#         font=("Helvetica", 12, "bold")
-#     )
-#     style.map("Waitlist.Treeview",
-#               background=[("selected", "#1f538d")],
-#               foreground=[("selected", "white")])
-
-#     # Create columns
-#     columns = ("party", "size", "notes", "station", "quotedTime", "arrival", "actions")
-#     self.waitlist_tree = ttk.Treeview(
-#         main_frame,
-#         columns=columns,
-#         show="headings",
-#         style="Waitlist.Treeview"
-#     )
-
-#     # Configure column headings
-#     headings = {
-#         "party": "PARTY",
-#         "size": "SIZE",
-#         "notes": "NOTES",
-#         "station": "STATION",
-#         "quotedTime": "QUOTED TIME",
-#         "arrival": "ARRIVAL",
-#         "actions": "ACTIONS"
-#     }
-    
-#     for col, heading in headings.items():
-#         self.waitlist_tree.heading(col, text=heading)
-#         if col in ["size"]:
-#             self.waitlist_tree.column(col, width=50, anchor="center")
-#         elif col in ["actions"]:
-#             self.waitlist_tree.column(col, width=200, anchor="center")
-#         else:
-#             self.waitlist_tree.column(col, width=150, anchor="w")
-
-#     # Pack the treeview with scrollbar
-#     tree_scroll = ttk.Scrollbar(main_frame, orient="vertical", command=self.waitlist_tree.yview)
-#     self.waitlist_tree.configure(yscrollcommand=tree_scroll.set)
-    
-#     self.waitlist_tree.pack(side="left", fill="both", expand=True)
-#     tree_scroll.pack(side="right", fill="y")
-
-#     # Add floating action button
-#     add_button = ctk.CTkButton(
-#         waitlist_window,
-#         text="+",
-#         width=60,
-#         height=60,
-#         corner_radius=30,
-#         font=("Helvetica", 24, "bold"),
-#         command=self.add_to_waitlist
-#     )
-#     add_button.place(relx=0.95, rely=0.95, anchor="se")
-
-#     def update_tree(event=None):
-#         search_text = search_entry.get().lower()
-#         self.update_waitlist_tree(search_text)
-
-#     search_entry.bind('<KeyRelease>', update_tree)
-    
-#     # Update the waitlist display
-#     self.update_waitlist_tree()
-
-# def update_waitlist_tree(self, search_text=""):
-#     """Method for GamingCenterApp class"""
-#     for item in self.waitlist_tree.get_children():
-#         self.waitlist_tree.delete(item)
-    
-#     for entry in self.waitlist:
-#         if search_text and search_text not in entry['party'].lower():
-#             continue
-            
-#         # Create a frame for action buttons
-#         actions_frame = ctk.CTkFrame(self.waitlist_tree)
-        
-#         # Add buttons to the frame
-#         complete_btn = ctk.CTkButton(actions_frame, text="✓", width=30, height=30, 
-#                                    fg_color="green", hover_color="darkgreen",
-#                                    command=lambda e=entry: self.complete_waitlist_entry(e))
-#         remove_btn = ctk.CTkButton(actions_frame, text="✕", width=30, height=30,
-#                                  fg_color="red", hover_color="darkred",
-#                                  command=lambda e=entry: self.remove_waitlist_entry(e))
-#         edit_btn = ctk.CTkButton(actions_frame, text="✎", width=30, height=30,
-#                                fg_color="blue", hover_color="darkblue",
-#                                command=lambda e=entry: self.edit_waitlist_entry(e))
-        
-#         complete_btn.pack(side="left", padx=2)
-#         remove_btn.pack(side="left", padx=2)
-#         edit_btn.pack(side="left", padx=2)
-        
-#         # Calculate wait time
-#         wait_time = self.calculate_wait_time(entry['station'])
-#         quoted_time = f"{entry['quotedTime']} ({wait_time})"
-        
-#         self.waitlist_tree.insert("", "end", values=(
-#             f"{entry['party']}\n{entry['phone']}",
-#             entry['size'],
-#             entry['notes'],
-#             entry['station'],
-#             quoted_time,
-#             entry['arrival'],
-#             ""  # Placeholder for actions frame
-#         ))
 class GamingCenterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -1133,30 +986,6 @@ class GamingCenterApp(ctk.CTk):
 
         # Bind the close event to the stop_timers method
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-
-    # def create_menu(self):
-    #     menubar = ctk.CTkFrame(self, fg_color="gray20")
-    #     menubar.pack(side="top", fill="x")
-
-    #     file_button = ctk.CTkButton(menubar, text="File", command=self.show_file_menu, fg_color="gray20", corner_radius=0)
-    #     file_button.pack(side="left", padx=0, pady=0)
-
-    #     view_button = ctk.CTkButton(menubar, text="View", command=self.show_view_menu, fg_color="gray20", corner_radius=0)
-    #     view_button.pack(side="left", padx=0, pady=0)
-
-    # def show_file_menu(self):
-    #     menu = tk.Menu(self, tearoff=0)
-    #     menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
-    #     menu.add_command(label="View Statistics", command=self.open_stats_window)
-    #     menu.add_separator()
-    #     menu.add_command(label="Exit", command=self.quit)
-    #     menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
-
-    # def show_view_menu(self):
-    #     menu = tk.Menu(self, tearoff=0)
-    #     menu.config(bg="gray20", fg="white", activebackground="gray30", activeforeground="white", font=("Helvetica", 12))
-    #     # Add view menu items here
-    #     menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
 
 
     def setup_sidebar(self):
@@ -1472,13 +1301,20 @@ class GamingCenterApp(ctk.CTk):
         # Add a header for the actions column
         ctk.CTkLabel(buttons_frame, text="ACTIONS", font=("Helvetica", 11, "bold")).pack(pady=(0, 0))
 
+        # Load icons
+        check_icon = ctk.CTkImage(Image.open("./icon_cache/check.png"), size=(16, 16))
+        x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
+        pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
+        message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
+
         # Add a single row of placeholder buttons (grayed-out and un-clickable)
         self.placeholder_buttons_frame = ctk.CTkFrame(buttons_frame)
         self.placeholder_buttons_frame.pack(pady=10, padx=5)
 
         ctk.CTkButton(
             self.placeholder_buttons_frame,
-            text="✓",
+            image=check_icon,
+            text="",
             width=30,
             height=30,
             fg_color="gray",
@@ -1488,7 +1324,8 @@ class GamingCenterApp(ctk.CTk):
 
         ctk.CTkButton(
             self.placeholder_buttons_frame,
-            text="✕",
+            image=x_icon,
+            text="",
             width=30,
             height=30,
             fg_color="gray",
@@ -1498,7 +1335,8 @@ class GamingCenterApp(ctk.CTk):
 
         ctk.CTkButton(
             self.placeholder_buttons_frame,
-            text="✎",
+            image=pencil_icon,
+            text="",
             width=30,
             height=30,
             fg_color="gray",
@@ -1508,7 +1346,8 @@ class GamingCenterApp(ctk.CTk):
 
         ctk.CTkButton(
             self.placeholder_buttons_frame,
-            text="📱",
+            image=message_icon,
+            text="",
             width=30,
             height=30,
             fg_color="gray",
@@ -1728,6 +1567,11 @@ class GamingCenterApp(ctk.CTk):
                 entry['arrival']
             ))
             
+            # Load icons
+            check_icon = ctk.CTkImage(Image.open("./icon_cache/check.png"), size=(16, 16))
+            x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
+            pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
+            message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
             # Create a frame for this entry's buttons
             entry_buttons = ctk.CTkFrame(self.buttons_frame)
             entry_buttons.pack(pady=10, padx=5)
@@ -1735,7 +1579,8 @@ class GamingCenterApp(ctk.CTk):
             # Create buttons for this entry
             ctk.CTkButton(
                 entry_buttons,
-                text="✓",
+                image=check_icon,
+                text="",
                 width=30,
                 height=30,
                 fg_color="green",
@@ -1745,7 +1590,8 @@ class GamingCenterApp(ctk.CTk):
             
             ctk.CTkButton(
                 entry_buttons,
-                text="✕",
+                image=x_icon,
+                text="",
                 width=30,
                 height=30,
                 fg_color="red",
@@ -1755,17 +1601,20 @@ class GamingCenterApp(ctk.CTk):
             
             ctk.CTkButton(
                 entry_buttons,
-                text="✎",
+                image=pencil_icon,
+                text="",
                 width=30,
                 height=30,
                 fg_color="blue",
                 hover_color="darkblue",
                 command=lambda e=entry: self.edit_waitlist_entry(e)
             ).pack(side="left", padx=2)
+            
             # Add Send SMS button
             ctk.CTkButton(
                 entry_buttons,
-                text="📱",
+                image=message_icon,
+                text="",
                 width=30,
                 height=30,
                 fg_color="purple",
