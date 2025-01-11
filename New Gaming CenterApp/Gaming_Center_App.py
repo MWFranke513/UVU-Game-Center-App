@@ -14,6 +14,8 @@ import json
 import os
 import re
 import smtplib
+from email.mime.text import MIMEText
+from email.utils import formatdate
 import threading
 import cProfile
 from datetime import datetime, timedelta
@@ -859,8 +861,15 @@ class WaitlistDialog(ctk.CTkToplevel):
         self.name_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Name")
         self.name_entry.pack(fill="x", pady=5)
         
+        # Phone number entry with validation
         self.phone_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Phone Number")
         self.phone_entry.pack(fill="x", pady=5)
+        
+        # Add validation to the phone number entry
+        self.phone_entry.configure(
+            validate="key",  # Validate on each keystroke
+            validatecommand=(self.register(self.validate_phone), "%P")  # Pass the new input to the validation function
+        )
         
         self.size_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Size")
         self.size_entry.pack(fill="x", pady=5)
@@ -894,12 +903,26 @@ class WaitlistDialog(ctk.CTkToplevel):
         self.cancel_button = ctk.CTkButton(self.button_frame, text="Cancel", command=self.on_cancel)
         self.cancel_button.pack(side="left", padx=5)
 
+    def validate_phone(self, new_input):
+        """Validate the phone number input."""
+        # Allow empty input (for backspace/deletion)
+        if not new_input:
+            return True
+        
+        # Check if the input is numeric and no more than 10 digits
+        return new_input.isdigit() and len(new_input) <= 10
+
     def on_ok(self):
         name = self.name_entry.get().strip()
         phone = self.phone_entry.get().strip()
         size = self.size_entry.get().strip()
         notes = self.notes_entry.get().strip()
         station = self.station_var.get()
+        
+        # Validate the phone number
+        if not (phone.isdigit() and len(phone) == 10):
+            messagebox.showerror("Invalid Phone Number", "Please enter a valid 10-digit phone number.")
+            return
         
         if name and phone and size and station:
             current_time = datetime.now()
@@ -1483,6 +1506,16 @@ class GamingCenterApp(ctk.CTk):
             state="disabled"  # Disable the button
         ).pack(side="left", padx=2)
 
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="📱",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"  # Disable the button
+        ).pack(side="left", padx=2)
+
         # Pack the treeview with scrollbar
         tree_scroll = ctk.CTkScrollbar(content_frame, orientation="vertical", command=self.waitlist_tree.yview)
         self.waitlist_tree.configure(yscrollcommand=tree_scroll.set)
@@ -1526,7 +1559,10 @@ class GamingCenterApp(ctk.CTk):
             self.update_waitlist_count()  # Update the count label
             self.update_notification_bubble()  # Update the notification bubble
 
-    def send_sms(phone_number, carrier, message):
+
+
+    def send_sms(self, phone_number, party_name, station_name):
+        """Send an SMS using all carriers' email-to-SMS gateways."""
         carrier_gateways = {
             "Verizon": "@vtext.com",
             "AT&T": "@txt.att.net",
@@ -1534,28 +1570,52 @@ class GamingCenterApp(ctk.CTk):
             "Sprint": "@messaging.sprintpcs.com"
         }
         
-        if carrier not in carrier_gateways:
-            return "Carrier not supported."
+        email = "uvuslwcgamecenter@gmail.com"  # Replace with your email
+        password = "jfuq wefo nxzk kkde"  # Replace with your app password
 
-        sms_address = f"{phone_number}{carrier_gateways[carrier]}"
-        email = "yourappname@gmail.com"
-        password = "your_app_password"  # Replace with your app password
+        # Format the message body
+        message_body = (
+            f"Hello {party_name}, your station {station_name} at the UVU Gaming Center is ready for you!\n"
+            "Please arrive within the next 10 minutes so your position isn't forfeited!\n\n"
+            "This is an Automated Message. Please do not reply."
+        )
 
-        try:
-            with smtplib.SMTP("smtp.gmail.com", 587) as server:
-                server.starttls()
-                server.login(email, password)
-                server.sendmail(email, sms_address, message)
+        success = False
+        for carrier, gateway in carrier_gateways.items():
+            sms_address = f"{phone_number}{gateway}"
+            
+            # Create the email message with a subject and formatted body
+            msg = MIMEText(message_body)
+            msg['From'] = email
+            msg['To'] = sms_address
+            msg['Date'] = formatdate(localtime=True)
+            msg['Subject'] = "Waitlist Notification"  # Set the subject here
+
+            try:
+                with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                    server.starttls()
+                    server.login(email, password)
+                    server.sendmail(email, sms_address, msg.as_string())  # Use msg.as_string()
+                print(f"SMS sent to {carrier} gateway: {sms_address}")  # Log the SMS address
+                success = True
+            except Exception as e:
+                print(f"Failed to send notification to {carrier} gateway: {e}")  # Log the error
+
+        if success:
             return "Notification sent successfully!"
-        except Exception as e:
-            return f"Failed to send notification: {e}"
+        else:
+            return "Failed to send notification to all carriers."
 
-    # def on_send_button_click():
-    #     phone = phone_entry.get()
-    #     carrier = carrier_dropdown.get()
-    #     message = message_entry.get("1.0", "end-1c")
-    #     status = send_sms(phone, carrier, message)
-    #     status_label.config(text=status)
+    def send_sms_notification(self, entry):
+        """Send an SMS notification to the party through all carriers."""
+        phone_number = entry['phone']
+        party_name = entry['party']
+        station_name = entry['station']
+
+        # Send the SMS through all carriers
+        status = self.send_sms(phone_number, party_name, station_name)
+        print(status)  # Print the status for debugging
+
 
     def handle_click(self, event):
         """Handle clicks on the treeview to show action buttons"""
@@ -1701,6 +1761,16 @@ class GamingCenterApp(ctk.CTk):
                 fg_color="blue",
                 hover_color="darkblue",
                 command=lambda e=entry: self.edit_waitlist_entry(e)
+            ).pack(side="left", padx=2)
+            # Add Send SMS button
+            ctk.CTkButton(
+                entry_buttons,
+                text="📱",
+                width=30,
+                height=30,
+                fg_color="purple",
+                hover_color="#800080",
+                command=lambda e=entry: self.send_sms_notification(e)
             ).pack(side="left", padx=2)
 
     def edit_waitlist_entry(self, entry):
