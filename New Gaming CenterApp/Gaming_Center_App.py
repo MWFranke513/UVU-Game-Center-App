@@ -305,8 +305,8 @@ class CombinedTimer(ctk.CTkCanvas):
         # Always check name and ID for all station types
         if not self.name_entry or not self.name_entry.get().strip():
             missing_fields.append("Name")
-        if not self.id_entry or not self.id_entry.get().strip():
-            missing_fields.append("ID Number (Enter N/A if not applicable)")
+        # if not self.id_entry or not self.id_entry.get().strip():
+        #     missing_fields.append("ID Number (Enter N/A if not applicable)")
         
         # Only check game and controller fields for console stations
         if self.station_type in ["XBOX", "Switch"]:
