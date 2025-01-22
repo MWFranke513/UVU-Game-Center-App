@@ -389,54 +389,55 @@ class StatsManager:
 
     def parse_log_file(self, period='Today'):
         data = []
-        
         try:
             with open(self.log_file, 'r') as f:
                 print(f"Successfully opened {self.log_file}")
                 entry = {}
                 for line in f:
                     line = line.strip()
-                    
-                    try:
-                        if line.startswith('Date:'):
-                            timestamp_str = line[6:]  # Extract the timestamp string
-                            try:
-                                # Try parsing with microseconds
-                                entry['timestamp'] = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
-                            except ValueError:
-                                # If that fails, try parsing without microseconds
-                                entry['timestamp'] = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
-                        elif line.startswith('Station Type:'):
-                            entry['station_type'] = line[13:]
-                        elif line.startswith('Station Number:'):
-                            entry['station_number'] = line[15:]
-                        elif line.startswith('User Name:'):
-                            entry['user_name'] = line[11:]
-                        elif line.startswith('Duration:'):
-                            entry['duration'] = line[10:]
-                        elif line.startswith('Game:'):
-                            entry['game'] = line[6:] if line[6:] else 'N/A'
-                        elif line.startswith('Controllers:'):
-                            entry['controllers'] = line[13:] if line[13:] else 'N/A'
-                        elif line.startswith('-' * 50):
-                            # Ensure all required keys are present before adding
-                            if all(key in entry for key in ['timestamp', 'station_type', 'station_number', 'duration']):
-                                if self._is_within_period(entry.get('timestamp', ''), period):
-                                    data.append(entry.copy())
-                            entry = {}
-                    except Exception as parse_error:
-                        print(f"Error parsing line: {line}")
-                        print(f"Error details: {parse_error}")
-                        entry = {}
+                    self.process_log_line(line, entry, period, data)
         except FileNotFoundError:
             print(f"Error: Log file {self.log_file} not found!")
-            return []
+            return data
         except Exception as e:
             print(f"Unexpected error reading log file: {e}")
-            return []
-        
+            return data
+
         print(f"Parsed {len(data)} entries")
         return data
+
+    def process_log_line(self, line, entry, period, data):
+        try:
+            if line.startswith('Date:'):
+                timestamp_str = line[6:]  # Extract the timestamp string
+                try:
+                    entry['timestamp'] = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S.%f')
+                except ValueError:
+                    entry['timestamp'] = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+            elif line.startswith('Station Type:'):
+                entry['station_type'] = line[13:]
+            elif line.startswith('Station Number:'):
+                entry['station_number'] = line[15:]
+            elif line.startswith('User Name:'):
+                entry['user_name'] = line[11:]
+            elif line.startswith('Duration:'):
+                entry['duration'] = line[10:]
+            elif line.startswith('Game:'):
+                entry['game'] = line[6:] if line[6:] else 'N/A'
+            elif line.startswith('Controllers:'):
+                entry['controllers'] = line[13:] if line[13:] else 'N/A'
+            elif line.startswith('-' * 50):
+                if self.is_valid_entry(entry):
+                    if self._is_within_period(entry.get('timestamp', ''), period):
+                        data.append(entry.copy())
+                    entry.clear()  # Clear entry for the next record
+        except Exception as parse_error:
+            print(f"Error parsing line: {line}")
+            print(f"Error details: {parse_error}")
+
+    def is_valid_entry(self, entry):
+        required_keys = ['timestamp', 'station_type', 'station_number', 'duration']
+        return all(key in entry for key in required_keys)
 
     def _is_within_period(self, timestamp, period):
         if not timestamp:

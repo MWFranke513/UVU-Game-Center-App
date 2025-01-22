@@ -9,7 +9,7 @@ from PIL import Image, ImageTk
 import time
 import requests
 from io import BytesIO
-import cairosvg
+# import cairosvg
 import json
 import os
 import re
@@ -88,7 +88,8 @@ class CustomErrorBox(tk.Toplevel):
             aspect_ratio = gif.width / gif.height
             new_width = int(desired_height * aspect_ratio)
             
-            for frame in range(0, gif.n_frames):
+            for frame in range(gif.n_frames):
+
                 gif.seek(frame)
                 resized_frame = gif.copy().resize((new_width, desired_height), Image.Resampling.LANCZOS)
                 frame_image = ImageTk.PhotoImage(resized_frame)
@@ -166,6 +167,37 @@ def show_custom_error(parent, title, message):
     return CustomErrorBox(parent, title, message)
 
 
+
+class TimerManager:
+    def __init__(self):
+        self.timers = []
+        self.is_running = False
+
+    def add_timer(self, timer):
+        self.timers.append(timer)
+        if not self.is_running:
+            self.start()
+
+    def start(self):
+        self.is_running = True
+        self.update_timers()
+
+    def stop(self):
+        self.is_running = False
+        for timer in self.timers:
+            timer.stop()  # Stop each timer
+
+    def update_timers(self):
+        if not self.is_running:
+            return
+
+        for timer in self.timers:
+            timer.update()  # Call an update method on each timer
+
+        # Schedule the next update
+        self.after(1000, self.update_timers)  # Update every 1 second
+
+
 class CombinedTimer(ctk.CTkCanvas):
     def __init__(self, parent, width=120, height=120):
 
@@ -184,7 +216,7 @@ class CombinedTimer(ctk.CTkCanvas):
         super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent_bg)
         self.width = width
         self.height = height
-        self.time_limit = 2 * 60
+        self.time_limit = 30 * 60
         self.warning_threshold = 0.8 * self.time_limit
         self.warning_threshold2 = 0.9 * self.time_limit
         
@@ -226,12 +258,16 @@ class CombinedTimer(ctk.CTkCanvas):
             self.update_timer()
 
     def stop(self):
+
         if self.is_running:
+
             self.is_running = False
-            self.elapsed_time = time.time() - self.start_time
-        if self._update_loop_id:
-            self.after_cancel(self._update_loop_id)  # Cancel the update loop
-            self._update_loop_id = None
+
+            if self._update_loop_id:
+
+                self.after_cancel(self._update_loop_id)  # Cancel the update loop
+
+                self._update_loop_id = None  # Reset the loop ID
 
     def reset(self):
         if self.is_running or self.elapsed_time > 0:  # Only log if timer was actually used
@@ -287,46 +323,46 @@ class CombinedTimer(ctk.CTkCanvas):
         return True
 
     def draw_ring(self, progress):
-        self.delete("all")  # Clear canvas
-        
+        # Only update if progress has changed significantly
+        if abs(progress - self.last_progress) <= 0.01:
+            return  # Skip drawing if change is minimal
+
+        self.delete("all")  # Clear the canvas
+
         # Calculate coordinates for the ring
-        x0 = 6
-        y0 = 6
-        x1 = self.width - 6
-        y1 = self.height - 6
-        
+        x0, y0, x1, y1 = 6, 6, self.width - 6, self.height - 6
+
         # Draw background ring
         self.create_oval(x0, y0, x1, y1, outline='gray20', width=8)
-        
+
         if progress > 0:
             # Calculate color based on progress
-            if progress * self.time_limit >= self.warning_threshold:
-                color = 'orange'
-            elif progress * self.time_limit >= self.warning_threshold2:
-                color = 'red'
-            else:
-                color = '#00843d' # green
-            
+            color = 'green' if progress * self.time_limit < self.warning_threshold else 'orange' if progress * self.time_limit < self.warning_threshold2 else 'red'
+
             # Calculate the extent of the arc
             extent = 360 * progress
-            
+
             # Draw the progress arc
-            self.create_arc(x0, y0, x1, y1, start=-180, extent=-extent, outline=color, width=9, style='arc')
+            self.create_arc(x0, y0, x1, y1, start=-90, extent=-extent, outline=color, width=9, style='arc')
+
+        self.last_progress = progress  # Update last progress to current
 
     def update_timer(self):
         if self.is_running:
             elapsed = self.get_time()
-            hours = int(elapsed // 3600)
-            minutes = int((elapsed % 3600) // 60)
-            seconds = int(elapsed % 60)
-            self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             
-            # Update progress ring only if progress has changed
+            # Update timer display
+            hours, minutes, seconds = map(int, (elapsed // 3600, (elapsed % 3600) // 60, elapsed % 60))
+            self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+
+            # Calculate progress
             progress = min(elapsed / self.time_limit, 1.0)
+
+            # Update progress ring only if progress has changed significantly
             if abs(progress - self.last_progress) > 0.01:  # Only update if progress changes by 1%
                 self.draw_ring(progress)
-                self.last_progress = progress
-            
+                self.last_progress = progress  # Update last progress to current
+
             # Update timer color based on elapsed time
             if elapsed >= self.time_limit:
                 self.timer_label.configure(text_color="red")
@@ -337,10 +373,9 @@ class CombinedTimer(ctk.CTkCanvas):
                 self.timer_label.configure(text_color="orange")
             else:
                 self.timer_label.configure(text_color="green")
-        
-        # Schedule the next update only if the timer is still running
-        if self.is_running:
-            self._update_loop_id = self.after(500, self.update_timer)  # Update every 500ms
+
+            # Schedule the next update
+            self.after(1000, self.update)  # Update every 1 second instead of 500ms
 
     def show_time_alert(self):
         if not hasattr(self, 'last_alert_time'):
@@ -964,6 +999,7 @@ class GamingCenterApp(ctk.CTk):
         self.geometry("1500x950")
         self.stations = []  # Keep track of all stations
         self.waitlist = []  # List to keep track of people on the waitlist
+        self.timers = []
         self.waitlist_tree = None  # Initialize waitlist_tree as None
 
         # Create the main content frame that will contain everything else
@@ -1110,15 +1146,20 @@ class GamingCenterApp(ctk.CTk):
         # Implement home view functionality
         pass
 
-    def on_close(self):
-        """Handle the application close event."""
-        self.stop_timers()  # Stop all timers
-        self.destroy()  # Close the application
-
     def stop_timers(self):
-        """Stop all timers in the stations."""
-        for station in self.stations:
-            station.stop_timer()  # Stop the timer in each station
+
+        for timer in self.timers:  # Assuming self.timers is a list of your timer instances
+
+            timer.stop()  # Call the stop method for each timer
+
+        self.is_running = False  # Set running flag to False
+
+
+    def on_close(self):
+
+        self.stop_timers()  # Stop all timers
+
+        self.destroy()      # Close the application
 
     def setup_ui(self):
         # Create main container with more padding
