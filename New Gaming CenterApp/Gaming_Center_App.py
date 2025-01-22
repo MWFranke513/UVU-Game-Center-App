@@ -704,7 +704,10 @@ class GamesWindow(ctk.CTkToplevel):
     def load_games(self):
         if os.path.exists('games_list.json'):
             with open('games_list.json', 'r') as f:
-                return json.load(f)
+                games = json.load(f)
+                for console in games:
+                    games[console].sort()  # Sort the games list alphabetically
+                return games
         return {"Switch": [], "XBOX": []}
 
     def save_games(self, games_dict):
@@ -1211,7 +1214,9 @@ class GamingCenterApp(ctk.CTk):
         try:
             with open('games_list.json', 'r') as f:
                 games_dict = json.load(f)
-                return games_dict.get(console_type, [])
+                games_list = games_dict.get(console_type, [])
+                games_list.sort()  # Sort the games list alphabetically
+                return games_list
         except FileNotFoundError:
             return []
 
