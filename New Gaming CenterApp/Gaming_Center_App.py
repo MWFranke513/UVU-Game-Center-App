@@ -392,7 +392,7 @@ class CombinedTimer(ctk.CTkCanvas):
         if user_name:
             station_info += f" - {user_name}"
         messagebox.showwarning("Time Limit Exceeded", 
-                             f"{station_info}\nhas exceeded the 2-minute time limit.\nPlease ask the user to wrap up their session.")
+                             f"{station_info}\nhas exceeded the 30-minute time limit.\nPlease ask the user to wrap up their session.")
 
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
