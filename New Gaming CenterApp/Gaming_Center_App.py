@@ -887,7 +887,7 @@ class WaitlistDialog(ctk.CTkToplevel):
     def __init__(self, parent, stations, title="Add to Waitlist", prompt="Enter details:"):
         super().__init__(parent)
         self.title(title)
-        self.geometry("400x500")
+        self.geometry("400x550")  # Increased height for email field
         self.resizable(False, False)
 
         self.result = None
@@ -909,6 +909,10 @@ class WaitlistDialog(ctk.CTkToplevel):
             validate="key",  # Validate on each keystroke
             validatecommand=(self.register(self.validate_phone), "%P")  # Pass the new input to the validation function
         )
+        
+        # Email address field (new)
+        self.email_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Email Address (Optional)")
+        self.email_entry.pack(fill="x", pady=5)
         
         self.size_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Size")
         self.size_entry.pack(fill="x", pady=5)
@@ -957,6 +961,7 @@ class WaitlistDialog(ctk.CTkToplevel):
         size = self.size_entry.get().strip()
         notes = self.notes_entry.get().strip()
         station = self.station_var.get()
+        email = self.email_entry.get().strip()  # Get email value
         
         # Validate the phone number
         if not (phone.isdigit() and len(phone) == 10):
@@ -974,27 +979,245 @@ class WaitlistDialog(ctk.CTkToplevel):
                 "arrival": current_time.strftime("%I:%M %p"),
                 "quotedTime": (current_time + timedelta(minutes=15)).strftime("%I:%M %p")
             }
+            
+            # Only add email if provided
+            if email:
+                self.result["email"] = email
+                
             self.grab_release()
             self.destroy()
         else:
             messagebox.showerror("Error", "Please fill out all required fields.")
 
     def on_cancel(self):
+        """Cancel the dialog without saving changes"""
         self.result = None
         self.grab_release()
         self.destroy()
-
-    def show(self):
-        self.grab_set()
-        self.wait_window(self)
-        return self.result
     
-    def add_to_waitlist(self):
-        dialog = WaitlistDialog(self, self.stations)
-        result = dialog.show()
-        if result:
-            self.waitlist.append(result)
-            self.update_waitlist_tree()
+    def show(self):
+        """Display the dialog and wait for user input"""
+        self.grab_set()  # Make the dialog modal
+        self.wait_window()  # Wait for the window to be destroyed
+        return self.result  # Return the result after the window is closed
+
+class BowlingWaitlistDialog(ctk.CTkToplevel):
+    def __init__(self, parent, lanes, title="Add to Bowling Waitlist", prompt="Enter details:"):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("400x700")  # Increased height for email field
+        self.resizable(False, False)
+
+        self.result = None
+        self.lanes = lanes
+        
+        # Party Information
+        self.name_frame = ctk.CTkFrame(self)
+        self.name_frame.pack(pady=10, padx=10, fill="x")
+        
+        ctk.CTkLabel(self.name_frame, text="Party Information").pack(anchor="w")
+        self.name_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Name")
+        self.name_entry.pack(fill="x", pady=5)
+        
+        # Phone number entry with validation
+        self.phone_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Phone Number")
+        self.phone_entry.pack(fill="x", pady=5)
+        
+        # Add validation to the phone number entry
+        self.phone_entry.configure(
+            validate="key",  # Validate on each keystroke
+            validatecommand=(self.register(self.validate_phone), "%P")  # Pass the new input to the validation function
+        )
+        
+        # Email address field (new)
+        self.email_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Email Address (Optional)")
+        self.email_entry.pack(fill="x", pady=5)
+        
+        self.size_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Size")
+        self.size_entry.pack(fill="x", pady=5)
+
+        # Number of Lanes Needed
+        self.lanes_frame = ctk.CTkFrame(self)
+        self.lanes_frame.pack(pady=10, padx=10, fill="x")
+        ctk.CTkLabel(self.lanes_frame, text="Number of Lanes Needed").pack(anchor="w")
+        
+        # Create a frame for the lane count dropdown
+        lanes_count_frame = ctk.CTkFrame(self.lanes_frame, fg_color="transparent")
+        lanes_count_frame.pack(fill="x", pady=5)
+        
+        # Lane count dropdown with values 1-6
+        self.lanes_needed_var = ctk.StringVar(value="1")
+        self.lanes_needed_dropdown = ctk.CTkComboBox(
+            lanes_count_frame,
+            variable=self.lanes_needed_var,
+            values=["1", "2", "3", "4", "5", "6"],
+            command=self.update_lane_selector
+        )
+        self.lanes_needed_dropdown.pack(fill="x")
+
+        # Notes
+        self.notes_frame = ctk.CTkFrame(self)
+        self.notes_frame.pack(pady=10, padx=10, fill="x")
+        ctk.CTkLabel(self.notes_frame, text="Additional Notes").pack(anchor="w")
+        self.notes_entry = ctk.CTkEntry(self.notes_frame, placeholder_text="Notes")
+        self.notes_entry.pack(fill="x", pady=5)
+
+        # Lane Preferences Frame
+        self.preferences_frame = ctk.CTkFrame(self)
+        self.preferences_frame.pack(pady=10, padx=10, fill="x")
+        ctk.CTkLabel(self.preferences_frame, text="Lane Preferences (Optional)").pack(anchor="w")
+
+        # Add checkbox for specifying lane preferences
+        self.specify_lanes_var = ctk.BooleanVar(value=False)
+        self.specify_lanes_checkbox = ctk.CTkCheckBox(
+            self.preferences_frame, 
+            text="Specify preferred lanes",
+            variable=self.specify_lanes_var,
+            command=self.toggle_lane_preferences
+        )
+        self.specify_lanes_checkbox.pack(pady=5, anchor="w")
+        
+        # Container for lane selection dropdowns
+        self.lane_selectors_frame = ctk.CTkFrame(self.preferences_frame, fg_color="transparent")
+        # Initially hidden, will be shown when checkbox is checked
+        
+        # Create initial lane selector for one lane
+        self.lane_selectors = []
+        self.update_lane_selector(self.lanes_needed_var.get())
+
+        # Buttons
+        self.button_frame = ctk.CTkFrame(self)
+        self.button_frame.pack(pady=20)
+        
+        self.ok_button = ctk.CTkButton(self.button_frame, text="Add to Bowling Waitlist", command=self.on_ok)
+        self.ok_button.pack(side="left", padx=5)
+        
+        self.cancel_button = ctk.CTkButton(self.button_frame, text="Cancel", command=self.on_cancel)
+        self.cancel_button.pack(side="left", padx=5)
+
+    def toggle_lane_preferences(self):
+        """Show or hide lane preference selectors based on checkbox state"""
+        if self.specify_lanes_var.get():
+            self.lane_selectors_frame.pack(fill="x", pady=5)
+        else:
+            self.lane_selectors_frame.pack_forget()
+
+    def update_lane_selector(self, value=None):
+        """Update lane selector dropdowns based on number of lanes needed"""
+        # Clear existing lane selectors
+        for selector in self.lane_selectors:
+            for widget in selector.winfo_children():
+                widget.destroy()
+            selector.destroy()
+        self.lane_selectors = []
+        
+        # Get number of lanes needed
+        num_lanes = int(self.lanes_needed_var.get())
+        
+        # Recreate the frame
+        self.lane_selectors_frame.destroy()
+        self.lane_selectors_frame = ctk.CTkFrame(self.preferences_frame, fg_color="transparent")
+        if self.specify_lanes_var.get():
+            self.lane_selectors_frame.pack(fill="x", pady=5)
+        
+        # Create new lane selectors based on the number of lanes needed
+        for i in range(num_lanes):
+            lane_frame = ctk.CTkFrame(self.lane_selectors_frame, fg_color="transparent")
+            lane_frame.pack(fill="x", pady=2)
+            
+            label = ctk.CTkLabel(lane_frame, text=f"Lane {i+1} Preference:")
+            label.pack(side="left", padx=(0, 5))
+            
+            lane_var = ctk.StringVar()
+            lane_dropdown = ctk.CTkComboBox(
+                lane_frame,
+                variable=lane_var,
+                values=self.lanes,
+                width=100
+            )
+            lane_dropdown.pack(side="left", fill="x", expand=True)
+            
+            self.lane_selectors.append(lane_frame)
+
+    def validate_phone(self, new_input):
+        """Validate the phone number input."""
+        # Allow empty input (for backspace/deletion)
+        if not new_input:
+            return True
+        
+        # Check if the input is numeric and no more than 10 digits
+        return new_input.isdigit() and len(new_input) <= 10
+
+    def on_ok(self):
+        name = self.name_entry.get().strip()
+        phone = self.phone_entry.get().strip()
+        size = self.size_entry.get().strip()
+        notes = self.notes_entry.get().strip()
+        lanes_needed = int(self.lanes_needed_var.get())
+        email = self.email_entry.get().strip()  # Get email value
+        
+        # Validate the phone number
+        if not (phone.isdigit() and len(phone) == 10):
+            messagebox.showerror("Invalid Phone Number", "Please enter a valid 10-digit phone number.")
+            return
+        
+        # Get preferred lanes if specified
+        preferred_lanes = []
+        if self.specify_lanes_var.get() and self.lane_selectors:
+            for i, frame in enumerate(self.lane_selectors):
+                dropdown = [w for w in frame.winfo_children() if isinstance(w, ctk.CTkComboBox)]
+                if dropdown:
+                    lane = dropdown[0].get()
+                    if lane:
+                        preferred_lanes.append(lane)
+        
+        if name and phone and size:
+            current_time = datetime.now()
+            
+            # Format notes to include lanes needed
+            formatted_notes = f"Lanes needed: {lanes_needed}"
+            if notes:  # Add user notes if provided
+                formatted_notes += f" - {notes}"
+                
+            # Format preferred lanes for display in the station column
+            if preferred_lanes:
+                station_display = ", ".join(preferred_lanes)
+            else:
+                station_display = "Any Lanes"
+                
+            self.result = {
+                "party": name,
+                "phone": phone,
+                "size": int(size),
+                "notes": formatted_notes,
+                "station": station_display,  # Display preferred lanes or "Any Lanes"
+                "arrival": current_time.strftime("%I:%M %p"),
+                "quotedTime": (current_time + timedelta(minutes=30)).strftime("%I:%M %p"),
+                "lanes_needed": lanes_needed,  # Store the number of lanes needed
+                "preferred_lanes": preferred_lanes  # Store the list of preferred lanes
+            }
+            
+            # Only add email if provided
+            if email:
+                self.result["email"] = email
+                
+            self.grab_release()
+            self.destroy()
+        else:
+            messagebox.showerror("Error", "Please fill out all required fields.")
+
+
+    def on_cancel(self):
+        """Cancel the dialog without saving changes"""
+        self.result = None
+        self.grab_release()
+        self.destroy()
+    
+    def show(self):
+        """Display the dialog and wait for user input"""
+        self.grab_set()  # Make the dialog modal
+        self.wait_window()  # Wait for the window to be destroyed
+        return self.result  # Return the result after the window is closed
 class GamingCenterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -1215,7 +1438,9 @@ class GamingCenterApp(ctk.CTk):
             with open('games_list.json', 'r') as f:
                 games_dict = json.load(f)
                 games_list = games_dict.get(console_type, [])
-                games_list.sort()  # Sort the games list alphabetically
+                # Sort the games list alphabetically
+                games_list.sort()
+                return games_list
                 return games_list
         except FileNotFoundError:
             return []
@@ -1233,8 +1458,13 @@ class GamingCenterApp(ctk.CTk):
 
     def update_notification_bubble(self):
         """Update the notification bubble to reflect the current number of parties in the waitlist."""
-        if self.waitlist:
-            self.waitlist_count_label.configure(text=str(len(self.waitlist)))  # Update the Waitlist button counter
+        # Count both regular waitlist and bowling waitlist entries
+        regular_count = len(self.waitlist)
+        bowling_count = len(self.bowling_waitlist) if hasattr(self, 'bowling_waitlist') else 0
+        total_count = regular_count + bowling_count
+        
+        if total_count > 0:
+            self.waitlist_count_label.configure(text=str(total_count))  # Update the Waitlist button counter
             self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Ensure the label is visible
         else:
             self.waitlist_count_label.place_forget()  # Hide the label when there are no parties
@@ -1246,18 +1476,27 @@ class GamingCenterApp(ctk.CTk):
 
     def update_waitlist_count(self):
         """Update the count label on the Waitlist button."""
-        count = len(self.waitlist)
-        if count > 0:
-            self.waitlist_count_label.configure(text=str(count), fg_color="red")  # Show and highlight if there are parties
+        # Count both regular waitlist and bowling waitlist entries if bowling waitlist exists
+        regular_count = len(self.waitlist)
+        bowling_count = len(self.bowling_waitlist) if hasattr(self, 'bowling_waitlist') else 0
+        total_count = regular_count + bowling_count
+        
+        if total_count > 0:
+            self.waitlist_count_label.configure(text=str(total_count), fg_color="red")  # Show and highlight if there are parties
             self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Ensure the label is visible
         else:
             self.waitlist_count_label.place_forget()  # Hide the label when there are no parties     
 
     def show_waitlist_window(self):
         """Method for GamingCenterApp class"""
+        # Initialize bowling waitlist if it doesn't exist
+        if not hasattr(self, 'bowling_waitlist'):
+            self.bowling_waitlist = []  # Create a separate list for bowling waitlist
+        
         waitlist_window = ctk.CTkToplevel(self)
         waitlist_window.title("Waitlist")
         waitlist_window.geometry("1200x800")
+        self.waitlist_window = waitlist_window  # Store reference to the window
 
         waitlist_window.lift()
         waitlist_window.focus_force()
@@ -1267,24 +1506,47 @@ class GamingCenterApp(ctk.CTk):
         main_frame = ctk.CTkFrame(waitlist_window)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Header frame with title and count
+        # Header frame with title, toggle and count
         header_frame = ctk.CTkFrame(main_frame)
         header_frame.pack(fill="x", pady=(0, 20))
+        
+        # Create toggle for waitlist type
+        self.waitlist_type_var = ctk.StringVar(value="Game Center")
+        waitlist_toggle = ctk.CTkSegmentedButton(
+            header_frame,
+            values=["Game Center", "Bowling Lanes"],
+            variable=self.waitlist_type_var,
+            command=self.switch_waitlist_type
+        )
+        waitlist_toggle.pack(side="left", padx=(0, 20))
         
         title_frame = ctk.CTkFrame(header_frame)
         title_frame.pack(side="left")
         
-        ctk.CTkLabel(title_frame, text="Gaming Center Waitlist", font=("Helvetica", 20, "bold")).pack(side="left", padx=5)
-        self.count_label = ctk.CTkLabel(title_frame, text=str(len(self.waitlist)), 
-                                        fg_color="blue", text_color="white",
-                                        corner_radius=10, width=30)
+        # Title label that will update based on selected waitlist type
+        self.title_label = ctk.CTkLabel(
+            title_frame, 
+            text="Gaming Center Waitlist", 
+            font=("Helvetica", 20, "bold")
+        )
+        self.title_label.pack(side="left", padx=5)
+        
+        # Count label that will update based on selected waitlist
+        self.count_label = ctk.CTkLabel(
+            title_frame, 
+            text=str(len(self.waitlist)), 
+            fg_color="blue", 
+            text_color="white",
+            corner_radius=10, 
+            width=30
+        )
         self.count_label.pack(side="left", padx=5)
 
         # Search frame
         search_frame = ctk.CTkFrame(header_frame)
         search_frame.pack(side="right")
-        search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
-        search_entry.pack(side="right", padx=5)
+        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
+        self.search_entry.pack(side="right", padx=5)
 
         # Create a frame to hold both the treeview and buttons side by side
         content_frame = ctk.CTkFrame(main_frame)
@@ -1315,7 +1577,7 @@ class GamingCenterApp(ctk.CTk):
             foreground=[("selected", "white")]
         )
 
-        # Create columns
+        # Create columns - same structure for both waitlist types
         columns = ("party", "size", "notes", "station", "quotedTime", "arrival")
         self.waitlist_tree = ttk.Treeview(
             content_frame,
@@ -1325,16 +1587,16 @@ class GamingCenterApp(ctk.CTk):
         )
         
         # Configure column headings and widths
-        headings = {
+        self.headings = {
             "party": "PARTY",
             "size": "SIZE",
             "notes": "NOTES",
-            "station": "STATION",
+            "station": "STATION",  # Will be changed to "LANE" for bowling
             "quotedTime": "QUOTED TIME",
             "arrival": "ARRIVAL"
         }
         
-        for col, heading in headings.items():
+        for col, heading in self.headings.items():
             self.waitlist_tree.heading(col, text=heading)
             if col == "size":
                 self.waitlist_tree.column(col, width=50, anchor="center")  # Narrow size column
@@ -1412,9 +1674,9 @@ class GamingCenterApp(ctk.CTk):
         # Store reference to buttons_frame for updating
         self.buttons_frame = buttons_frame
 
-        # Add floating action button
+        # Add floating action button - will be updated based on waitlist type
         station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
-        add_button = ctk.CTkButton(
+        self.add_button = ctk.CTkButton(
             waitlist_window,
             text="+",
             width=60,
@@ -1423,76 +1685,373 @@ class GamingCenterApp(ctk.CTk):
             font=("Helvetica", 24, "bold"),
             command=lambda: self.add_to_waitlist(station_names)
         )
-        add_button.place(relx=0.95, rely=0.95, anchor="se")
+        self.add_button.place(relx=0.95, rely=0.95, anchor="se")
 
         def update_tree(event=None):
-            search_text = search_entry.get().lower()
+            search_text = self.search_entry.get().lower()
             self.update_waitlist_tree(search_text)
 
-        search_entry.bind('<KeyRelease>', update_tree)
+        self.search_entry.bind('<KeyRelease>', update_tree)
         
         # Update the waitlist display
         self.update_waitlist_tree()
 
+    def switch_waitlist_type(self, value=None):
+        """Switch between Game Center and Bowling Lanes waitlists"""
+        waitlist_type = self.waitlist_type_var.get()
+        
+        # Update the title and column headers
+        if waitlist_type == "Game Center":
+            self.title_label.configure(text="Gaming Center Waitlist")
+            self.count_label.configure(text=str(len(self.waitlist)))
+            self.waitlist_tree.heading("station", text="STATION")
+            
+            # Update add button command for gaming center
+            station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+            self.add_button.configure(
+                command=lambda: self.add_to_waitlist(station_names)
+            )
+        else:  # Bowling Lanes
+            self.title_label.configure(text="Bowling Lanes Waitlist")
+            self.count_label.configure(text=str(len(self.bowling_waitlist)))
+            self.waitlist_tree.heading("station", text="LANE")
+            
+            # Update add button command for bowling lanes
+            lane_names = [f"Lane {i}" for i in range(1, 7)]  # Lanes 1-6
+            self.add_button.configure(
+                command=lambda: self.add_to_bowling_waitlist(lane_names)
+            )
+        
+        # Update the displayed waitlist
+        self.update_waitlist_tree()
+
     def add_to_waitlist(self, station_names):
-        """Modified to accept station_names parameter"""
+        """Modified to accept station_names parameter and not show email dialog"""
         dialog = WaitlistDialog(self, station_names, title="Add to Waitlist", prompt="Enter details:")
         result = dialog.show()
         if result:
             self.waitlist.append(result)
             self.update_waitlist_tree()
-            self.update_count_label()
-            self.update_waitlist_count()  # Update the count label
-            self.update_notification_bubble()  # Update the notification bubble
+            self.update_waitlist_count()  # Update the sidebar count label
 
+    def add_to_bowling_waitlist(self, lane_names):
+        """Add a new entry to the bowling waitlist without showing email dialog"""
+        dialog = BowlingWaitlistDialog(self, lane_names, title="Add to Bowling Waitlist", prompt="Enter details:")
+        result = dialog.show()
+        if result:
+            self.bowling_waitlist.append(result)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()  # Update the sidebar count label
 
-
-    def send_sms(self, phone_number, party_name, station_name):
-        """Send an SMS using all carriers' email-to-SMS gateways."""
-        carrier_gateways = {
-            "Verizon": "@vtext.com",
-            "AT&T": "@txt.att.net",
-            "T-Mobile": "@tmomail.net",
-            "Sprint": "@messaging.sprintpcs.com"
-        }
+    def send_sms_notification(self, entry):
+        """Send notification to the party with option to add email if not already present."""
+        phone_number = entry['phone']
+        party_name = entry['party']
+        station_name = entry['station']
         
-        email = "uvuslwcgamecenter@gmail.com"  # Replace with your email
-        password = "jfuq wefo nxzk kkde"  # Replace with your app password
-
-        # Format the message body
-        message_body = (
-            f"Hello {party_name}, your station {station_name} at the UVU Gaming Center is ready for you!\n"
-            "Please arrive within the next 10 minutes so your position isn't forfeited!\n\n"
-            "This is an Automated Message. Please do not reply."
-        )
-
-        success = False
-        for carrier, gateway in carrier_gateways.items():
-            sms_address = f"{phone_number}{gateway}"
+        # Check if the entry already has an email, if not, prompt for one
+        if 'email' not in entry or not entry['email']:
+            email_dialog = ctk.CTkInputDialog(
+                title="Add Email Address", 
+                text=f"No email found for {party_name}. Enter email address for notifications:"
+            )
+            email = email_dialog.get_input()
+            if email:
+                # Update the entry with the new email
+                entry['email'] = email
+                # Update the waitlist entry
+                waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+                current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+                if entry in current_waitlist:
+                    idx = current_waitlist.index(entry)
+                    current_waitlist[idx] = entry
+                self.update_waitlist_tree()
+        
+        # Now proceed with sending the notification
+        if 'email' in entry and entry['email']:
+            # Use the stored email
+            recipient_email = entry['email']
             
-            # Create the email message with a subject and formatted body
-            msg = MIMEText(message_body)
-            msg['From'] = email
-            msg['To'] = sms_address
-            msg['Date'] = formatdate(localtime=True)
-            msg['Subject'] = "Waitlist Notification"  # Set the subject here
-
+            # Similar logic to send_sms but directly using the stored email
+            email = "uvuslwcgamecenter@gmail.com"
+            password = "jfuq wefo nxzk kkde"  # App password
+            
+            subject = f"UVU Gaming Center - Station Ready for {party_name}"
+            message_body = (
+                f"Hello {party_name},\n\n"
+                f"Your station {station_name} at the UVU Gaming Center is ready for you!\n\n"
+                "Please arrive within the next 10 minutes so your position isn't forfeited.\n\n"
+                "Thank you,\n"
+                "UVU Gaming Center Staff"
+            )
+            
             try:
+                # Create the email message
+                msg = MIMEText(message_body)
+                msg['From'] = email
+                msg['To'] = recipient_email
+                msg['Subject'] = subject
+                msg['Date'] = formatdate(localtime=True)
+                
+                # Send the email
                 with smtplib.SMTP("smtp.gmail.com", 587) as server:
                     server.starttls()
                     server.login(email, password)
-                    server.sendmail(email, sms_address, msg.as_string())  # Use msg.as_string()
-                print(f"SMS sent to {carrier} gateway: {sms_address}")  # Log the SMS address
-                success = True
+                    server.sendmail(email, recipient_email, msg.as_string())
+                    
+                print(f"Email notification sent to: {recipient_email}")
+                messagebox.showinfo("Success", f"Notification email sent to {recipient_email}")
+                status = "Notification sent successfully!"
             except Exception as e:
-                print(f"Failed to send notification to {carrier} gateway: {e}")  # Log the error
-
-        if success:
+                error_msg = str(e)
+                print(f"Failed to send email notification: {error_msg}")
+                messagebox.showerror("Error", f"Failed to send notification email.\n\nError: {error_msg}")
+                status = f"Failed to send notification: {error_msg}"
+        else:
+            # If no email is stored, proceed with the standard notification function
+            status = self.send_sms(phone_number, party_name, station_name)
+        
+        print(status)  # Print the status for debugging
+        
+        # Determine success based on status
+        if "successfully" in status.lower():
             return "Notification sent successfully!"
         else:
-            return "Failed to send notification to all carriers."
+            return "Failed to send notification."
+
+    def edit_waitlist_entry(self, entry):
+        """
+        Open a dialog to edit an existing waitlist entry.
+        """
+        waitlist_type = self.waitlist_type_var.get()
+        
+        if waitlist_type == "Game Center":
+            # Get the list of station names for the dropdown
+            station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+            dialog_class = WaitlistDialog
+            current_waitlist = self.waitlist
+        else:  # Bowling Lanes
+            station_names = [f"Lane {i}" for i in range(1, 7)]
+            dialog_class = BowlingWaitlistDialog
+            current_waitlist = self.bowling_waitlist
+
+        # Create the edit dialog with the current entry's data
+        dialog = dialog_class(
+            self,
+            station_names,
+            title=f"Edit {'Bowling' if waitlist_type == 'Bowling Lanes' else 'Game Center'} Waitlist Entry",
+            prompt="Edit details:"
+        )
+
+        # Pre-populate the dialog fields with the current entry's data
+        dialog.name_entry.insert(0, entry["party"])
+        dialog.phone_entry.insert(0, entry["phone"])
+        dialog.size_entry.insert(0, str(entry["size"]))
+        dialog.notes_entry.insert(0, entry["notes"])
+        
+        # Handle station differently for each dialog type
+        if waitlist_type == "Game Center":
+            dialog.station_var.set(entry["station"])
+        
+        # Pre-populate email if it exists
+        if 'email' in entry and entry['email']:
+            dialog.email_entry.insert(0, entry["email"])
+        
+        # If it's a bowling entry, pre-populate the lanes needed field
+        if waitlist_type == "Bowling Lanes" and 'lanes_needed' in entry:
+            dialog.lanes_needed_var.set(str(entry["lanes_needed"]))
+            dialog.update_lane_selector()
+            
+            # Set preferred lanes if they exist
+            if 'preferred_lanes' in entry and entry['preferred_lanes']:
+                dialog.specify_lanes_var.set(True)
+                dialog.toggle_lane_preferences()
+                for i, lane in enumerate(entry['preferred_lanes']):
+                    if i < len(dialog.lane_selectors):
+                        lane_dropdown = [w for w in dialog.lane_selectors[i].winfo_children() if isinstance(w, ctk.CTkComboBox)]
+                        if lane_dropdown:
+                            lane_dropdown[0].set(lane)
+
+        # Show the dialog and get the result
+        result = dialog.show()
+        if result:
+            # Update the entry in the waitlist
+            if entry in current_waitlist:
+                index = current_waitlist.index(entry)
+                current_waitlist[index] = result
+                self.update_waitlist_tree()
+                self.update_count_label()
+            self.update_waitlist_tree()
+            self.update_waitlist_count()  # Update the sidebar count label
+
+    def add_to_bowling_waitlist(self, lane_names):
+        """Add a new entry to the bowling waitlist"""
+        dialog = BowlingWaitlistDialog(self, lane_names, title="Add to Bowling Waitlist", prompt="Enter details:")
+        result = dialog.show()
+        if result:
+            # Optionally capture email at time of registration
+            email_dialog = ctk.CTkInputDialog(
+                title="Optional Email Address", 
+                text=f"Enter email address for {result['party']} (optional, for notifications):"
+            )
+            email = email_dialog.get_input()
+            if email:
+                result['email'] = email
+                
+            self.bowling_waitlist.append(result)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()  # Update the sidebar count label
+            
+    def send_sms(self, phone_number, party_name, station_name):
+        """Send SMS via email-to-SMS gateways for all major carriers simultaneously."""
+        email = "uvuslwcgamecenter@gmail.com"
+        password = "jfuq wefo nxzk kkde"  # App password
+        
+        # Format the message (keep it short for SMS)
+        message_body = (
+            f"Hello {party_name}, your station {station_name} at UVU Gaming Center is ready! "
+            "Please arrive within 10 minutes to keep your spot."
+        )
+        
+        # Common carrier email-to-SMS gateways
+        carriers = {
+            "at&t": "@txt.att.net",
+            "tmobile": "@tmomail.net",
+            "verizon": "@vtext.com",
+            "sprint": "@messaging.sprintpcs.com",
+            "boost": "@sms.myboostmobile.com",
+            "cricket": "@sms.cricketwireless.net",
+            "uscellular": "@email.uscc.net",
+            "metro": "@mymetropcs.com"
+        }
+        
+        # Show a loading indicator
+        loading_window = ctk.CTkToplevel(self)
+        loading_window.title("Sending Notification")
+        loading_window.geometry("300x100")
+        loading_window.lift()
+        loading_window.grab_set()
+        
+        ctk.CTkLabel(loading_window, text=f"Sending notification to {party_name}...").pack(pady=10)
+        progress_bar = ctk.CTkProgressBar(loading_window)
+        progress_bar.pack(pady=10, padx=20, fill="x")
+        progress_bar.set(0)
+        
+        def send_notifications():
+            success_count = 0
+            error_messages = []
+            
+            # Try sending to all carriers
+            for i, (carrier_name, suffix) in enumerate(carriers.items()):
+                try:
+                    # Update progress
+                    progress = (i + 1) / len(carriers)
+                    progress_bar.set(progress)
+                    loading_window.update_idletasks()
+                    
+                    # Construct SMS gateway address
+                    recipient = f"{phone_number}{suffix}"
+                    
+                    # Create the email message
+                    msg = MIMEText(message_body)
+                    msg['From'] = email
+                    msg['To'] = recipient
+                    msg['Subject'] = ""  # Keep empty for SMS
+                    msg['Date'] = formatdate(localtime=True)
+                    
+                    # Connect to server and send
+                    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                        server.starttls()
+                        server.login(email, password)
+                        server.sendmail(email, recipient, msg.as_string())
+                    
+                    success_count += 1
+                    
+                except Exception as e:
+                    error_messages.append(f"{carrier_name}: {str(e)}")
+            
+            # Close loading window
+            loading_window.grab_release()
+            loading_window.destroy()
+            
+            # Show results
+            if success_count > 0:
+                messagebox.showinfo(
+                    "Notification Sent", 
+                    f"Notification sent to {party_name} through {success_count} carriers."
+                )
+                return "Notification sent successfully!"
+            else:
+                error_details = "\n".join(error_messages[:3]) + "\n..."
+                messagebox.showerror(
+                    "Notification Failed", 
+                    f"Failed to send notification to {party_name}.\n\nErrors encountered with all carriers."
+                )
+                return f"Failed to send notification: {error_messages[0]}"
+        
+        # Run the sending function in a separate thread
+        threading.Thread(target=send_notifications).start()
+        
+        return "Sending notification..."
 
     def send_sms_notification(self, entry):
+        """Send notification to the party."""
+        phone_number = entry['phone']
+        party_name = entry['party']
+        station_name = entry['station']
+        
+        # Check if we have a stored email from registration
+        if 'email' in entry and entry['email']:
+            # Use the stored email
+            recipient_email = entry['email']
+            
+            # Similar logic to send_sms but directly using the stored email
+            email = "uvuslwcgamecenter@gmail.com"
+            password = "jfuq wefo nxzk kkde"  # App password
+            
+            subject = f"UVU Gaming Center - Station Ready for {party_name}"
+            message_body = (
+                f"Hello {party_name},\n\n"
+                f"Your station {station_name} at the UVU Gaming Center is ready for you!\n\n"
+                "Please arrive within the next 10 minutes so your position isn't forfeited.\n\n"
+                "Thank you,\n"
+                "UVU Gaming Center Staff"
+            )
+            
+            try:
+                # Create the email message
+                msg = MIMEText(message_body)
+                msg['From'] = email
+                msg['To'] = recipient_email
+                msg['Subject'] = subject
+                msg['Date'] = formatdate(localtime=True)
+                
+                # Send the email
+                with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                    server.starttls()
+                    server.login(email, password)
+                    server.sendmail(email, recipient_email, msg.as_string())
+                    
+                print(f"Email notification sent to: {recipient_email}")
+                messagebox.showinfo("Success", f"Notification email sent to {recipient_email}")
+                status = "Notification sent successfully!"
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Failed to send email notification: {error_msg}")
+                messagebox.showerror("Error", f"Failed to send notification email.\n\nError: {error_msg}")
+                status = f"Failed to send notification: {error_msg}"
+        else:
+            # If no email is stored, proceed with the standard notification function
+            status = self.send_sms(phone_number, party_name, station_name)
+        
+        print(status)  # Print the status for debugging
+        
+        # Determine success based on status
+        if "successfully" in status.lower():
+            return "Notification sent successfully!"
+        else:
+            return "Failed to send notification."
+    def send_sms_notification_old(self, entry):
         """Send an SMS notification to the party through all carriers."""
         phone_number = entry['phone']
         party_name = entry['party']
@@ -1501,7 +2060,8 @@ class GamingCenterApp(ctk.CTk):
         # Send the SMS through all carriers
         status = self.send_sms(phone_number, party_name, station_name)
         print(status)  # Print the status for debugging
-
+        return status
+        print(status)  # Print the status for debugging
 
     def handle_click(self, event):
         """Handle clicks on the treeview to show action buttons"""
@@ -1520,9 +2080,12 @@ class GamingCenterApp(ctk.CTk):
         """Show action buttons in a popup window"""
         # Get the corresponding entry from waitlist
         idx = self.waitlist_tree.index(item)
-        if idx >= len(self.waitlist):
+        waitlist_type = self.waitlist_type_var.get()
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        
+        if idx >= len(current_waitlist):
             return
-        entry = self.waitlist[idx]
+        entry = current_waitlist[idx]
         
         # Create popup window for buttons
         popup = tk.Toplevel(self.waitlist_window)
@@ -1579,7 +2142,7 @@ class GamingCenterApp(ctk.CTk):
         popup.bind('<Leave>', on_leave)
 
     def update_waitlist_tree(self, search_text=""):
-        """Updated method to handle placeholder buttons"""
+        """Updated method to handle placeholder buttons and support both waitlist types"""
         # Clear existing entries and buttons
         for item in self.waitlist_tree.get_children():
             self.waitlist_tree.delete(item)
@@ -1589,20 +2152,28 @@ class GamingCenterApp(ctk.CTk):
             if widget != self.placeholder_buttons_frame:  # Don't remove the placeholder buttons frame
                 widget.destroy()
         
+        # Determine which waitlist to display
+        waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        
         # If there are entries in the waitlist, hide placeholder buttons
-        if self.waitlist:
+        if current_waitlist:
             self.placeholder_buttons_frame.pack_forget()  # Hide placeholder buttons
         else:
             self.placeholder_buttons_frame.pack(pady=10, padx=5)  # Show placeholder buttons
         
         # Add entries and their corresponding buttons
-        for entry in self.waitlist:
+        for entry in current_waitlist:
             if search_text and search_text not in entry['party'].lower():
                 continue
             
-            # Calculate wait time
-            wait_time = self.calculate_wait_time(entry['station'])
-            quoted_time = f"{entry['quotedTime']} ({wait_time})"
+            # Calculate wait time - handle differently for bowling lanes
+            if waitlist_type == "Bowling Lanes":
+                wait_time = "30 mins" # Default wait time for bowling
+                quoted_time = f"{entry['quotedTime']} ({wait_time})"
+            else:
+                wait_time = self.calculate_wait_time(entry['station'])
+                quoted_time = f"{entry['quotedTime']} ({wait_time})"
             
             # Insert row
             self.waitlist_tree.insert("", "end", values=(
@@ -1619,6 +2190,7 @@ class GamingCenterApp(ctk.CTk):
             x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
             pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
             message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
+            
             # Create a frame for this entry's buttons
             entry_buttons = ctk.CTkFrame(self.buttons_frame)
             entry_buttons.pack(pady=10, padx=5)
@@ -1668,19 +2240,32 @@ class GamingCenterApp(ctk.CTk):
                 hover_color="#800080",
                 command=lambda e=entry: self.send_sms_notification(e)
             ).pack(side="left", padx=2)
+        
+        # Update count label with current waitlist count
+        if hasattr(self, 'count_label'):
+            self.count_label.configure(text=str(len(current_waitlist)))
 
     def edit_waitlist_entry(self, entry):
         """
         Open a dialog to edit an existing waitlist entry.
         """
-        # Get the list of station names for the dropdown
-        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+        waitlist_type = self.waitlist_type_var.get()
+        
+        if waitlist_type == "Game Center":
+            # Get the list of station names for the dropdown
+            station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+            dialog_class = WaitlistDialog
+            current_waitlist = self.waitlist
+        else:  # Bowling Lanes
+            station_names = [f"Lane {i}" for i in range(1, 7)]
+            dialog_class = BowlingWaitlistDialog
+            current_waitlist = self.bowling_waitlist
 
         # Create the edit dialog with the current entry's data
-        dialog = WaitlistDialog(
+        dialog = dialog_class(
             self,
             station_names,
-            title="Edit Waitlist Entry",
+            title=f"Edit {'Bowling' if waitlist_type == 'Bowling Lanes' else 'Game Center'} Waitlist Entry",
             prompt="Edit details:"
         )
 
@@ -1689,41 +2274,82 @@ class GamingCenterApp(ctk.CTk):
         dialog.phone_entry.insert(0, entry["phone"])
         dialog.size_entry.insert(0, str(entry["size"]))
         dialog.notes_entry.insert(0, entry["notes"])
-        dialog.station_var.set(entry["station"])
+        
+        # Handle station differently for each dialog type
+        if waitlist_type == "Game Center":
+            dialog.station_var.set(entry["station"])
+        
+        # Pre-populate email if it exists
+        if 'email' in entry and entry['email']:
+            dialog.email_entry.insert(0, entry["email"])
+        
+        # If it's a bowling entry, pre-populate the lanes needed field
+        if waitlist_type == "Bowling Lanes" and 'lanes_needed' in entry:
+            dialog.lanes_needed_var.set(str(entry["lanes_needed"]))
+            dialog.update_lane_selector()
+            
+            # Set preferred lanes if they exist
+            if 'preferred_lanes' in entry and entry['preferred_lanes']:
+                dialog.specify_lanes_var.set(True)
+                dialog.toggle_lane_preferences()
+                for i, lane in enumerate(entry['preferred_lanes']):
+                    if i < len(dialog.lane_selectors):
+                        lane_dropdown = [w for w in dialog.lane_selectors[i].winfo_children() if isinstance(w, ctk.CTkComboBox)]
+                        if lane_dropdown:
+                            lane_dropdown[0].set(lane)
 
         # Show the dialog and get the result
         result = dialog.show()
         if result:
             # Update the entry in the waitlist
-            index = self.waitlist.index(entry)
-            self.waitlist[index] = result
-
-            # Refresh the waitlist display
+            if entry in current_waitlist:
+                index = current_waitlist.index(entry)
+                current_waitlist[index] = result
+                self.update_waitlist_tree()
+                self.update_count_label()
             self.update_waitlist_tree()
-
+            self.update_waitlist_count()  # Update the sidebar count label
     def remove_waitlist_entry(self, entry):
         """Remove an entry from the waitlist."""
-        self.waitlist.remove(entry)
-        self.update_waitlist_tree()
-        self.update_count_label()  # Update the count label
-        self.update_waitlist_count()  # Update the count label
-        self.update_notification_bubble()  # Update the notification bubble
+        waitlist_type = self.waitlist_type_var.get()
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        
+        if entry in current_waitlist:
+            current_waitlist.remove(entry)
+            self.update_waitlist_tree()
+            self.update_count_label()
+            self.update_waitlist_count()  # This will now correctly count both lists
+            self.update_notification_bubble()  # Update notification for all changes
+            self.update_waitlist_count()
+            
+            # Only update notification bubble for game center waitlist
+            if waitlist_type == "Game Center":
+                self.update_notification_bubble()
 
     def complete_waitlist_entry(self, entry):
         """Mark an entry as complete."""
-        self.waitlist.remove(entry)
-        self.update_waitlist_tree()
-        self.update_count_label()  # Update the count label
-        self.update_waitlist_count()  # Update the count label
+        waitlist_type = self.waitlist_type_var.get()
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        
+        if entry in current_waitlist:
+            current_waitlist.remove(entry)
+            self.update_waitlist_tree()
+            self.update_count_label()
+            self.update_waitlist_count()  # This will now correctly count both lists
+            self.update_notification_bubble()  # Update notification for all changes
 
     def calculate_wait_time(self, station_name):
-        for station in self.stations:
-            if f"{station.station_type} {station.station_num}" == station_name:
-                elapsed_time = station.timer.get_time()
-                remaining_time = max(station.timer.time_limit - elapsed_time, 0)
-                minutes, seconds = divmod(remaining_time, 60)
-                return f"{int(minutes)} mins {int(seconds)} secs"
-        return "N/A"
+        try:
+            for station in self.stations:
+                if f"{station.station_type} {station.station_num}" == station_name:
+                    elapsed_time = station.timer.get_time()
+                    remaining_time = max(station.timer.time_limit - elapsed_time, 0)
+                    minutes, seconds = divmod(remaining_time, 60)
+                    return f"{int(minutes)} mins {int(seconds)} secs"
+            return "N/A"
+        except Exception as e:
+            print(f"Error calculating wait time: {str(e)}")
+            return "N/A"
 
 if __name__ == "__main__":
     app = GamingCenterApp()
