@@ -9,6 +9,7 @@ from PIL import Image, ImageTk
 import time
 import requests
 from io import BytesIO
+import math
 # import cairosvg
 import json
 import os
@@ -200,8 +201,7 @@ class TimerManager:
 
 class CombinedTimer(ctk.CTkCanvas):
     def __init__(self, parent, width=120, height=120):
-
-
+        # Get parent background color
         parent_fg = parent.cget("fg_color")
 
         if isinstance(parent_fg, str):
@@ -210,10 +210,36 @@ class CombinedTimer(ctk.CTkCanvas):
             appearance_mode = ctk.get_appearance_mode()
             parent_bg = parent_fg[1] if appearance_mode == "Dark" else parent_fg[0]
 
-
-
-
+        # Create canvas with antialiasing hint (not all platforms support this)
         super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent_bg)
+        
+        # Try to enable antialiasing if available on the platform
+        try:
+            self.tk.call("::tk::unsupported::MacWindowStyle", "usepreferredtitlestyle", self._w, "dark")
+        except Exception:
+            pass  # Silently fail if unsupported
+            
+        # In some systems, we can request antialiased drawing 
+        try:
+            self.tk.call('tk', 'scaling', 1.0)  # Consistent scaling
+        except Exception:
+            pass
+
+        # Request highest quality rendering
+        try:
+            self.tk.call('::tk::unsupported::MacWindowStyle', 'usepreferredtitlestyle', self._w, 'dark')
+        except Exception:
+            pass
+            
+        try:
+            # These commands can help improve rendering quality on some systems
+            self.tk.call('tk', 'scaling', 2.0)  # Increased scaling factor for sharper rendering
+            self.tk.eval('package require Tk 8.6')  # Ensure using Tk 8.6+ features if available
+            self.tk.call('::tk::unsupported::ExposeCommandOptions', 'circle', '-smooth')
+            self.tk.call('::tk::unsupported::ExposeCommandOptions', 'arc', '-smooth')
+        except Exception:
+            pass
+            
         self.width = width
         self.height = height
         self.time_limit = 1 * 60
@@ -305,15 +331,21 @@ class CombinedTimer(ctk.CTkCanvas):
         print("validate_fields called")
         missing_fields = []
         
-        # Only check the name field as required
-        if not self.name_entry or not self.name_entry.get().strip():
+        # Debug print to check name_entry exists and gets a value
+        if self.name_entry:
+            print(f"Name entry content: '{self.name_entry.get()}'")
+        else:
+            print("Name entry is None")
+        
+        # Check if name_entry exists and has content
+        if not hasattr(self, 'name_entry') or self.name_entry is None or not self.name_entry.get().strip():
             missing_fields.append("Name")
         
         # Only check game and controller fields for console stations
         if self.station_type in ["XBOX", "Switch"]:
-            if not self.game_var or not self.game_var.get():
+            if not hasattr(self, 'game_var') or self.game_var is None or not self.game_var.get():
                 missing_fields.append("Game")
-            if not self.controller_var or not self.controller_var.get():
+            if not hasattr(self, 'controller_var') or self.controller_var is None or not self.controller_var.get():
                 missing_fields.append("Controller")
 
         if missing_fields:
@@ -324,14 +356,27 @@ class CombinedTimer(ctk.CTkCanvas):
         return True
 
     def draw_ring(self, progress, color_override=None):
-        """Draw the progress ring with optional color override"""
+        """Draw the progress ring with perfectly smooth circular appearance"""
         self.delete("all")  # Clear the canvas
-
-        # Calculate coordinates for the ring
-        x0, y0, x1, y1 = 6, 6, self.width - 6, self.height - 6
-
-        # Draw background ring
-        self.create_oval(x0, y0, x1, y1, outline='gray20', width=8)
+        
+        # Use antialiased drawing with thicker lines for smoother appearance
+        ring_width = 12  # Increased thickness for smoother edges
+        
+        # Calculate center and radius
+        center_x = self.width / 2
+        center_y = self.height / 2
+        outer_radius = min(center_x, center_y) - (ring_width / 2) - 2
+        
+        # Draw background ring (perfect circle)
+        self.create_oval(
+            center_x - outer_radius,
+            center_y - outer_radius,
+            center_x + outer_radius,
+            center_y + outer_radius,
+            outline='gray20',
+            width=ring_width,
+            tags="bg_ring"
+        )
 
         if progress > 0:
             # Calculate color based on progress or use override
@@ -339,14 +384,55 @@ class CombinedTimer(ctk.CTkCanvas):
                 color = color_override
             else:
                 color = 'green' if progress * self.time_limit < self.warning_threshold else \
-                       'orange' if progress * self.time_limit < self.warning_threshold2 else 'red'
-
-            # Calculate the extent of the arc
+                      'orange' if progress * self.time_limit < self.warning_threshold2 else 'red'
+            
+            # Calculate the extent of the arc (negative for clockwise)
             extent = 360 * progress
-
-            # Draw the progress arc
-            self.create_arc(x0, y0, x1, y1, start=-90, extent=-extent, outline=color, width=9, style='arc')
-
+            
+            # For smoother arcs, we'll use multiple thin arcs layered on top of each other
+            # This creates a much smoother appearance by blending multiple antialiased edges
+            for i in range(3):
+                offset = i * 0.5  # Small offset for each layer
+                adjusted_width = ring_width - (i * 0.5)
+                
+                self.create_arc(
+                    center_x - outer_radius - offset,
+                    center_y - outer_radius - offset,
+                    center_x + outer_radius + offset,
+                    center_y + outer_radius + offset,
+                    start=90,                # Start at top (12 o'clock position)
+                    extent=-extent,          # Move clockwise
+                    outline=color,
+                    width=adjusted_width,
+                    style='arc',
+                    tags=f"progress_layer_{i}"
+                )
+        
+        # Apply additional smoothing by adding a very thin overlay
+        if progress > 0 and progress < 1.0:
+            # Add a thin line at the exact progress position for a crisp edge
+            angle_radians = (90 - (progress * 360)) * (3.14159 / 180)
+            end_x = center_x + outer_radius * math.cos(angle_radians)
+            end_y = center_y - outer_radius * math.sin(angle_radians)
+            
+            # Calculate color based on progress or use override
+            if color_override:
+                color = color_override
+            else:
+                color = 'green' if progress * self.time_limit < self.warning_threshold else \
+                      'orange' if progress * self.time_limit < self.warning_threshold2 else 'red'
+            
+            # Create a small circle at the end point of the arc for a more polished look
+            self.create_oval(
+                end_x - (ring_width/2),
+                end_y - (ring_width/2),
+                end_x + (ring_width/2),
+                end_y + (ring_width/2),
+                fill=color,
+                outline=color,
+                tags="progress_endpoint"
+            )
+        
         self.last_progress = progress  # Update last progress to current
 
     def update_timer(self):
@@ -614,8 +700,22 @@ class Station(ctk.CTkFrame):
         timer_frame = ctk.CTkFrame(self, fg_color="transparent")
         timer_frame.pack(fill="x", padx=2, pady=0)
         
-        # Timer ring
+        # Timer ring - slightly larger for smoother appearance
+        self.timer = CombinedTimer(self, width=130, height=130)  # Increased from 120x120
         self.timer.pack(side="left", padx=5, pady=0)
+        
+        # Re-establish connections to ensure they're properly set
+        self.timer.name_entry = self.name_entry
+        self.timer.id_entry = self.id_entry
+        self.timer.parent_station = self
+        
+        if hasattr(self, 'game_var'):
+            self.timer.game_var = self.game_var
+            self.timer.game_dropdown = self.game_dropdown
+            
+        if hasattr(self, 'controller_var'):
+            self.timer.controller_var = self.controller_var
+            self.timer.controller_dropdown = self.controller_dropdown
 
         # Timer label
         self.timer_label = ctk.CTkLabel(
@@ -2209,6 +2309,12 @@ class GamingCenterApp(ctk.CTk):
         else:
             self.placeholder_buttons_frame.pack(pady=10, padx=5)  # Show placeholder buttons
         
+        # Load icon images
+        check_icon = ctk.CTkImage(Image.open("./icon_cache/check.png"), size=(16, 16))
+        x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
+        pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
+        message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
+        
         # Add entries and their corresponding buttons
         for entry in current_waitlist:
             if search_text and search_text not in entry['party'].lower():
@@ -2232,13 +2338,6 @@ class GamingCenterApp(ctk.CTk):
                 entry['arrival']
             ))
             
-            # Load icons
-            check_icon = ctk.CTkImage(Image.open("./icon_cache/check.png"), size=(16, 16))
-            x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
-            pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
-            message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
-            
-            # Create a frame for this entry's buttons
             entry_buttons = ctk.CTkFrame(self.buttons_frame)
             entry_buttons.pack(pady=10, padx=5)
             
