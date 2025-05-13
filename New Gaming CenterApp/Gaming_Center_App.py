@@ -216,7 +216,7 @@ class CombinedTimer(ctk.CTkCanvas):
         super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent_bg)
         self.width = width
         self.height = height
-        self.time_limit = 30 * 60
+        self.time_limit = 1 * 60
         self.warning_threshold = 0.8 * self.time_limit
         self.warning_threshold2 = 0.9 * self.time_limit
         
@@ -226,6 +226,9 @@ class CombinedTimer(ctk.CTkCanvas):
         self.alert_shown = False
         self.last_progress = 0
         self._update_loop_id = None  # Store the ID of the update loop
+        self.is_blinking = False     # New flag to track blinking state
+        self.blink_state = True      # Tracks the on/off state for blinking
+        self.blink_count = 0         # Counter for blink cycles
         
         # Initialize fields as None
         self.name_entry = None
@@ -302,11 +305,9 @@ class CombinedTimer(ctk.CTkCanvas):
         print("validate_fields called")
         missing_fields = []
         
-        # Always check name and ID for all station types
+        # Only check the name field as required
         if not self.name_entry or not self.name_entry.get().strip():
             missing_fields.append("Name")
-        # if not self.id_entry or not self.id_entry.get().strip():
-        #     missing_fields.append("ID Number (Enter N/A if not applicable)")
         
         # Only check game and controller fields for console stations
         if self.station_type in ["XBOX", "Switch"]:
@@ -322,11 +323,8 @@ class CombinedTimer(ctk.CTkCanvas):
         
         return True
 
-    def draw_ring(self, progress):
-        # Only update if progress has changed significantly
-        if abs(progress - self.last_progress) <= 0.01:
-            return  # Skip drawing if change is minimal
-
+    def draw_ring(self, progress, color_override=None):
+        """Draw the progress ring with optional color override"""
         self.delete("all")  # Clear the canvas
 
         # Calculate coordinates for the ring
@@ -336,8 +334,12 @@ class CombinedTimer(ctk.CTkCanvas):
         self.create_oval(x0, y0, x1, y1, outline='gray20', width=8)
 
         if progress > 0:
-            # Calculate color based on progress
-            color = 'green' if progress * self.time_limit < self.warning_threshold else 'orange' if progress * self.time_limit < self.warning_threshold2 else 'red'
+            # Calculate color based on progress or use override
+            if color_override:
+                color = color_override
+            else:
+                color = 'green' if progress * self.time_limit < self.warning_threshold else \
+                       'orange' if progress * self.time_limit < self.warning_threshold2 else 'red'
 
             # Calculate the extent of the arc
             extent = 360 * progress
@@ -358,26 +360,54 @@ class CombinedTimer(ctk.CTkCanvas):
             # Calculate progress
             progress = min(elapsed / self.time_limit, 1.0)
 
-            # Update progress ring only if progress has changed significantly
-            if abs(progress - self.last_progress) > 0.01:  # Only update if progress changes by 1%
-                self.draw_ring(progress)
-                self.last_progress = progress  # Update last progress to current
-
-            # Update timer color based on elapsed time
+            # If time limit exceeded, start blinking instead of showing popup
             if elapsed >= self.time_limit:
+                if not self.is_blinking:
+                    self.is_blinking = True
+                    self.start_blinking()
+                    
+                    # Trigger visual alerts instead of popup
+                    if hasattr(self, 'parent_station'):
+                        self.parent_station.highlight_time_exceeded()
+                        
                 self.timer_label.configure(text_color="red")
-                if not self.alert_shown:
-                    self.show_time_alert()
-                    self.alert_shown = True
-            elif elapsed >= (self.time_limit * 0.8):
+            elif elapsed >= (self.time_limit * 0.9):
                 self.timer_label.configure(text_color="orange")
+            elif elapsed >= (self.time_limit * 0.8):
+                self.timer_label.configure(text_color="yellow")
             else:
                 self.timer_label.configure(text_color="green")
+                
+            # Update progress ring if not blinking
+            if not self.is_blinking and abs(progress - self.last_progress) > 0.01:
+                self.draw_ring(progress)
+                self.last_progress = progress
 
             # Schedule the next update
-            self.after(1000, self.update)  # Update every 1 second instead of 500ms
+            self._update_loop_id = self.after(1000, self.update_timer)
+
+    def start_blinking(self):
+        """Start blinking the timer ring to indicate time limit exceeded"""
+        if not self.is_blinking:
+            return
+            
+        # Toggle blink state
+        self.blink_state = not self.blink_state
+        
+        # Draw the ring based on current blink state
+        if self.blink_state:
+            self.draw_ring(1.0, "red")  # Full ring in red when visible
+        else:
+            self.draw_ring(1.0, "dark red")  # Dimmer red when "off"
+            
+        # Schedule the next blink
+        self.after(500, self.start_blinking)  # Blink every 500ms
 
     def show_time_alert(self):
+        """
+        Now used to activate visual alerts instead of showing popup
+        """
+        # We'll keep this method but change its functionality
         if not hasattr(self, 'last_alert_time'):
             self.last_alert_time = 0
 
@@ -386,13 +416,10 @@ class CombinedTimer(ctk.CTkCanvas):
             return
 
         self.last_alert_time = current_time
-
-        station_info = f"Station {self.station_num} ({self.station_type})"
-        user_name = self.name_entry.get()
-        if user_name:
-            station_info += f" - {user_name}"
-        messagebox.showwarning("Time Limit Exceeded", 
-                             f"{station_info}\nhas exceeded the 30-minute time limit.\nPlease ask the user to wrap up their session.")
+        
+        # Instead of showing a popup, we'll update the parent station's appearance
+        if hasattr(self, 'parent_station'):
+            self.parent_station.highlight_time_exceeded()
 
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
@@ -621,13 +648,28 @@ class Station(ctk.CTkFrame):
         self.timer.update_timer()
         self.after(1000, self.update_timer)
 
+    def highlight_time_exceeded(self):
+        """Highlight the station when time is exceeded"""
+        # Change the border color to indicate time exceeded
+        self.configure(border_color="red", border_width=3)
+        
+        # Add or update an alert label if not already present
+        if not hasattr(self, 'alert_label'):
+            self.alert_label = ctk.CTkLabel(
+                self,
+                text="TIME EXCEEDED",
+                fg_color="red",
+                text_color="white",
+                corner_radius=6,
+                font=("Helvetica", 12, "bold")
+            )
+            self.alert_label.place(relx=0.5, rely=0.15, anchor="center")
+        else:
+            # Make sure the alert label is visible
+            self.alert_label.place(relx=0.5, rely=0.15, anchor="center")
+
     def show_time_alert(self):
-        station_info = f"Station {self.station_num} ({self.station_type})"
-        user_name = self.name_entry.get()
-        if user_name:
-            station_info += f" - {user_name}"
-        messagebox.showwarning("Time Limit Exceeded", 
-                             f"{station_info}\nhas exceeded the 2-minute time limit.\nPlease ask the user to wrap up their session.")
+        self.highlight_time_exceeded()
 
     def start_timer(self):
         self.timer.start()
@@ -641,6 +683,11 @@ class Station(ctk.CTkFrame):
         self.timer_label.configure(text="00:00:00", text_color="black")
         self.timer.draw_ring(0)  # Reset progress ring
         self.name_entry.delete(0, tk.END)
+        
+        # Reset any highlighting
+        self.configure(border_color=None, border_width=2)
+        if hasattr(self, 'alert_label'):
+            self.alert_label.place_forget()  # Hide the alert label
         
         if self.station_type in ["XBOX", "Switch"]:
             self.game_dropdown.set("")
