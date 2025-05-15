@@ -252,6 +252,7 @@ class CombinedTimer(ctk.CTkCanvas):
         self.alert_shown = False
         self.last_progress = 0
         self._update_loop_id = None  # Store the ID of the update loop
+        self._blink_loop_id = None  # Store the ID of the blink loop
         self.is_blinking = False     # New flag to track blinking state
         self.blink_state = True      # Tracks the on/off state for blinking
         self.blink_count = 0         # Counter for blink cycles
@@ -288,11 +289,15 @@ class CombinedTimer(ctk.CTkCanvas):
 
     def stop(self):
         if self.is_running:
-            self.elapsed_time = time.time() - self.start_time  # <-- Add this line
+            self.elapsed_time = time.time() - self.start_time
             self.is_running = False
-            if self._update_loop_id:
-                self.after_cancel(self._update_loop_id)
-                self._update_loop_id = None
+        if self._update_loop_id:
+            self.after_cancel(self._update_loop_id)
+            self._update_loop_id = None
+        if self._blink_loop_id:  # <-- Add this block
+            self.after_cancel(self._blink_loop_id)
+            self._blink_loop_id = None
+        self.is_blinking = False  # Also stop blinking
 
     def reset(self):
         # Remove the logging call from here since Station will handle it
@@ -464,24 +469,20 @@ class CombinedTimer(ctk.CTkCanvas):
                 self.last_progress = progress
 
             # Schedule the next update
-            self._update_loop_id = self.after(1000, self.update_timer)
+        self._update_loop_id = self.after(1000, self.update_timer)
 
     def start_blinking(self):
         """Start blinking the timer ring to indicate time limit exceeded"""
         if not self.is_blinking:
             return
-            
-        # Toggle blink state
         self.blink_state = not self.blink_state
-        
-        # Draw the ring based on current blink state
         if self.blink_state:
-            self.draw_ring(1.0, "red")  # Full ring in red when visible
+            self.draw_ring(1.0, "red")
         else:
-            self.draw_ring(1.0, "dark red")  # Dimmer red when "off"
-            
-        # Schedule the next blink
-        self.after(500, self.start_blinking)  # Blink every 500ms
+            self.draw_ring(1.0, "dark red")
+        # Store the after id for blinking
+        self._blink_loop_id = self.after(500, self.start_blinking)
+
 
     def show_time_alert(self):
         """
@@ -516,6 +517,59 @@ class Station(ctk.CTkFrame):
 
         self.setup_ui()
         self.update_timer()
+
+
+
+
+    def log_usage(self):
+        try:
+            # Use a robust, shared log directory
+            log_file_path = os.path.join("usage_log.txt")
+
+            # Gather values safely
+            user_name = self.name_entry.get().strip() if hasattr(self, 'name_entry') and self.name_entry else "Unknown"
+            id_number = self.id_entry.get().strip() if hasattr(self, 'id_entry') and self.id_entry else "Unknown"
+            game = "N/A"
+            controller = "N/A"
+            if self.station_type in ["XBOX", "Switch"]:
+                if hasattr(self, 'game_var') and self.game_var:
+                    game = self.game_var.get()
+                if hasattr(self, 'controller_var') and self.controller_var:
+                    controller = self.controller_var.get()
+            duration = self.timer.get_time() if hasattr(self.timer, 'get_time') else 0
+            formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
+
+            # Prepare log entry
+            log_entry = [
+                f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}",
+                f"Station Type: {self.station_type}",
+                f"Station Number: {self.station_num}",
+                f"User Name: {user_name}",
+                f"ID Number: {id_number}" if not {id_number} else "ID Number: N/A",
+                f"Duration: {formatted_duration}",
+                f"Game: {game}",
+                f"Controllers: {controller}",
+                "--------------------------------------------------"
+            ]
+
+            print(f"Logging to: {log_file_path}")
+            print(f"Logging usage for Station {self.station_num}: {user_name}, Duration: {formatted_duration}")
+
+            # Write to log file
+            with open(log_file_path, "a", encoding="utf-8") as log_file:
+                log_file.write("\n".join(log_entry) + "\n")
+                log_file.flush()  # Ensure data is written to disk
+
+            print(f"Successfully logged usage for Station {self.station_num}")
+
+        except Exception as e:
+            import traceback
+            print(f"Error logging usage: {str(e)}")
+            print(traceback.format_exc())
+            messagebox.showerror(
+                "Logging Error",
+                f"Failed to log station usage. Please notify administrator.\nError: {str(e)}"
+            )
 
     def setup_ui(self):
         # Header frame
@@ -811,66 +865,13 @@ class Station(ctk.CTkFrame):
         if hasattr(self, 'alert_label'):
             self.alert_label.place_forget()  # Hide the alert label
 
-    def log_usage(self):
-        try:
-            # Get values safely with checks to avoid attribute errors
-            user_name = self.name_entry.get().strip() if hasattr(self, 'name_entry') and self.name_entry else "Unknown"
-            id_number = self.id_entry.get().strip() if hasattr(self, 'id_entry') and self.id_entry else "Unknown"
-            
-            # Get game and controller values if applicable
-            game = "N/A"
-            controller = "N/A"
-            if self.station_type in ["XBOX", "Switch"]:
-                if hasattr(self, 'game_var') and self.game_var:
-                    game = self.game_var.get()
-                if hasattr(self, 'controller_var') and self.controller_var:
-                    controller = self.controller_var.get()
-        
-            # Get duration
-            duration = self.timer.get_time() if hasattr(self.timer, 'get_time') else 0
-            formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
-            
-            print("Logging to:", os.path.abspath("usage_log.txt"))
-            # Debug output
-            print(f"Logging usage for Station {self.station_num}: {user_name}, Duration: {formatted_duration}")
-            
-            # Prepare log entry
-            log_entry = [
-                f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}",
-                f"Station Type: {self.station_type}",
-                f"Station Number: {self.station_num}",
-                f"User Name: {user_name}",
-                f"ID Number: {id_number}",
-                f"Duration: {formatted_duration}",
-                f"Game: {game}",
-                f"Controllers: {controller}",
-                "--------------------------------------------------"
-            ]
-            
-            # Make sure the log directory exists
-            os.makedirs(os.path.dirname("usage_log.txt") if os.path.dirname("usage_log.txt") else ".", exist_ok=True)
-            
-            # Write to log file
-            with open("usage_log.txt", "a", encoding="utf-8") as log_file:
-                log_file.write("\n".join(log_entry) + "\n")
-            
-            print(f"Successfully logged usage for Station {self.station_num}")
-            
-        except Exception as e:
-            import traceback
-            print(f"Error logging usage: {str(e)}")
-            print(traceback.format_exc())  # Print the full traceback for debugging
-            # Show error message to user
-            messagebox.showerror("Logging Error", 
-                              f"Failed to log station usage. Please notify administrator.\nError: {str(e)}")
-
-    def update_games_list(self):
-        if self.station_type in ["XBOX", "Switch"]:
-            console_type = "XBOX" if self.station_type == "XBOX" else "Switch"
-            games = self.parent.get_games_for_console(console_type)
-            self.game_dropdown.configure(values=games)
-            if self.game_var.get() not in games:
-                self.game_var.set(games[0] if games else '')
+def update_games_list(self):
+    if self.station_type in ["XBOX", "Switch"]:
+        console_type = "XBOX" if self.station_type == "XBOX" else "Switch"
+        games = self.parent.get_games_for_console(console_type)
+        self.game_dropdown.configure(values=games)
+        if self.game_var.get() not in games:
+            self.game_var.set(games[0] if games else '')
 class GamesWindow(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -1593,10 +1594,12 @@ class GamingCenterApp(ctk.CTk):
             station = Station(main_frame, self, "XBOX", 4 - i)  # Pass self to Station
             station.grid(row=i, column=0, padx=10, pady=10, sticky="nsew")
             self.stations.append(station)
+            self.timers.append(station.timer)  # Add the timer to the list
         # Create 5th console station (top center)
         station = Station(main_frame, self, "XBOX", 5)  # Pass self to Station
         station.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
         self.stations.append(station)
+        self.timers.append(station.timer)  # Add the timer to the list
         # Create other activity stations (under 5th console)
         activities = [
             ("Ping-Pong", 1),
@@ -1611,6 +1614,7 @@ class GamingCenterApp(ctk.CTk):
             station = Station(main_frame, self, activity, num)  # Pass self to Station
             station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             self.stations.append(station)
+            self.timers.append(station.timer)  # Add the timer to the list
             col += 1
             if col > 2:  # Move to next row after 2 columns
                 col = 1
