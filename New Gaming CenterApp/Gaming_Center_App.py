@@ -287,24 +287,19 @@ class CombinedTimer(ctk.CTkCanvas):
             self.update_timer()
 
     def stop(self):
-
         if self.is_running:
-
+            self.elapsed_time = time.time() - self.start_time  # <-- Add this line
             self.is_running = False
-
             if self._update_loop_id:
-
-                self.after_cancel(self._update_loop_id)  # Cancel the update loop
-
-                self._update_loop_id = None  # Reset the loop ID
+                self.after_cancel(self._update_loop_id)
+                self._update_loop_id = None
 
     def reset(self):
-        if self.is_running or self.elapsed_time > 0:  # Only log if timer was actually used
-            self.parent_station.log_usage()  # Log before resetting
-        
+        # Remove the logging call from here since Station will handle it
         self.is_running = False
         self.elapsed_time = 0
         self.alert_shown = False
+        self.is_blinking = False  # Make sure to reset blinking state
         self.timer_label.configure(text="00:00:00", text_color="white")
         self.draw_ring(0)
         
@@ -317,7 +312,6 @@ class CombinedTimer(ctk.CTkCanvas):
             self.game_var.set("")
         if self.controller_var:
             self.controller_var.set("")
-
 
     def get_time(self):
         if self.is_running:
@@ -736,7 +730,7 @@ class Station(ctk.CTkFrame):
         button_frame.pack(side="bottom", fill="x", padx=2, pady=2)
         ctk.CTkButton(button_frame, image=self.start_icon, text="Start", command=self.timer.start, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
         ctk.CTkButton(button_frame, image=self.stop_icon, text="Stop", command=self.timer.stop, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
-        ctk.CTkButton(button_frame, image=self.reset_icon, text="Reset", command=self.timer.reset, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
+        ctk.CTkButton(button_frame, image=self.reset_icon, text="Reset", command=self.reset_timer, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
 
     def change_console_type(self):
         self.station_type = self.console_var.get()
@@ -778,55 +772,97 @@ class Station(ctk.CTkFrame):
         self.timer.stop()
 
     def reset_timer(self):
-        self.timer.reset()
-        self.log_usage()
-        self.timer_label.configure(text="00:00:00", text_color="black")
-        self.timer.draw_ring(0)  # Reset progress ring
-        self.name_entry.delete(0, tk.END)
+        # First, capture if timer was actually used (before resetting)
+        should_log = self.timer.is_running or self.timer.elapsed_time > 0
         
-        # Reset any highlighting
-        self.configure(border_color=None, border_width=2)
+        # Stop the timer if it's running
+        if self.timer.is_running:
+            self.timer.stop()
+        
+        # Log usage if needed before resetting
+        if should_log:
+            self.log_usage()
+        
+        # Now reset the timer
+        self.timer.is_running = False
+        self.timer.elapsed_time = 0
+        self.timer.alert_shown = False
+        self.timer.is_blinking = False  # Stop blinking if active
+        self.timer.draw_ring(0)
+        
+        # Reset timer label color and text
+        if hasattr(self, 'timer_label'):
+            self.timer.timer_label.configure(text="00:00:00", text_color="white")
+        
+        # Clear fields
+        if self.name_entry:
+            self.name_entry.delete(0, tk.END)
+        if self.id_entry:
+            self.id_entry.delete(0, tk.END)
+        if hasattr(self, 'game_var') and self.game_var:
+            self.game_var.set("")
+        if hasattr(self, 'controller_var') and self.controller_var:
+            self.controller_var.set("")
+        
+        # Reset any highlighting with correct transparency value
+        self.configure(border_width=0)
+        
+        # Hide the alert label if it exists
         if hasattr(self, 'alert_label'):
             self.alert_label.place_forget()  # Hide the alert label
-        
-        if self.station_type in ["XBOX", "Switch"]:
-            self.game_dropdown.set("")
-            self.controller_dropdown.set("")
 
     def log_usage(self):
-            try:
-                # Get values safely using getattr to avoid attribute errors
-                user_name = self.timer.name_entry.get() if self.timer.name_entry else "Unknown"
-                id_number = self.timer.id_entry.get() if self.timer.id_entry else "Unknown"
-                game = self.timer.game_var.get() if self.timer.game_var else "N/A"
-                controller = self.timer.controller_var.get() if self.timer.controller_var else "N/A"
-                duration = self.timer.get_time()
-                formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
-                
-                # Prepare log entry
-                log_entry = [
-                    f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}",
-                    f"Station Type: {self.station_type}",
-                    f"Station Number: {self.station_num}",
-                    f"User Name: {user_name}",
-                    f"ID Number: {id_number}",
-                    f"Duration: {formatted_duration}",
-                    f"Game: {game}",
-                    f"Controllers: {controller}",
-                    "--------------------------------------------------"
-                ]
-                
-                # Write to log file
-                with open("usage_log.txt", "a") as log_file:
-                    log_file.write("\n".join(log_entry) + "\n")
-                
-                print(f"Successfully logged usage for Station {self.station_num}")
-                
-            except Exception as e:
-                print(f"Error logging usage: {str(e)}")
-                # Optionally show error message to user
-                messagebox.showerror("Logging Error", 
-                                f"Failed to log station usage. Please notify administrator.\nError: {str(e)}")
+        try:
+            # Get values safely with checks to avoid attribute errors
+            user_name = self.name_entry.get().strip() if hasattr(self, 'name_entry') and self.name_entry else "Unknown"
+            id_number = self.id_entry.get().strip() if hasattr(self, 'id_entry') and self.id_entry else "Unknown"
+            
+            # Get game and controller values if applicable
+            game = "N/A"
+            controller = "N/A"
+            if self.station_type in ["XBOX", "Switch"]:
+                if hasattr(self, 'game_var') and self.game_var:
+                    game = self.game_var.get()
+                if hasattr(self, 'controller_var') and self.controller_var:
+                    controller = self.controller_var.get()
+        
+            # Get duration
+            duration = self.timer.get_time() if hasattr(self.timer, 'get_time') else 0
+            formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
+            
+            print("Logging to:", os.path.abspath("usage_log.txt"))
+            # Debug output
+            print(f"Logging usage for Station {self.station_num}: {user_name}, Duration: {formatted_duration}")
+            
+            # Prepare log entry
+            log_entry = [
+                f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}",
+                f"Station Type: {self.station_type}",
+                f"Station Number: {self.station_num}",
+                f"User Name: {user_name}",
+                f"ID Number: {id_number}",
+                f"Duration: {formatted_duration}",
+                f"Game: {game}",
+                f"Controllers: {controller}",
+                "--------------------------------------------------"
+            ]
+            
+            # Make sure the log directory exists
+            os.makedirs(os.path.dirname("usage_log.txt") if os.path.dirname("usage_log.txt") else ".", exist_ok=True)
+            
+            # Write to log file
+            with open("usage_log.txt", "a", encoding="utf-8") as log_file:
+                log_file.write("\n".join(log_entry) + "\n")
+            
+            print(f"Successfully logged usage for Station {self.station_num}")
+            
+        except Exception as e:
+            import traceback
+            print(f"Error logging usage: {str(e)}")
+            print(traceback.format_exc())  # Print the full traceback for debugging
+            # Show error message to user
+            messagebox.showerror("Logging Error", 
+                              f"Failed to log station usage. Please notify administrator.\nError: {str(e)}")
 
     def update_games_list(self):
         if self.station_type in ["XBOX", "Switch"]:
