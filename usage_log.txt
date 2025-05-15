@@ -1598,3 +1598,30 @@ Duration: 00:01:01
 Game: 2k: 25
 Controllers: 1
 --------------------------------------------------
+Date: 2025-05-15 14:55:04.54
+Station Type: XBOX
+Station Number: 5
+User Name: Boe Jiden
+ID Number: N/A
+Duration: 00:00:41
+Game: 2k: 25
+Controllers: 1
+--------------------------------------------------
+Date: 2025-05-15 14:55:05.39
+Station Type: PoolTable
+Station Number: 1
+User Name: Doinny
+ID Number: N/A
+Duration: 00:00:36
+Game: N/A
+Controllers: N/A
+--------------------------------------------------
+Date: 2025-05-15 14:55:06.29
+Station Type: XBOX
+Station Number: 1
+User Name: Joey
+ID Number: N/A
+Duration: 00:00:27
+Game: Super Smash Bros
+Controllers: 4
+--------------------------------------------------

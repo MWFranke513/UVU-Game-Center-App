@@ -872,6 +872,7 @@ def update_games_list(self):
         self.game_dropdown.configure(values=games)
         if self.game_var.get() not in games:
             self.game_var.set(games[0] if games else '')
+
 class GamesWindow(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -1426,13 +1427,61 @@ class GamingCenterApp(ctk.CTk):
         #         # Create main container with more padding
         # main_frame = ctk.CTkFrame(self.content_area)
         # main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-
-
         # self.create_menu()
         self.setup_ui()
-
+        
+        self.load_station_states()
         # Bind the close event to the stop_timers method
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def load_station_states(self):
+        save_path = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "UVU-Game-Center-App", "station_state.json")
+        if not os.path.exists(save_path):
+            return
+        with open(save_path, "r") as f:
+            state = json.load(f)
+        for s, station in zip(state, self.stations):
+            station.name_entry.delete(0, tk.END)
+            station.name_entry.insert(0, s.get("name", ""))
+            station.id_entry.delete(0, tk.END)
+            station.id_entry.insert(0, s.get("id", ""))
+            if hasattr(station, "game_var") and station.game_var:
+                station.game_var.set(s.get("game", ""))
+            if hasattr(station, "controller_var") and station.controller_var:
+                station.controller_var.set(s.get("controller", ""))
+            timer_state = s.get("timer", {})
+            timer = station.timer
+            timer.time_limit = timer_state.get("time_limit", timer.time_limit)
+            timer.elapsed_time = timer_state.get("elapsed_time", 0)
+            timer.start_time = timer_state.get("start_time", 0)
+            timer.is_running = timer_state.get("is_running", False)
+            if timer.is_running:
+                timer.update_timer()
+            else:
+                timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
+
+    def save_station_states(self):
+        state = []
+        for station in self.stations:
+            timer = station.timer
+            state.append({
+                "station_type": station.station_type,
+                "station_num": station.station_num,
+                "name": station.name_entry.get() if station.name_entry else "",
+                "id": station.id_entry.get() if station.id_entry else "",
+                "game": station.game_var.get() if hasattr(station, "game_var") and station.game_var else "",
+                "controller": station.controller_var.get() if hasattr(station, "controller_var") and station.controller_var else "",
+                "timer": {
+                    "is_running": timer.is_running,
+                    "start_time": timer.start_time,
+                    "elapsed_time": timer.elapsed_time,
+                    "time_limit": timer.time_limit
+                }
+            })
+        save_path = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "UVU-Game-Center-App", "station_state.json")
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, "w") as f:
+            json.dump(state, f)
 
 
     def setup_sidebar(self):
@@ -1568,7 +1617,7 @@ class GamingCenterApp(ctk.CTk):
     def on_close(self):
 
         self.stop_timers()  # Stop all timers
-
+        self.save_station_states()
         self.destroy()      # Close the application
 
     def setup_ui(self):
