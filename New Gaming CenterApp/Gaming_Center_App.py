@@ -278,9 +278,9 @@ class CombinedTimer(ctk.CTkCanvas):
         self.timer_label = ctk.CTkLabel(
             self.label_frame, 
             text="00:00:00", 
-            font=ctk.CTkFont(family="Helvetica", size=16)
+            font=ctk.CTkFont(family="Helvetica", size=16, weight="bold"),
         )
-        self.timer_label.pack(expand=True)
+        self.timer_label.pack(expand=True, padx=0, pady=0)
         
     def start(self):
         print("start method called")
@@ -369,12 +369,12 @@ class CombinedTimer(ctk.CTkCanvas):
         width, height = int(self.width * scale), int(self.height * scale)
         
         # Make the ring thicker - 7% of canvas size
-        ring_width = int(min(width, height) * 0.07)
+        ring_width = int(min(width, height) * 0.09)
         
         center = width // 2, height // 2
         
         # Use more of the available space (95%)
-        radius = int(min(center) * 0.95 - (ring_width // 2))
+        radius = int(min(center) * 0.9 - (ring_width // 2))
         
         # Create transparent image
         img = PIL.Image.new("RGBA", (width, height), (0, 0, 0, 0))
@@ -719,11 +719,11 @@ class Station(ctk.CTkFrame):
 
         # Timer frame
         timer_frame = ctk.CTkFrame(self, fg_color="transparent")
-        timer_frame.pack(fill="x", padx=2, pady=0)
+        timer_frame.pack(fill="x", padx=15, pady=5)
         
         # Timer ring - slightly larger for smoother appearance
-        self.timer = CombinedTimer(self, width=130, height=130)  # Increased from 120x120
-        self.timer.pack(side="left", padx=5, pady=0)
+        self.timer = CombinedTimer(self, width=140, height=140)  # Increased from 120x120
+        self.timer.pack(side="left", padx=10, pady=10, anchor="center")
         
         # Re-establish connections to ensure they're properly set
         self.timer.name_entry = self.name_entry
@@ -754,10 +754,18 @@ class Station(ctk.CTkFrame):
 
         # Control buttons
         button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        button_frame.pack(side="bottom", fill="x", padx=2, pady=2)
-        ctk.CTkButton(button_frame, image=self.start_icon, text="Start", command=self.timer.start, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
-        ctk.CTkButton(button_frame, image=self.stop_icon, text="Stop", command=self.timer.stop, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
-        ctk.CTkButton(button_frame, image=self.reset_icon, text="Reset", command=self.reset_timer, width=30, height=30, corner_radius=20).pack(side="left", padx=2)
+        button_frame.pack(side="bottom", fill="x", padx=10, pady=(0, 5))  # Reduced top padding
+        
+        # Create a container for the buttons to ensure consistent spacing
+        btn_container = ctk.CTkFrame(button_frame, fg_color="transparent")
+        btn_container.pack(side="left", padx=0)
+
+        ctk.CTkButton(btn_container, image=self.start_icon, text="Start", command=self.timer.start, 
+                      width=30, height=30, corner_radius=20).pack(side="left", padx=2)
+        ctk.CTkButton(btn_container, image=self.stop_icon, text="Stop", command=self.timer.stop, 
+                      width=30, height=30, corner_radius=20).pack(side="left", padx=2)
+        ctk.CTkButton(btn_container, image=self.reset_icon, text="Reset", command=self.reset_timer, 
+                      width=30, height=30, corner_radius=20).pack(side="left", padx=2)
 
     def change_console_type(self):
         self.station_type = self.console_var.get()
@@ -784,10 +792,10 @@ class Station(ctk.CTkFrame):
                 corner_radius=6,
                 font=("Helvetica", 12, "bold")
             )
-            self.alert_label.place(relx=0.5, rely=0.15, anchor="center")
+            self.alert_label.place(relx=0.5, rely=0.09, anchor="center")
         else:
             # Make sure the alert label is visible
-            self.alert_label.place(relx=0.5, rely=0.15, anchor="center")
+            self.alert_label.place(relx=0.5, rely=0.09, anchor="center")
 
     def show_time_alert(self):
         self.highlight_time_exceeded()
@@ -2557,6 +2565,7 @@ class GamingCenterApp(ctk.CTk):
                 self.update_count_label()
             self.update_waitlist_tree()
             self.update_waitlist_count()  # Update the sidebar count label
+
     def remove_waitlist_entry(self, entry):
         """Remove an entry from the waitlist."""
         waitlist_type = self.waitlist_type_var.get()
@@ -2568,8 +2577,6 @@ class GamingCenterApp(ctk.CTk):
             self.update_count_label()
             self.update_waitlist_count()  # This will now correctly count both lists
             self.update_notification_bubble()  # Update notification for all changes
-            self.update_waitlist_count()
-            
             # Only update notification bubble for game center waitlist
             if waitlist_type == "Game Center":
                 self.update_notification_bubble()
