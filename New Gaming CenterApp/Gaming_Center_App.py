@@ -437,7 +437,7 @@ class CombinedTimer(ctk.CTkCanvas):
     def update_timer(self):
         if self.is_running:
             elapsed = self.get_time()
-            
+            print(f"Timer update: elapsed={elapsed}, is_running={self.is_running}")
             # Update timer display
             hours, minutes, seconds = map(int, (elapsed // 3600, (elapsed % 3600) // 60, elapsed % 60))
             self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
@@ -1438,32 +1438,73 @@ class GamingCenterApp(ctk.CTk):
         save_path = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "UVU-Game-Center-App", "station_state.json")
         if not os.path.exists(save_path):
             return
-        with open(save_path, "r") as f:
-            state = json.load(f)
-        for s, station in zip(state, self.stations):
-            station.name_entry.delete(0, tk.END)
-            station.name_entry.insert(0, s.get("name", ""))
-            station.id_entry.delete(0, tk.END)
-            station.id_entry.insert(0, s.get("id", ""))
-            if hasattr(station, "game_var") and station.game_var:
-                station.game_var.set(s.get("game", ""))
-            if hasattr(station, "controller_var") and station.controller_var:
-                station.controller_var.set(s.get("controller", ""))
-            timer_state = s.get("timer", {})
-            timer = station.timer
-            timer.time_limit = timer_state.get("time_limit", timer.time_limit)
-            timer.elapsed_time = timer_state.get("elapsed_time", 0)
-            timer.start_time = timer_state.get("start_time", 0)
-            timer.is_running = timer_state.get("is_running", False)
-            if timer.is_running:
-                timer.update_timer()
-            else:
-                timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
+        
+        try:
+            with open(save_path, "r") as f:
+                state = json.load(f)
+            
+            now = time.time()  # Get current time once at the beginning
+
+            for s, station in zip(state, self.stations):
+                # First restore all fields so validation won't fail when starting timer
+                if hasattr(station, "name_entry") and station.name_entry:
+                    station.name_entry.delete(0, tk.END)
+                    station.name_entry.insert(0, s.get("name", ""))
+                if hasattr(station, "id_entry") and station.id_entry:
+                    station.id_entry.delete(0, tk.END)
+                    station.id_entry.insert(0, s.get("id", ""))
+                if hasattr(station, "game_var") and station.game_var:
+                    station.game_var.set(s.get("game", ""))
+                if hasattr(station, "controller_var") and station.controller_var:
+                    station.controller_var.set(s.get("controller", ""))
+
+                # Now handle timer state
+                timer_state = s.get("timer", {})
+                timer = station.timer
+                
+                # Get saved values
+                timer.time_limit = timer_state.get("time_limit", timer.time_limit)
+                saved_elapsed = timer_state.get("elapsed_time", 0)
+                saved_start_time = timer_state.get("start_time", 0)
+                was_running = timer_state.get("is_running", False)
+                
+                # Debug prints to see what's happening
+                print(f"Station {station.station_num}: Was running: {was_running}, Saved elapsed: {saved_elapsed}")
+                
+                now = time.time()
+                
+                # Now handle timer state
+                timer_state = s.get("timer", {})
+                timer = station.timer
+                
+                # Get saved values
+                timer.time_limit = timer_state.get("time_limit", timer.time_limit)
+                saved_elapsed = timer_state.get("elapsed_time", 0)
+                saved_start_time = timer_state.get("start_time", 0)
+                was_running = timer_state.get("is_running", False)
+                
+                print(f"Station {station.station_num}: Was running: {was_running}, Saved elapsed: {saved_elapsed}")
+                
+                if was_running:
+                    now = time.time()
+                    timer.elapsed_time = saved_elapsed
+                    timer.start_time = now - saved_elapsed
+                    timer.is_running = True
+                    timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
+                    timer.update_timer()
+        except Exception as e:
+            import traceback
+            print(f"Error loading station states: {e}")
+            print(traceback.format_exc())
 
     def save_station_states(self):
         state = []
         for station in self.stations:
             timer = station.timer
+            is_running = timer.is_running
+            elapsed_time = timer.get_time()  # <-- Use get_time() here!
+            print(f"Saving station {station.station_num}: Running: {is_running}, Elapsed time: {elapsed_time}")
+            # Save the state of each station
             state.append({
                 "station_type": station.station_type,
                 "station_num": station.station_num,
@@ -1472,9 +1513,9 @@ class GamingCenterApp(ctk.CTk):
                 "game": station.game_var.get() if hasattr(station, "game_var") and station.game_var else "",
                 "controller": station.controller_var.get() if hasattr(station, "controller_var") and station.controller_var else "",
                 "timer": {
-                    "is_running": timer.is_running,
+                    "is_running": is_running,
                     "start_time": timer.start_time,
-                    "elapsed_time": timer.elapsed_time,
+                    "elapsed_time": elapsed_time,
                     "time_limit": timer.time_limit
                 }
             })
@@ -1615,9 +1656,8 @@ class GamingCenterApp(ctk.CTk):
 
 
     def on_close(self):
-
-        self.stop_timers()  # Stop all timers
         self.save_station_states()
+        self.stop_timers()  # Stop all timers
         self.destroy()      # Close the application
 
     def setup_ui(self):
