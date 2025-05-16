@@ -29,6 +29,10 @@ ctk.set_default_color_theme("./uvu_green.json")  # You can change this to other 
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image, ImageTk
+import PIL.Image
+import PIL.ImageDraw
+import PIL.ImageTk
+
 
 class CustomErrorBox(tk.Toplevel):
     def __init__(self, parent, title, message):
@@ -355,84 +359,52 @@ class CombinedTimer(ctk.CTkCanvas):
         return True
 
     def draw_ring(self, progress, color_override=None):
-        """Draw the progress ring with perfectly smooth circular appearance"""
-        self.delete("all")  # Clear the canvas
+        import PIL.Image, PIL.ImageDraw, PIL.ImageTk
+        import math
+
+        # Increase scale factor for higher quality
+        scale = 8
         
-        # Use antialiased drawing with thicker lines for smoother appearance
-        ring_width = 12  # Increased thickness for smoother edges
+        # Get dimensions from the actual canvas size
+        width, height = int(self.width * scale), int(self.height * scale)
         
-        # Calculate center and radius
-        center_x = self.width / 2
-        center_y = self.height / 2
-        outer_radius = min(center_x, center_y) - (ring_width / 2) - 2
+        # Make the ring thicker - 7% of canvas size
+        ring_width = int(min(width, height) * 0.07)
         
-        # Draw background ring (perfect circle)
-        self.create_oval(
-            center_x - outer_radius,
-            center_y - outer_radius,
-            center_x + outer_radius,
-            center_y + outer_radius,
-            outline='gray20',
+        center = width // 2, height // 2
+        
+        # Use more of the available space (95%)
+        radius = int(min(center) * 0.95 - (ring_width // 2))
+        
+        # Create transparent image
+        img = PIL.Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = PIL.ImageDraw.Draw(img)
+
+        # Background ring with perfect circle
+        draw.ellipse(
+            [center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius],
+            outline="#333333",
             width=ring_width,
-            tags="bg_ring"
         )
 
+        # Progress arc 
         if progress > 0:
-            # Calculate color based on progress or use override
-            if color_override:
-                color = color_override
-            else:
-                color = 'green' if progress * self.time_limit < self.warning_threshold else \
-                      'orange' if progress * self.time_limit < self.warning_threshold2 else 'red'
-            
-            # Calculate the extent of the arc (negative for clockwise)
-            extent = 360 * progress
-            
-            # For smoother arcs, we'll use multiple thin arcs layered on top of each other
-            # This creates a much smoother appearance by blending multiple antialiased edges
-            for i in range(3):
-                offset = i * 0.5  # Small offset for each layer
-                adjusted_width = ring_width - (i * 0.5)
-                
-                self.create_arc(
-                    center_x - outer_radius - offset,
-                    center_y - outer_radius - offset,
-                    center_x + outer_radius + offset,
-                    center_y + outer_radius + offset,
-                    start=90,                # Start at top (12 o'clock position)
-                    extent=-extent,          # Move clockwise
-                    outline=color,
-                    width=adjusted_width,
-                    style='arc',
-                    tags=f"progress_layer_{i}"
-                )
-        
-        # Apply additional smoothing by adding a very thin overlay
-        if progress > 0 and progress < 1.0:
-            # Add a thin line at the exact progress position for a crisp edge
-            angle_radians = (90 - (progress * 360)) * (3.14159 / 180)
-            end_x = center_x + outer_radius * math.cos(angle_radians)
-            end_y = center_y - outer_radius * math.sin(angle_radians)
-            
-            # Calculate color based on progress or use override
-            if color_override:
-                color = color_override
-            else:
-                color = 'green' if progress * self.time_limit < self.warning_threshold else \
-                      'orange' if progress * self.time_limit < self.warning_threshold2 else 'red'
-            
-            # Create a small circle at the end point of the arc for a more polished look
-            self.create_oval(
-                end_x - (ring_width/2),
-                end_y - (ring_width/2),
-                end_x + (ring_width/2),
-                end_y + (ring_width/2),
+            color = color_override or 'green'
+            start_angle = -90
+            end_angle = start_angle + (progress * 360)
+            draw.arc(
+                [center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius],
+                start=start_angle,
+                end=end_angle,
                 fill=color,
-                outline=color,
-                tags="progress_endpoint"
+                width=ring_width,
             )
-        
-        self.last_progress = progress  # Update last progress to current
+
+        # Resize with high-quality LANCZOS resampling
+        img = img.resize((self.width, self.height), PIL.Image.LANCZOS)
+        self._ring_img = PIL.ImageTk.PhotoImage(img)
+        self.delete("all")
+        self.create_image(self.width // 2, self.height // 2, image=self._ring_img)
 
     def update_timer(self):
         if self.is_running:
@@ -479,7 +451,7 @@ class CombinedTimer(ctk.CTkCanvas):
         if self.blink_state:
             self.draw_ring(1.0, "red")
         else:
-            self.draw_ring(1.0, "dark red")
+            self.draw_ring(1.0, "#8B0000")
         # Store the after id for blinking
         self._blink_loop_id = self.after(500, self.start_blinking)
 
@@ -501,6 +473,7 @@ class CombinedTimer(ctk.CTkCanvas):
         # Instead of showing a popup, we'll update the parent station's appearance
         if hasattr(self, 'parent_station'):
             self.parent_station.highlight_time_exceeded()
+
 
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
