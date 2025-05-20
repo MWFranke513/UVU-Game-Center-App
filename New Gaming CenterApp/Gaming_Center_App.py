@@ -204,46 +204,21 @@ class TimerManager:
 
 
 class CombinedTimer(ctk.CTkCanvas):
-    def __init__(self, parent, width=120, height=120):
+    def __init__(self, parent, width=160, height=160):
         # Get parent background color
         parent_fg = parent.cget("fg_color")
-
-        if isinstance(parent_fg, str):
+        if isinstance(parent_fg, str) and parent_fg != "transparent":
             parent_bg = parent_fg
         else:
             appearance_mode = ctk.get_appearance_mode()
-            parent_bg = parent_fg[1] if appearance_mode == "Dark" else parent_fg[0]
+            parent_bg = "gray16" if appearance_mode == "Dark" else "#e6f2ec"  # fallback color
 
-        # Create canvas with antialiasing hint (not all platforms support this)
-        super().__init__(parent, width=width, height=height, highlightthickness=0, bg=parent_bg)
+        super().__init__(parent, width=width, height=height, 
+                         highlightthickness=0, bg=parent_bg)
         
-        # Try to enable antialiasing if available on the platform
-        try:
-            self.tk.call("::tk::unsupported::MacWindowStyle", "usepreferredtitlestyle", self._w, "dark")
-        except Exception:
-            pass  # Silently fail if unsupported
-            
-        # In some systems, we can request antialiased drawing 
-        try:
-            self.tk.call('tk', 'scaling', 1.0)  # Consistent scaling
-        except Exception:
-            pass
-
-        # Request highest quality rendering
-        try:
-            self.tk.call('::tk::unsupported::MacWindowStyle', 'usepreferredtitlestyle', self._w, 'dark')
-        except Exception:
-            pass
-            
-        try:
-            # These commands can help improve rendering quality on some systems
-            self.tk.call('tk', 'scaling', 2.0)  # Increased scaling factor for sharper rendering
-            self.tk.eval('package require Tk 8.6')  # Ensure using Tk 8.6+ features if available
-            self.tk.call('::tk::unsupported::ExposeCommandOptions', 'circle', '-smooth')
-            self.tk.call('::tk::unsupported::ExposeCommandOptions', 'arc', '-smooth')
-        except Exception:
-            pass
-            
+        # Configure rendering quality
+        self._configure_antialiasing()
+        
         self.width = width
         self.height = height
         self.time_limit = 1 * 60
@@ -255,13 +230,13 @@ class CombinedTimer(ctk.CTkCanvas):
         self.elapsed_time = 0
         self.alert_shown = False
         self.last_progress = 0
-        self._update_loop_id = None  # Store the ID of the update loop
-        self._blink_loop_id = None  # Store the ID of the blink loop
-        self.is_blinking = False     # New flag to track blinking state
-        self.blink_state = True      # Tracks the on/off state for blinking
-        self.blink_count = 0         # Counter for blink cycles
+        self._update_loop_id = None
+        self._blink_loop_id = None
+        self.is_blinking = False
+        self.blink_state = True
+        self.blink_count = 0
         
-        # Initialize fields as None
+        # Initialize fields
         self.name_entry = None
         self.id_entry = None
         self.game_dropdown = None
@@ -271,19 +246,31 @@ class CombinedTimer(ctk.CTkCanvas):
         self.station_type = None
         self.station_num = None
         
-        # Create a frame to hold the timer label for better centering
-        self.label_frame = ctk.CTkFrame(self, fg_color="transparent")
+        # Timer display
+        self.label_frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self.label_frame.place(relx=0.5, rely=0.5, anchor="center")
         
         self.timer_label = ctk.CTkLabel(
             self.label_frame, 
             text="00:00:00", 
-            font=ctk.CTkFont(family="Helvetica", size=16, weight="bold"),
+            font=ctk.CTkFont(family="Helvetica", size=14, weight="bold"),
+            fg_color="transparent"
         )
-        self.timer_label.pack(expand=True, padx=0, pady=0)
+        self.timer_label.pack(expand=True)
         
+        # Draw the initial gray ring at startup
+        self.draw_ring(0)
+
+    def _configure_antialiasing(self):
+        """Configure rendering quality settings"""
+        try:
+            self.tk.call("tk", "scaling", 2.0)
+            self.tk.call("::tk::unsupported::MacWindowStyle", "style", self._w, "textured", "dark")
+            self.tk.call('::tk::unsupported::ExposeCommandOptions', 'arc', '-smooth', '1')
+        except Exception:
+            pass
+
     def start(self):
-        print("start method called")
         if not self.validate_fields():
             return
         if not self.is_running:
@@ -298,21 +285,19 @@ class CombinedTimer(ctk.CTkCanvas):
         if self._update_loop_id:
             self.after_cancel(self._update_loop_id)
             self._update_loop_id = None
-        if self._blink_loop_id:  # <-- Add this block
+        if self._blink_loop_id:
             self.after_cancel(self._blink_loop_id)
             self._blink_loop_id = None
-        self.is_blinking = False  # Also stop blinking
+        self.is_blinking = False
 
     def reset(self):
-        # Remove the logging call from here since Station will handle it
         self.is_running = False
         self.elapsed_time = 0
         self.alert_shown = False
-        self.is_blinking = False  # Make sure to reset blinking state
+        self.is_blinking = False
         self.timer_label.configure(text="00:00:00", text_color="white")
         self.draw_ring(0)
         
-        # Clear fields after logging
         if self.name_entry:
             self.name_entry.delete(0, tk.END)
         if self.id_entry:
@@ -331,20 +316,11 @@ class CombinedTimer(ctk.CTkCanvas):
         return self.get_time() >= self.time_limit
 
     def validate_fields(self):
-        print("validate_fields called")
         missing_fields = []
         
-        # Debug print to check name_entry exists and gets a value
-        if self.name_entry:
-            print(f"Name entry content: '{self.name_entry.get()}'")
-        else:
-            print("Name entry is None")
-        
-        # Check if name_entry exists and has content
         if not hasattr(self, 'name_entry') or self.name_entry is None or not self.name_entry.get().strip():
             missing_fields.append("Name")
         
-        # Only check game and controller fields for console stations
         if self.station_type in ["XBOX", "Switch"]:
             if not hasattr(self, 'game_var') or self.game_var is None or not self.game_var.get():
                 missing_fields.append("Game")
@@ -355,96 +331,93 @@ class CombinedTimer(ctk.CTkCanvas):
             error_message = f"Please fill out the following fields:\n" + "\n".join(missing_fields)
             show_custom_error(self.winfo_toplevel(), "Error", error_message)
             return False
-        
         return True
 
     def draw_ring(self, progress, color_override=None):
         import PIL.Image, PIL.ImageDraw, PIL.ImageTk
-        import math
-
-        # Increase scale factor for higher quality
+        
         scale = 8
-        
-        # Get dimensions from the actual canvas size
         width, height = int(self.width * scale), int(self.height * scale)
+        ring_width = int(min(width, height) * 0.05)
+        center = (width // 2, height // 2)
+        radius = int(min(center) * 0.97)
         
-        # Make the ring thicker - 7% of canvas size
-        ring_width = int(min(width, height) * 0.09)
-        
-        center = width // 2, height // 2
-        
-        # Use more of the available space (95%)
-        radius = int(min(center) * 0.9 - (ring_width // 2))
-        
-        # Create transparent image
         img = PIL.Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = PIL.ImageDraw.Draw(img)
 
-        # Background ring with perfect circle
+        # Background ring
         draw.ellipse(
-            [center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius],
-            outline="#333333",
-            width=ring_width,
+            [center[0]-radius, center[1]-radius, center[0]+radius, center[1]+radius],
+            outline="#333333" if ctk.get_appearance_mode() == "Dark" else "#CCCCCC",
+            width=ring_width
         )
 
-        # Progress arc 
+        # Progress arc
         if progress > 0:
-            color = color_override or 'green'
+            color = color_override or ('#2AAA2A' if ctk.get_appearance_mode() == "Dark" else '#228B22')
             start_angle = -90
             end_angle = start_angle + (progress * 360)
-            draw.arc(
-                [center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius],
-                start=start_angle,
-                end=end_angle,
-                fill=color,
-                width=ring_width,
-            )
+            
+            for i in range(ring_width):
+                draw.arc(
+                    [
+                        center[0]-radius + i, center[1]-radius + i,
+                        center[0]+radius - i, center[1]+radius - i
+                    ],
+                    start=start_angle,
+                    end=end_angle,
+                    fill=color,
+                    width=1
+                )
 
-        # Resize with high-quality LANCZOS resampling
         img = img.resize((self.width, self.height), PIL.Image.LANCZOS)
         self._ring_img = PIL.ImageTk.PhotoImage(img)
         self.delete("all")
-        self.create_image(self.width // 2, self.height // 2, image=self._ring_img)
+        self.create_image(self.width//2, self.height//2, image=self._ring_img)
 
     def update_timer(self):
         if self.is_running:
             elapsed = self.get_time()
-            print(f"Timer update: elapsed={elapsed}, is_running={self.is_running}")
-            # Update timer display
             hours, minutes, seconds = map(int, (elapsed // 3600, (elapsed % 3600) // 60, elapsed % 60))
             self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
 
-            # Calculate progress
             progress = min(elapsed / self.time_limit, 1.0)
 
-            # If time limit exceeded, start blinking instead of showing popup
+            # Determine the appropriate color based on time elapsed
             if elapsed >= self.time_limit:
+                color = "red"
                 if not self.is_blinking:
                     self.is_blinking = True
                     self.start_blinking()
-                    
-                    # Trigger visual alerts instead of popup
                     if hasattr(self, 'parent_station'):
                         self.parent_station.highlight_time_exceeded()
-                        
                 self.timer_label.configure(text_color="red")
             elif elapsed >= (self.time_limit * 0.9):
+                color = "orange"
                 self.timer_label.configure(text_color="orange")
+                # Update parent station border
+                if hasattr(self, 'parent_station'):
+                    self.parent_station.configure(border_color="orange", border_width=2)
             elif elapsed >= (self.time_limit * 0.8):
+                color = "yellow"
                 self.timer_label.configure(text_color="yellow")
+                # Update parent station border
+                if hasattr(self, 'parent_station'):
+                    self.parent_station.configure(border_color="yellow", border_width=2)
             else:
+                color = "green"
                 self.timer_label.configure(text_color="green")
-                
-            # Update progress ring if not blinking
+                # Update parent station border
+                if hasattr(self, 'parent_station'):
+                    self.parent_station.configure(border_color="green", border_width=2)
+                    
             if not self.is_blinking and abs(progress - self.last_progress) > 0.01:
                 self.draw_ring(progress)
                 self.last_progress = progress
 
-            # Schedule the next update
         self._update_loop_id = self.after(1000, self.update_timer)
 
     def start_blinking(self):
-        """Start blinking the timer ring to indicate time limit exceeded"""
         if not self.is_blinking:
             return
         self.blink_state = not self.blink_state
@@ -452,165 +425,71 @@ class CombinedTimer(ctk.CTkCanvas):
             self.draw_ring(1.0, "red")
         else:
             self.draw_ring(1.0, "#8B0000")
-        # Store the after id for blinking
         self._blink_loop_id = self.after(500, self.start_blinking)
 
-
     def show_time_alert(self):
-        """
-        Now used to activate visual alerts instead of showing popup
-        """
-        # We'll keep this method but change its functionality
         if not hasattr(self, 'last_alert_time'):
             self.last_alert_time = 0
 
         current_time = time.time()
-        if current_time - self.last_alert_time < 300:  # 300 seconds = 5 minutes
+        if current_time - self.last_alert_time < 300:
             return
 
         self.last_alert_time = current_time
-        
-        # Instead of showing a popup, we'll update the parent station's appearance
         if hasattr(self, 'parent_station'):
             self.parent_station.highlight_time_exceeded()
 
-
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
-        super().__init__(parent, border_width=2, corner_radius=10)  # Add border and rounded corners
+        super().__init__(parent, border_width=2, corner_radius=10)
         self.parent = parent
-        self.app = app  # Store reference to the app
+        self.app = app
         self.station_type = station_type
         self.station_num = station_num
-        self.timer = CombinedTimer(self, width=120, height=120)
-
-        self.timer.station_type = station_type
-        self.timer.station_num = station_num
-        self.timer.parent_station = self
-
+        
+        # Configure 3-column layout
+        self.grid_columnconfigure(0, weight=1)  # Left inputs
+        self.grid_columnconfigure(1, weight=0)  # Timer (fixed width)
+        self.grid_columnconfigure(2, weight=1)  # Right inputs
+        self.grid_rowconfigure(1, weight=1)     # Middle row
+        
         self.setup_ui()
         self.update_timer()
-
-
-
-
-    def log_usage(self):
-        try:
-            # Use a robust, shared log directory
-            log_file_path = os.path.join("usage_log.txt")
-
-            # Gather values safely
-            user_name = self.name_entry.get().strip() if hasattr(self, 'name_entry') and self.name_entry else "Unknown"
-            id_number = self.id_entry.get().strip() if hasattr(self, 'id_entry') and self.id_entry else "Unknown"
-            game = "N/A"
-            controller = "N/A"
-            if self.station_type in ["XBOX", "Switch"]:
-                if hasattr(self, 'game_var') and self.game_var:
-                    game = self.game_var.get()
-                if hasattr(self, 'controller_var') and self.controller_var:
-                    controller = self.controller_var.get()
-            duration = self.timer.get_time() if hasattr(self.timer, 'get_time') else 0
-            formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
-
-            # Prepare log entry
-            log_entry = [
-                f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}",
-                f"Station Type: {self.station_type}",
-                f"Station Number: {self.station_num}",
-                f"User Name: {user_name}",
-                f"ID Number: {id_number}" if not {id_number} else "ID Number: N/A",
-                f"Duration: {formatted_duration}",
-                f"Game: {game}",
-                f"Controllers: {controller}",
-                "--------------------------------------------------"
-            ]
-
-            print(f"Logging to: {log_file_path}")
-            print(f"Logging usage for Station {self.station_num}: {user_name}, Duration: {formatted_duration}")
-
-            # Write to log file
-            with open(log_file_path, "a", encoding="utf-8") as log_file:
-                log_file.write("\n".join(log_entry) + "\n")
-                log_file.flush()  # Ensure data is written to disk
-
-            print(f"Successfully logged usage for Station {self.station_num}")
-
-        except Exception as e:
-            import traceback
-            print(f"Error logging usage: {str(e)}")
-            print(traceback.format_exc())
-            messagebox.showerror(
-                "Logging Error",
-                f"Failed to log station usage. Please notify administrator.\nError: {str(e)}"
-            )
+        
+        # Ensure placeholders are shown after UI setup
+        self.after(100, self.ensure_placeholders)
 
     def setup_ui(self):
-        # Header frame
+        # Standard styling
+        field_font = ctk.CTkFont(size=12)
+        field_height = 34
+        field_pady = 5
+        field_width = 140
+        
+        # Custom placeholder colors - make sure they're visible
+        placeholder_color = "gray50"  # Adjust this color to be visible in your theme
+        
+        # Header Frame
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.pack(fill="x", padx=5, pady=5)
-
+        header_frame.grid(row=0, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
+        
         # Station number label
-        ctk.CTkLabel(header_frame, text=f"Station {self.station_num}", anchor="e").pack(side="right")
-
-        # icon_errors = set()
-
-        # def download_icon(icon_name, size=(20, 20), retries=3):
-        #     """Download an SVG icon, cache it locally, and return a CTkImage."""
-        #     cache_dir = Path("./icon_cache")
-        #     cache_dir.mkdir(exist_ok=True)
-
-        #     cached_file = cache_dir / f"{icon_name}.png"
-        #     if cached_file.exists():
-        #         return ctk.CTkImage(Image.open(cached_file), size=size)
-
-        #     def download():
-        #         url = f"https://cdn.jsdelivr.net/npm/lucide-static@0.298.0/icons/{icon_name}.svg"
-        #         for attempt in range(retries):
-        #             try:
-        #                 response = requests.get(url, timeout=5)
-        #                 if response.status_code == 200:
-        #                     svg_content = response.content.decode("utf-8")
-        #                     svg_content = re.sub(r'stroke="[^"]*"', 'stroke="white"', svg_content)
-        #                     svg_content = re.sub(r'fill="[^"]*"', 'fill="none"', svg_content)
-        #                     png_data = cairosvg.svg2png(bytestring=svg_content.encode("utf-8"))
-        #                     img = Image.open(BytesIO(png_data))
-        #                     img.save(cached_file)
-        #                     return ctk.CTkImage(img, size=size)
-        #             except Exception as e:
-        #                 print(f"Failed to fetch icon {icon_name} on attempt {attempt + 1}: {e}")
-        #                 time.sleep(1)
-
-        #         print(f"Failed to fetch icon {icon_name} after {retries} attempts. Using fallback.")
-        #         fallback_path = "./icon_cache/fallback.png"
-        #         fallback_img = Image.new("RGB", size, color="gray")
-        #         if Path(fallback_path).exists():
-        #             fallback_img = Image.open(fallback_path)
-        #         return ctk.CTkImage(fallback_img, size=size)
-
-        #     # Run the download in a separate thread
-        #     thread = threading.Thread(target=download)
-        #     thread.start()
-        #     return None  # Return None initially, and handle the result later
-
-
+        ctk.CTkLabel(header_frame, 
+                    text=f"Station {self.station_num}",
+                    font=ctk.CTkFont(weight="bold")).pack(side="right", padx=5)
+        
+        # Console toggle buttons
         if self.station_type in ["XBOX", "Switch"]:
-            # Console type toggle frame with icons
-            console_toggle_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-            console_toggle_frame.pack(side="left", fill="x")
-
-            # Load icon images
+            console_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+            console_frame.pack(side="left")
+            
             xbox_image = Image.open("./icon_cache/xbox-logo.png")
             switch_image = Image.open("./icon_cache/switch-logo.png")
+            xbox_icon = ctk.CTkImage(xbox_image, size=(20, 20))
+            switch_icon = ctk.CTkImage(switch_image, size=(20, 20))
             
-            # Create CTkImages with consistent size
-            icon_size = (20, 20)
-            xbox_icon = ctk.CTkImage(xbox_image, size=icon_size)
-            switch_icon = ctk.CTkImage(switch_image, size=icon_size)
-
-            # Initialize the console variable
             self.console_var = ctk.StringVar(value=self.station_type)
-
-            # Function to handle button state updates
+            
             def update_button_states():
                 xbox_button.configure(
                     fg_color=("gray75", "gray25") if self.console_var.get() == "XBOX" else "transparent",
@@ -620,16 +499,14 @@ class Station(ctk.CTkFrame):
                     fg_color=("gray75", "gray25") if self.console_var.get() == "Switch" else "transparent",
                     hover_color=("gray65", "gray35")
                 )
-
-            # Function to handle console selection
+            
             def select_console(console_type):
                 self.console_var.set(console_type)
                 update_button_states()
                 self.change_console_type()
-
-            # Create toggle buttons with icons
+            
             xbox_button = ctk.CTkButton(
-                console_toggle_frame,
+                console_frame,
                 image=xbox_icon,
                 text="",
                 width=40,
@@ -642,7 +519,7 @@ class Station(ctk.CTkFrame):
             xbox_button.pack(side="left", padx=2)
 
             switch_button = ctk.CTkButton(
-                console_toggle_frame,
+                console_frame,
                 image=switch_icon,
                 text="",
                 width=40,
@@ -653,82 +530,88 @@ class Station(ctk.CTkFrame):
                 command=lambda: select_console("Switch")
             )
             switch_button.pack(side="left", padx=2)
-
-            # Set initial button states
+            
             update_button_states()
 
-            # Create a container frame for all input fields
-            fields_frame = ctk.CTkFrame(self, fg_color="transparent")
-            fields_frame.pack(fill="x", padx=5, pady=2)
-            
-            # Configure grid columns
-            fields_frame.grid_columnconfigure(1, weight=1)
-            fields_frame.grid_columnconfigure(3, weight=1)
-            
-            # Name and ID fields (first row)
-            ctk.CTkLabel(fields_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
-            self.name_entry = ctk.CTkEntry(fields_frame)
-            self.name_entry.grid(row=0, column=1, padx=5, sticky="ew")
-            
-            ctk.CTkLabel(fields_frame, text="ID #").grid(row=0, column=2, padx=(15,5), sticky="w")
-            self.id_entry = ctk.CTkEntry(fields_frame)
-            self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
-
-            # Game and Controller fields (second row)
-            ctk.CTkLabel(fields_frame, text="Game:").grid(row=1, column=0, padx=(0,5), sticky="w")
+        # Left Input Column
+        left_fields = ctk.CTkFrame(self, fg_color="transparent")
+        left_fields.grid(row=1, column=0, sticky="nsew", padx=(10,5), pady=field_pady)
+        
+        # Name Field with working placeholder
+        self.name_entry = ctk.CTkEntry(
+            left_fields,
+            width=field_width,
+            height=field_height,
+            placeholder_text="Name",
+            font=field_font,
+            placeholder_text_color=placeholder_color  # Set explicit placeholder color
+        )
+        self.name_entry.pack(fill="x", pady=field_pady)
+        
+        # Game Dropdown
+        if self.station_type in ["XBOX", "Switch"]:
             self.game_var = ctk.StringVar()
             games = self.app.get_games_for_console(self.station_type)
-            self.game_dropdown = ctk.CTkComboBox(fields_frame, variable=self.game_var, values=games)
-            self.game_dropdown.grid(row=1, column=1, padx=5, sticky="ew")
+            self.game_dropdown = ctk.CTkComboBox(
+                left_fields,
+                variable=self.game_var,
+                values=games,
+                width=field_width,
+                height=field_height,
+                font=field_font,
+                dropdown_font=field_font,
+                justify="left",
+                state="readonly"
+            )
+            self.game_dropdown.set("Select Game")
+            self.game_dropdown.pack(fill="x", pady=field_pady)
 
-            ctk.CTkLabel(fields_frame, text="Ctrl:").grid(row=1, column=2, padx=(15,5), sticky="w")
+        # Right Input Column
+        right_fields = ctk.CTkFrame(self, fg_color="transparent")
+        right_fields.grid(row=1, column=2, sticky="nsew", padx=(5,10), pady=field_pady)
+        
+        # ID Field with working placeholder
+        self.id_entry = ctk.CTkEntry(
+            right_fields,
+            width=field_width,
+            height=field_height,
+            placeholder_text="UVID (If Applicable)",
+            font=field_font
+        )
+        # Force focus and then remove focus to trigger the placeholder
+        self.id_entry.pack(fill="x", pady=field_pady)
+        
+        # Controller Dropdown
+        if self.station_type in ["XBOX", "Switch"]:
             self.controller_var = ctk.StringVar()
             controllers = ["1", "2", "3", "4"]
-            self.controller_dropdown = ctk.CTkComboBox(fields_frame, variable=self.controller_var, values=controllers)
-            self.controller_dropdown.grid(row=1, column=3, padx=5, sticky="ew")
+            self.controller_dropdown = ctk.CTkComboBox(
+                right_fields,
+                variable=self.controller_var,
+                values=controllers,
+                width=field_width,
+                height=field_height,
+                font=field_font,
+                dropdown_font=field_font,
+                justify="left",
+                state="readonly"
+            )
+            self.controller_dropdown.set("Number of Controllers")
+            self.controller_dropdown.pack(fill="x", pady=field_pady)
 
-            # Initialize timer with console-specific attributes
-            self.timer.name_entry = self.name_entry
-            self.timer.id_entry = self.id_entry
-            self.timer.game_dropdown = self.game_dropdown
-            self.timer.game_var = self.game_var
-            self.timer.controller_dropdown = self.controller_dropdown
-            self.timer.controller_var = self.controller_var
-
-        else:  # For other station types
-            ctk.CTkLabel(header_frame, text=self.station_type).pack(side="left")
-            
-            # Name and ID fields
-            fields_frame = ctk.CTkFrame(self, fg_color="transparent")
-            fields_frame.pack(fill="x", padx=5, pady=2)
-            
-            # Configure grid columns to be uniform
-            fields_frame.grid_columnconfigure(1, weight=1)  # Name entry column
-            fields_frame.grid_columnconfigure(3, weight=1)  # ID entry column
-            
-            ctk.CTkLabel(fields_frame, text="Name:").grid(row=0, column=0, padx=(0,5), sticky="w")
-            self.name_entry = ctk.CTkEntry(fields_frame)
-            self.name_entry.grid(row=0, column=1, padx=5, sticky="ew")
-            
-            ctk.CTkLabel(fields_frame, text="ID #").grid(row=0, column=2, padx=(15,5), sticky="w")
-            self.id_entry = ctk.CTkEntry(fields_frame)
-            self.id_entry.grid(row=0, column=3, padx=5, sticky="ew")
-
-            self.timer.name_entry = self.name_entry
-            self.timer.id_entry = self.id_entry
-
-        # Timer frame
-        timer_frame = ctk.CTkFrame(self, fg_color="transparent")
-        timer_frame.pack(fill="x", padx=15, pady=5)
+        # Center Timer Column
+        timer_container = ctk.CTkFrame(self, fg_color="transparent")
+        timer_container.grid(row=1, column=1, sticky="ns", padx=10)
         
-        # Timer ring - slightly larger for smoother appearance
-        self.timer = CombinedTimer(self, width=140, height=140)  # Increased from 120x120
-        self.timer.pack(side="left", padx=10, pady=10, anchor="center")
+        self.timer = CombinedTimer(timer_container, width=160, height=160)
+        self.timer.pack(pady=10)
         
-        # Re-establish connections to ensure they're properly set
+        # Connect fields to timer
         self.timer.name_entry = self.name_entry
         self.timer.id_entry = self.id_entry
         self.timer.parent_station = self
+        self.timer.station_type = self.station_type
+        self.timer.station_num = self.station_num
         
         if hasattr(self, 'game_var'):
             self.timer.game_var = self.game_var
@@ -738,51 +621,61 @@ class Station(ctk.CTkFrame):
             self.timer.controller_var = self.controller_var
             self.timer.controller_dropdown = self.controller_dropdown
 
-        # Timer label
-        self.timer_label = ctk.CTkLabel(
-            timer_frame, 
-            text="", 
-            font=ctk.CTkFont(family="Helvetica", size=14)
-        )
-        self.timer_label.pack(side="left", padx=0)
-
-        # Load control icons
-
+        # Control Buttons
+        button_frame = ctk.CTkFrame(self, fg_color="transparent")
+        button_frame.grid(row=2, column=0, columnspan=3, sticky="sew", padx=10, pady=(0, 5))
+        
+        btn_container = ctk.CTkFrame(button_frame, fg_color="transparent")
+        btn_container.pack()
+        
+        # Load button icons
         self.start_icon = ctk.CTkImage(Image.open("./icon_cache/play.png"), size=(15, 15))
         self.stop_icon = ctk.CTkImage(Image.open("./icon_cache/square.png"), size=(15, 15))
         self.reset_icon = ctk.CTkImage(Image.open("./icon_cache/refresh-ccw.png"), size=(15, 15))
-
-        # Control buttons
-        button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        button_frame.pack(side="bottom", fill="x", padx=10, pady=(0, 5))  # Reduced top padding
         
-        # Create a container for the buttons to ensure consistent spacing
-        btn_container = ctk.CTkFrame(button_frame, fg_color="transparent")
-        btn_container.pack(side="left", padx=0)
-
-        ctk.CTkButton(btn_container, image=self.start_icon, text="Start", command=self.timer.start, 
-                      width=30, height=30, corner_radius=20).pack(side="left", padx=2)
-        ctk.CTkButton(btn_container, image=self.stop_icon, text="Stop", command=self.timer.stop, 
-                      width=30, height=30, corner_radius=20).pack(side="left", padx=2)
-        ctk.CTkButton(btn_container, image=self.reset_icon, text="Reset", command=self.reset_timer, 
-                      width=30, height=30, corner_radius=20).pack(side="left", padx=2)
+        ctk.CTkButton(
+            btn_container, 
+            image=self.start_icon, 
+            text="Start", 
+            command=self.timer.start,
+            width=80,
+            height=30,
+            corner_radius=20
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkButton(
+            btn_container,
+            image=self.stop_icon,
+            text="Stop",
+            command=self.timer.stop,
+            width=80,
+            height=30,
+            corner_radius=20
+        ).pack(side="left", padx=5)
+        
+        ctk.CTkButton(
+            btn_container,
+            image=self.reset_icon,
+            text="Reset",
+            command=self.reset_timer,
+            width=80,
+            height=30,
+            corner_radius=20
+        ).pack(side="left", padx=5)
 
     def change_console_type(self):
         self.station_type = self.console_var.get()
         games = self.app.get_games_for_console(self.station_type)
         self.game_dropdown.configure(values=games)
         self.game_var.set('')
+        self.game_dropdown.set("Select Game")
 
     def update_timer(self):
         self.timer.update_timer()
         self.after(1000, self.update_timer)
 
     def highlight_time_exceeded(self):
-        """Highlight the station when time is exceeded"""
-        # Change the border color to indicate time exceeded
         self.configure(border_color="red", border_width=3)
-        
-        # Add or update an alert label if not already present
         if not hasattr(self, 'alert_label'):
             self.alert_label = ctk.CTkLabel(
                 self,
@@ -794,7 +687,6 @@ class Station(ctk.CTkFrame):
             )
             self.alert_label.place(relx=0.5, rely=0.09, anchor="center")
         else:
-            # Make sure the alert label is visible
             self.alert_label.place(relx=0.5, rely=0.09, anchor="center")
 
     def show_time_alert(self):
@@ -806,54 +698,96 @@ class Station(ctk.CTkFrame):
     def stop_timer(self):
         self.timer.stop()
 
+    def ensure_placeholders(self):
+        """Force the placeholders to be shown by accessing and manipulating the entry widgets"""
+        # Force refresh of the placeholder texts
+        if hasattr(self, 'name_entry'):
+            self.name_entry._entry.config(validate='none')  # Disable validation temporarily
+            self.name_entry._entry.delete(0, tk.END)        # Clear any content
+            self.name_entry._activate_placeholder()         # Changed from _check_placeholder
+            
+        if hasattr(self, 'id_entry'):
+            self.id_entry._entry.config(validate='none')
+            self.id_entry._entry.delete(0, tk.END)
+            self.id_entry._activate_placeholder()           # Changed from _check_placeholder
+            
     def reset_timer(self):
-        # First, capture if timer was actually used (before resetting)
         should_log = self.timer.is_running or self.timer.elapsed_time > 0
         
-        # Stop the timer if it's running
         if self.timer.is_running:
             self.timer.stop()
         
-        # Log usage if needed before resetting
         if should_log:
             self.log_usage()
         
-        # Now reset the timer
-        self.timer.is_running = False
-        self.timer.elapsed_time = 0
-        self.timer.alert_shown = False
-        self.timer.is_blinking = False  # Stop blinking if active
-        self.timer.draw_ring(0)
-        
-        # Reset timer label color and text
-        if hasattr(self, 'timer_label'):
-            self.timer.timer_label.configure(text="00:00:00", text_color="white")
-        
-        # Clear fields
-        if self.name_entry:
-            self.name_entry.delete(0, tk.END)
-        if self.id_entry:
-            self.id_entry.delete(0, tk.END)
-        if hasattr(self, 'game_var') and self.game_var:
-            self.game_var.set("")
-        if hasattr(self, 'controller_var') and self.controller_var:
-            self.controller_var.set("")
-        
-        # Reset any highlighting with correct transparency value
+        self.timer.reset()
         self.configure(border_width=0)
         
-        # Hide the alert label if it exists
+        # Reset fields and force placeholders to show
+        self.name_entry.delete(0, tk.END)
+        self.id_entry.delete(0, tk.END)
+        
+        # Force placeholder refresh
+        self.name_entry._activate_placeholder()    # Changed from _check_placeholder
+        self.id_entry._activate_placeholder()      # Changed from _check_placeholder
+        
+        if hasattr(self, 'game_dropdown'):
+            self.game_dropdown.set("Select Game")
+        if hasattr(self, 'controller_dropdown'):
+            self.controller_dropdown.set("Number of Controllers")
+        
         if hasattr(self, 'alert_label'):
-            self.alert_label.place_forget()  # Hide the alert label
+            self.alert_label.place_forget()
 
-def update_games_list(self):
-    if self.station_type in ["XBOX", "Switch"]:
-        console_type = "XBOX" if self.station_type == "XBOX" else "Switch"
-        games = self.parent.get_games_for_console(console_type)
-        self.game_dropdown.configure(values=games)
-        if self.game_var.get() not in games:
-            self.game_var.set(games[0] if games else '')
+    def log_usage(self):
+        try:
+            log_file_path = os.path.join("usage_log.txt")
 
+            user_name = self.name_entry.get().strip() if hasattr(self, 'name_entry') and self.name_entry else "Unknown"
+            id_number = self.id_entry.get().strip() if hasattr(self, 'id_entry') and self.id_entry else "Unknown"
+            game = "N/A"
+            controller = "N/A"
+            if self.station_type in ["XBOX", "Switch"]:
+                if hasattr(self, 'game_var') and self.game_var:
+                    game = self.game_var.get()
+                if hasattr(self, 'controller_var') and self.controller_var:
+                    controller = self.controller_var.get()
+            duration = self.timer.get_time() if hasattr(self.timer, 'get_time') else 0
+            formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
+
+            log_entry = [
+                f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}",
+                f"Station Type: {self.station_type}",
+                f"Station Number: {self.station_num}",
+                f"User Name: {user_name}",
+                f"ID Number: {id_number}" if id_number else "ID Number: N/A",
+                f"Duration: {formatted_duration}",
+                f"Game: {game}",
+                f"Controllers: {controller}",
+                "--------------------------------------------------"
+            ]
+
+            with open(log_file_path, "a", encoding="utf-8") as log_file:
+                log_file.write("\n".join(log_entry) + "\n")
+                log_file.flush()
+
+        except Exception as e:
+            import traceback
+            print(f"Error logging usage: {str(e)}")
+            print(traceback.format_exc())
+            messagebox.showerror(
+                "Logging Error",
+                f"Failed to log station usage. Please notify administrator.\nError: {str(e)}"
+            )
+
+    def update_games_list(self):
+        if self.station_type in ["XBOX", "Switch"]:
+            console_type = "XBOX" if self.station_type == "XBOX" else "Switch"
+            games = self.app.get_games_for_console(console_type)
+            self.game_dropdown.configure(values=games)
+            if self.game_var.get() not in games:
+                self.game_var.set(games[0] if games else '')
+                
 class GamesWindow(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -1939,6 +1873,7 @@ class GamingCenterApp(ctk.CTk):
             width=60,
             height=60,
             corner_radius=60,
+
             font=("Helvetica", 24, "bold"),
             command=lambda: self.add_to_waitlist(station_names)
         )
@@ -2256,7 +2191,7 @@ class GamingCenterApp(ctk.CTk):
         phone_number = entry['phone']
         party_name = entry['party']
         station_name = entry['station']
-        
+
         # Check if we have a stored email from registration
         if 'email' in entry and entry['email']:
             # Use the stored email
@@ -2605,7 +2540,7 @@ class GamingCenterApp(ctk.CTk):
         except Exception as e:
             print(f"Error calculating wait time: {str(e)}")
             return "N/A"
-
+        
 if __name__ == "__main__":
     app = GamingCenterApp()
     app.iconbitmap("icon_cache/GamingCenterApp.ico")
