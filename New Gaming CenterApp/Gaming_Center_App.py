@@ -467,22 +467,24 @@ class Station(ctk.CTkFrame):
         field_width = 140
         
         # Custom placeholder colors - make sure they're visible
-        placeholder_color = "gray50"  # Adjust this color to be visible in your theme
+        placeholder_color = "gray50"
         
         # Header Frame
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
         header_frame.grid(row=0, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
         
-        # Station number label
+        # Station number label (always on the right)
         ctk.CTkLabel(header_frame, 
                     text=f"Station {self.station_num}",
                     font=ctk.CTkFont(weight="bold")).pack(side="right", padx=5)
         
-        # Console toggle buttons
+        # Create a container frame for station type controls (left side)
+        station_type_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        station_type_frame.pack(side="left")
+        
+        # Handle different station types
         if self.station_type in ["XBOX", "Switch"]:
-            console_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
-            console_frame.pack(side="left")
-            
+            # Console toggle buttons
             xbox_image = Image.open("./icon_cache/xbox-logo.png")
             switch_image = Image.open("./icon_cache/switch-logo.png")
             xbox_icon = ctk.CTkImage(xbox_image, size=(20, 20))
@@ -506,7 +508,7 @@ class Station(ctk.CTkFrame):
                 self.change_console_type()
             
             xbox_button = ctk.CTkButton(
-                console_frame,
+                station_type_frame,
                 image=xbox_icon,
                 text="",
                 width=40,
@@ -517,9 +519,10 @@ class Station(ctk.CTkFrame):
                 command=lambda: select_console("XBOX")
             )
             xbox_button.pack(side="left", padx=2)
+            self.app.create_tooltip(xbox_button, "Xbox Console")
 
             switch_button = ctk.CTkButton(
-                console_frame,
+                station_type_frame,
                 image=switch_icon,
                 text="",
                 width=40,
@@ -530,9 +533,50 @@ class Station(ctk.CTkFrame):
                 command=lambda: select_console("Switch")
             )
             switch_button.pack(side="left", padx=2)
+            self.app.create_tooltip(switch_button, "Nintendo Switch")
             
             update_button_states()
-
+        else:
+            # Static icons for non-console stations
+            try:
+                # Choose the icon based on station type
+                if self.station_type == "PoolTable":
+                    icon_path = "./icon_cache/pool.png"
+                    tooltip_text = "Pool Table"
+                elif self.station_type == "Foosball":
+                    icon_path = "./icon_cache/foosball.png"
+                    tooltip_text = "Foosball Table"
+                elif self.station_type == "Air Hockey":
+                    icon_path = "./icon_cache/air-hockey.png"
+                    tooltip_text = "Air Hockey Table"
+                elif self.station_type == "Ping-Pong":
+                    icon_path = "./icon_cache/ping-pong.png"
+                    tooltip_text = "Ping-Pong Table"
+                else:
+                    icon_path = "./icon_cache/gamepad-2.png"  # Default icon
+                    tooltip_text = self.station_type
+                
+                # Load and display the icon
+                icon_image = Image.open(icon_path)
+                station_icon = ctk.CTkImage(icon_image, size=(30, 30))
+                
+                icon_label = ctk.CTkLabel(
+                    station_type_frame,
+                    image=station_icon,
+                    text="",
+                    width=40,
+                    height=40,
+                    fg_color="gray25",
+                    corner_radius=8
+                )
+                icon_label.pack(side="left", padx=2)
+                
+                # Add enhanced tooltip for the icon
+                self.app.create_tooltip(icon_label, tooltip_text)
+                
+            except Exception as e:
+                print(f"Error loading icon for {self.station_type}: {e}")
+        
         # Left Input Column
         left_fields = ctk.CTkFrame(self, fg_color="transparent")
         left_fields.grid(row=1, column=0, sticky="nsew", padx=(10,5), pady=field_pady)
@@ -1418,7 +1462,7 @@ class GamingCenterApp(ctk.CTk):
             timer = station.timer
             is_running = timer.is_running
             elapsed_time = timer.get_time()  # <-- Use get_time() here!
-            print(f"Saving station {station.station_num}: Running: {is_running}, Elapsed time: {elapsed_time}")
+            # print(f"Saving station {station.station_num}: Running: {is_running}, Elapsed time: {elapsed_time}")
             # Save the state of each station
             state.append({
                 "station_type": station.station_type,
@@ -1532,30 +1576,8 @@ class GamingCenterApp(ctk.CTk):
         return btn  # Return the button widget for further customization
 
     def create_tooltip(self, widget, text):
-        def enter(event):
-            # Create tooltip window
-            tooltip = tk.Toplevel()
-            tooltip.wm_overrideredirect(True)
-            tooltip.wm_geometry(f"+{event.x_root+40}+{event.y_root}")
-            
-            # Create tooltip label
-            label = tk.Label(tooltip, text=text, justify='left', padx=12, pady=12,
-                           background="#333333", foreground="white",
-                           relief='solid', borderwidth=1,
-                           font=("Helvetica", "16", "normal"))
-            label.pack()
-            
-            # Store tooltip reference
-            widget.tooltip = tooltip
-            
-        def leave(event):
-            # Destroy tooltip if it exists
-            if hasattr(widget, "tooltip"):
-                widget.tooltip.destroy()
-                del widget.tooltip
-        
-        widget.bind('<Enter>', enter)
-        widget.bind('<Leave>', leave)
+        """Create an enhanced tooltip with arrow pointer"""
+        return EnhancedTooltip(widget, text)
 
     def show_home(self):
         # Implement home view functionality
@@ -1826,6 +1848,7 @@ class GamingCenterApp(ctk.CTk):
             self.placeholder_buttons_frame,
             image=x_icon,
             text="",
+           
             width=30,
             height=30,
             fg_color="gray",
@@ -2540,7 +2563,83 @@ class GamingCenterApp(ctk.CTk):
         except Exception as e:
             print(f"Error calculating wait time: {str(e)}")
             return "N/A"
+
+class EnhancedTooltip:
+    """Simple, reliable tooltip with triangle pointer and visible text"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
         
+        # Bind events
+        self.widget.bind('<Enter>', self.show_tooltip)
+        self.widget.bind('<Leave>', self.hide_tooltip)
+    
+    def show_tooltip(self, event=None):
+        """Display the tooltip"""
+        # Hide any existing tooltip
+        self.hide_tooltip()
+        
+        # Get widget position (centered below widget)
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+        
+        # Create tooltip window
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)  # No window decorations
+        
+        # Create a frame with padding
+        frame = tk.Frame(self.tooltip, bg="#333333", bd=1, relief="solid")
+        frame.pack(fill="both", expand=True)
+        
+        # Add the tooltip content with fixed height and proper triangle pointer
+        tooltip_content = tk.Frame(frame, bg="#333333")
+        tooltip_content.pack(padx=0, pady=0)
+        
+        # Draw the triangle pointer
+        triangle_canvas = tk.Canvas(
+            tooltip_content, 
+            width=10, 
+            height=6,
+            bg="#333333", 
+            highlightthickness=0
+        )
+        triangle_canvas.create_polygon(
+            0, 6,   # bottom-left
+            5, 0,   # top-center
+            10, 6,  # bottom-right
+            fill="#333333", 
+            outline="#333333"
+        )
+        triangle_canvas.pack(fill="x", pady=0)
+        
+        # Text content
+        text_label = tk.Label(
+            tooltip_content,
+            text=self.text,
+            justify="center",
+            font=("Helvetica", 10),
+            fg="white",
+            bg="#333333",
+            padx=8, 
+            pady=4
+        )
+        text_label.pack(fill="both")
+        
+        # Position the tooltip 
+        self.tooltip.update_idletasks()
+        tooltip_width = text_label.winfo_width() + 16  # Add padding
+        tooltip_height = text_label.winfo_height() + 16  # Add padding
+        self.tooltip.geometry(f"{tooltip_width}x{tooltip_height}")
+        self.tooltip.geometry(f"+{x - tooltip_width//2}+{y}")
+    
+    def hide_tooltip(self, event=None):
+        """Hide the tooltip"""
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
+
+
 if __name__ == "__main__":
     app = GamingCenterApp()
     app.iconbitmap("icon_cache/GamingCenterApp.ico")
