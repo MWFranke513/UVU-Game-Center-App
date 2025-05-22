@@ -519,15 +519,15 @@ class Station(ctk.CTkFrame):
         
     def update_game_combobox_color(self, *args):
         if self.game_var.get() == "Select Game":
-            self.game_combobox.configure(text_color="#FFF")
+            self.game_combobox.configure(text_color="#565B5E")
         else:
-            self.game_combobox.configure(text_color="#FFF")
+            self.game_combobox.configure(text_color="#fff")
 
     def update_controller_combobox_color(self, *args):
         if self.controller_var.get() == "Number of Controllers":
-            self.controller_combobox.configure(text_color="#FFF")
+            self.controller_combobox.configure(text_color="#565B5E")
         else:
-            self.game_combobox.configure(text_color="#FFF")
+            self.controller_combobox.configure(text_color="#fff")
 
 
     def setup_ui(self):
@@ -666,7 +666,7 @@ class Station(ctk.CTkFrame):
             fg_color="transparent",
             placeholder_text="Name",
             font=field_font,
-            placeholder_text_color="white"  # Set explicit placeholder color
+            placeholder_text_color="#565B5E"  # Set explicit placeholder color
         )
         self.name_entry.pack(fill="x", pady=field_pady)
         self.add_active_glow(self.name_entry, "#00843d", "#333333")  # Add glow effect
@@ -725,7 +725,7 @@ class Station(ctk.CTkFrame):
             fg_color="transparent",
             corner_radius=9,
             placeholder_text="UVID (If Applicable)",
-            placeholder_text_color="white",  # Set explicit placeholder color
+            placeholder_text_color="#565B5E",  # Set explicit placeholder color
             font=field_font
         )
         # Force focus and then remove focus to trigger the placeholder
@@ -734,38 +734,55 @@ class Station(ctk.CTkFrame):
         
         # Controller Dropdown (use CTkComboBox as anchor)
         if self.station_type in ["XBOX", "Switch"]:
-            self.controller_var = ctk.StringVar()
-            controllers = ["1", "2", "3", "4"]
-
             self.controller_var = ctk.StringVar(value="Number of Controllers")
+            controllers = ["1", "2", "3", "4"]
             self.controller_combobox = ctk.CTkComboBox(
-                right_fields,
-                variable=self.controller_var,
-                values=controllers,  # Do NOT include "Number of Controllers" in this list!
-                width=field_width,
-                height=field_height,
-                border_width=1,
-                border_color="#333333",
-                fg_color="#171717",
-                corner_radius=9,
-                font=field_font,
-                justify="left",
-                state="readonly"
+            right_fields,
+            variable=self.controller_var,
+            values=controllers,
+            width=field_width,
+            height=field_height,
+            border_width=1,
+            border_color="#333333",
+            fg_color="#171717",
+            button_color="#333333",
+            button_hover_color="#888888",
+            corner_radius=9,
+            font=field_font,
+            justify="left",
+            state="readonly"
             )
             self.controller_combobox.pack(fill="x", pady=field_pady)
             self.add_active_glow(self.controller_combobox, "#00843d", "#333333")
-            self.game_var.trace_add("write", self.update_game_combobox_color)
+            self.controller_var.trace_add("write", self.update_controller_combobox_color)
             self.update_controller_combobox_color()
+            self.controller_combobox.configure(cursor="hand2")
+            self.controller_combobox.bind("<Enter>", lambda e: self.controller_combobox.configure(cursor="hand2"))
 
             self.controller_dropdown = CTkScrollableDropdown(
-                self.controller_combobox,
-                values=controllers,
-                command=lambda v: self.controller_var.set(v),
-                width=field_width,
-                height=120,
-                font=field_font,
-                justify="left"
+            self.controller_combobox,
+            values=controllers,
+            command=lambda v: self.controller_var.set(v),
+            width=field_width,
+            height=120,
+            font=field_font,
+            justify="left"
             )
+
+            # --- Apply same styling to the Game Dropdown ---
+            self.game_combobox.configure(
+            fg_color="#171717",
+            button_color="#333333",
+            button_hover_color="#888888",
+            border_width=1,
+            border_color="#333333",
+            corner_radius=9,
+            font=field_font,
+            justify="left",
+            state="readonly"
+            )
+            self.game_combobox.configure(cursor="hand2")
+            self.game_combobox.bind("<Enter>", lambda e: self.game_combobox.configure(cursor="hand2"))
 
         # Center Timer Column
         timer_container = ctk.CTkFrame(self, fg_color="transparent")
@@ -865,6 +882,8 @@ class Station(ctk.CTkFrame):
         
         # Initialize button states
         self.update_button_states(is_active=False)
+
+
 
     def add_active_glow(self, widget, glow_color="#00FFD0", normal_color="#333333", steps=8, duration=120):
         widget._original_border_color = normal_color
@@ -971,8 +990,7 @@ class Station(ctk.CTkFrame):
         self.station_type = self.console_var.get()
         games = self.app.get_games_for_console(self.station_type)
         self.game_dropdown.configure(values=games)
-        self.game_var.set('')
-        self.game_dropdown.set("Select Game")
+        self.game_var.set("Select Game")
 
     # def update_timer(self):
     #     self.timer.update_timer()
@@ -1038,7 +1056,7 @@ class Station(ctk.CTkFrame):
         if hasattr(self, 'game_var'):
             self.game_var.set("Select Game")
         if hasattr(self, 'controller_var'):
-            self.controller_var.set("Select Controllers")
+            self.controller_var.set("Number of Controllers")
         
         if hasattr(self, 'alert_label'):
             self.alert_label.place_forget()
