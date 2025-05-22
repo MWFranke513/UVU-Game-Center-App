@@ -28,6 +28,10 @@ class CTkScrollableDropdown(customtkinter.CTkToplevel):
         self.focus_something = False
         self.disable = True
         self.update()
+
+        # --- PATCH START ---
+        # Force focus to the dropdown after it is shown
+        self.after(10, self.focus_force)
         
         if sys.platform.startswith("win"):
             self.after(100, lambda: self.overrideredirect(True))
@@ -46,8 +50,8 @@ class CTkScrollableDropdown(customtkinter.CTkToplevel):
             self.withdraw()
 
         self.hide = True
-        self.attach.bind('<Configure>', lambda e: self._withdraw() if not self.disable else None, add="+")
-        self.attach.winfo_toplevel().bind('<Configure>', lambda e: self._withdraw() if not self.disable else None, add="+")
+        # self.attach.bind('<Configure>', lambda e: self._withdraw() if not self.disable else None, add="+")
+        # self.attach.winfo_toplevel().bind('<Configure>', lambda e: self._withdraw() if not self.disable else None, add="+")
         self.attach.winfo_toplevel().bind("<ButtonPress>", lambda e: self._withdraw() if not self.disable else None, add="+")        
         self.bind("<Escape>", lambda e: self._withdraw() if not self.disable else None, add="+")
         
@@ -229,7 +233,12 @@ class CTkScrollableDropdown(customtkinter.CTkToplevel):
             self.focus()
             self.hide = False
             self.place_dropdown()
-            self._deiconify()  
+            self._deiconify()
+            # --- PATCH START ---
+            self.after(10, self.focus_force)  # Ensure dropdown gets focus
+            # Optionally, also try:
+            # self.grab_set()
+            # --- PATCH END ---
             if self.focus_something:
                 self.dummy_entry.pack()
                 self.dummy_entry.focus_set()

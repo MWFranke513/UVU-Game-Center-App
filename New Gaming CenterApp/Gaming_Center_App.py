@@ -6,7 +6,7 @@ from tkinter import simpledialog, messagebox, ttk, font as tkFont
 import customtkinter as ctk
 from customtkinter import CTkImage
 from CTkScrollableDropdown import CTkScrollableDropdown
-
+import pandas
 from CTkListbox import *
 from pathlib import Path
 from PIL import Image, ImageTk, ImageDraw
@@ -516,6 +516,19 @@ class Station(ctk.CTkFrame):
         
         # Ensure placeholders are shown after UI setup
         self.after(100, self.ensure_placeholders)
+        
+    def update_game_combobox_color(self, *args):
+        if self.game_var.get() == "Select Game":
+            self.game_combobox.configure(text_color="#FFF")
+        else:
+            self.game_combobox.configure(text_color="#FFF")
+
+    def update_controller_combobox_color(self, *args):
+        if self.controller_var.get() == "Number of Controllers":
+            self.controller_combobox.configure(text_color="#FFF")
+        else:
+            self.game_combobox.configure(text_color="#FFF")
+
 
     def setup_ui(self):
         # Standard styling
@@ -525,7 +538,7 @@ class Station(ctk.CTkFrame):
         field_width = 140
         
         # Custom placeholder colors - make sure they're visible
-        placeholder_color = "gray50"
+        placeholder_color = "#333333"
         
         # Header Frame
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -648,12 +661,12 @@ class Station(ctk.CTkFrame):
             width=field_width,
             height=32,
             border_width=1,
-            border_color="#565B5E",
+            border_color="#333333",
             corner_radius=9,
             fg_color="transparent",
             placeholder_text="Name",
             font=field_font,
-            placeholder_text_color=placeholder_color  # Set explicit placeholder color
+            placeholder_text_color="white"  # Set explicit placeholder color
         )
         self.name_entry.pack(fill="x", pady=field_pady)
         self.add_active_glow(self.name_entry, "#00843d", "#333333")  # Add glow effect
@@ -663,22 +676,26 @@ class Station(ctk.CTkFrame):
             self.game_var = ctk.StringVar()
             games = self.app.get_games_for_console(self.station_type)
 
+
+            self.game_var = ctk.StringVar(value="Select Game")
             self.game_combobox = ctk.CTkComboBox(
                 left_fields,
                 variable=self.game_var,
-                values=games,
+                values=games,  # Do NOT include "Select Game" in this list!
                 width=field_width,
                 height=field_height,
                 border_width=1,
-                border_color="#565B5E",
+                border_color="#333333",
                 fg_color="#171717",
                 corner_radius=9,
                 font=field_font,
                 justify="left",
-                state="readonly"  # Optional: makes it act like a dropdown
+                state="readonly"
             )
             self.game_combobox.pack(fill="x", pady=field_pady)
             self.add_active_glow(self.game_combobox, "#00843d", "#333333")
+            self.game_var.trace_add("write", self.update_game_combobox_color)
+            self.update_game_combobox_color()
 
             # Attach the scrollable dropdown
             self.game_dropdown = CTkScrollableDropdown(
@@ -692,6 +709,7 @@ class Station(ctk.CTkFrame):
                 resize=False,
                 button_height=32  # Makes each option taller
             )
+ 
 
         # Right Input Column
         right_fields = ctk.CTkFrame(self, fg_color="transparent")
@@ -703,10 +721,11 @@ class Station(ctk.CTkFrame):
             width=field_width,
             height=32,
             border_width=1,
-            border_color="#565B5E",
+            border_color="#333333",
             fg_color="transparent",
             corner_radius=9,
             placeholder_text="UVID (If Applicable)",
+            placeholder_text_color="white",  # Set explicit placeholder color
             font=field_font
         )
         # Force focus and then remove focus to trigger the placeholder
@@ -718,14 +737,15 @@ class Station(ctk.CTkFrame):
             self.controller_var = ctk.StringVar()
             controllers = ["1", "2", "3", "4"]
 
+            self.controller_var = ctk.StringVar(value="Number of Controllers")
             self.controller_combobox = ctk.CTkComboBox(
                 right_fields,
                 variable=self.controller_var,
-                values=controllers,
+                values=controllers,  # Do NOT include "Number of Controllers" in this list!
                 width=field_width,
                 height=field_height,
                 border_width=1,
-                border_color="#565B5E",
+                border_color="#333333",
                 fg_color="#171717",
                 corner_radius=9,
                 font=field_font,
@@ -734,6 +754,8 @@ class Station(ctk.CTkFrame):
             )
             self.controller_combobox.pack(fill="x", pady=field_pady)
             self.add_active_glow(self.controller_combobox, "#00843d", "#333333")
+            self.game_var.trace_add("write", self.update_game_combobox_color)
+            self.update_controller_combobox_color()
 
             self.controller_dropdown = CTkScrollableDropdown(
                 self.controller_combobox,
@@ -983,12 +1005,12 @@ class Station(ctk.CTkFrame):
     def ensure_placeholders(self):
         """Force the placeholders to be shown by accessing and manipulating the entry widgets"""
         # Force refresh of the placeholder texts
-        if hasattr(self, 'name_entry'):
+        if hasattr(self, 'name_entry') and not self.name_entry.get():
             self.name_entry._entry.config(validate='none')  # Disable validation temporarily
             self.name_entry._entry.delete(0, tk.END)        # Clear any content
             self.name_entry._activate_placeholder()         # Changed from _check_placeholder
             
-        if hasattr(self, 'id_entry'):
+        if hasattr(self, 'id_entry') and not self.id_entry.get():
             self.id_entry._entry.config(validate='none')
             self.id_entry._entry.delete(0, tk.END)
             self.id_entry._activate_placeholder()           # Changed from _check_placeholder
@@ -1013,10 +1035,10 @@ class Station(ctk.CTkFrame):
         self.name_entry._activate_placeholder()    # Changed from _check_placeholder
         self.id_entry._activate_placeholder()      # Changed from _check_placeholder
         
-        if hasattr(self, 'game_dropdown'):
-            self.game_dropdown.set("Select Game")
-        if hasattr(self, 'controller_dropdown'):
-            self.controller_dropdown.set("Number of Controllers")
+        if hasattr(self, 'game_var'):
+            self.game_var.set("Select Game")
+        if hasattr(self, 'controller_var'):
+            self.controller_var.set("Select Controllers")
         
         if hasattr(self, 'alert_label'):
             self.alert_label.place_forget()
@@ -1072,6 +1094,7 @@ class Station(ctk.CTkFrame):
             if self.game_var.get() not in games:
                 self.game_var.set(games[0] if games else '')
                 
+    
 class GamesWindow(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
@@ -1662,6 +1685,7 @@ class GamingCenterApp(ctk.CTk):
         # Create arch overlay AFTER all other UI elements
         # This ensures it will be on top in the stacking order
         self.after(200, self.create_arch_overlay)
+        self.after(300, self.load_station_states)
 
     def _adjust_content_area_size(self, content_area):
         """Adjust content area size after placement"""
@@ -1729,17 +1753,26 @@ class GamingCenterApp(ctk.CTk):
 
             now = time.time()
 
-            for s, station in zip(state, self.stations):
-                # Restore fields
-                if hasattr(station, "name_entry") and station.name_entry:
+            for i, s in enumerate(state):
+                if i >= len(self.stations):
+                    break  # Skip if there are more saved states than stations
+                    
+                station = self.stations[i]
+                
+                # Restore fields - IMPORTANT FIX: Check if fields exist and have values
+                if s.get("name") and hasattr(station, "name_entry") and station.name_entry:
                     station.name_entry.delete(0, tk.END)
                     station.name_entry.insert(0, s.get("name", ""))
-                if hasattr(station, "id_entry") and station.id_entry:
+                
+                # Restore fields - ID entry
+                if s.get("id") and hasattr(station, "id_entry") and station.id_entry:
                     station.id_entry.delete(0, tk.END)
                     station.id_entry.insert(0, s.get("id", ""))
-                if hasattr(station, "game_var") and station.game_var:
+                    
+                if s.get("game") and hasattr(station, "game_var") and station.game_var:
                     station.game_var.set(s.get("game", ""))
-                if hasattr(station, "controller_var") and station.controller_var:
+                    
+                if s.get("controller") and hasattr(station, "controller_var") and station.controller_var:
                     station.controller_var.set(s.get("controller", ""))
 
                 # Restore timer state
@@ -1755,10 +1788,22 @@ class GamingCenterApp(ctk.CTk):
                     timer.is_running = True
                     timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
                     timer.update_timer()
+                    
+                    # Apply appropriate border colors based on time elapsed
+                    progress = saved_elapsed / timer.time_limit
+                    if progress >= 1.0:
+                        station.configure(border_color="red", border_width=2)
+                    elif progress >= 0.9:
+                        station.configure(border_color="orange", border_width=2)
+                    elif progress >= 0.8:
+                        station.configure(border_color="yellow", border_width=2)
+                    else:
+                        station.configure(border_color="green", border_width=2)
                 else:
                     timer.elapsed_time = saved_elapsed
                     timer.is_running = False
                     timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
+                    timer.draw_ring(min(saved_elapsed / timer.time_limit, 1.0))
 
                 # Restore button state
                 station.update_button_states(is_active=was_running)
@@ -1772,14 +1817,13 @@ class GamingCenterApp(ctk.CTk):
         for station in self.stations:
             timer = station.timer
             is_running = timer.is_running
-            elapsed_time = timer.get_time()  # <-- Use get_time() here!
-            # print(f"Saving station {station.station_num}: Running: {is_running}, Elapsed time: {elapsed_time}")
-            # Save the state of each station
+            elapsed_time = timer.get_time()
+            
             state.append({
                 "station_type": station.station_type,
                 "station_num": station.station_num,
-                "name": station.name_entry.get() if station.name_entry else "",
-                "id": station.id_entry.get() if station.id_entry else "",
+                "name": station.name_entry.get() if hasattr(station, "name_entry") and station.name_entry else "",
+                "id": station.id_entry.get() if hasattr(station, "id_entry") and station.id_entry else "",
                 "game": station.game_var.get() if hasattr(station, "game_var") and station.game_var else "",
                 "controller": station.controller_var.get() if hasattr(station, "controller_var") and station.controller_var else "",
                 "timer": {
@@ -1789,6 +1833,7 @@ class GamingCenterApp(ctk.CTk):
                     "time_limit": timer.time_limit
                 }
             })
+    
         save_path = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "UVU-Game-Center-App", "station_state.json")
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(save_path, "w") as f:
