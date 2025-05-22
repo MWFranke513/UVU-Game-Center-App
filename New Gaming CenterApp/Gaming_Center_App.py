@@ -1,16 +1,15 @@
 import tkinter as tk
-from tkinter import simpledialog, messagebox
-from tkinter import ttk
+from tkinter import simpledialog, messagebox, ttk, font as tkFont
 import customtkinter as ctk
 from customtkinter import CTkImage
 from CTkListbox import *
 from pathlib import Path
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw
+import PIL.Image, PIL.ImageDraw, PIL.ImageTk
 import time
 import requests
 from io import BytesIO
 import math
-# import cairosvg
 import json
 import os
 import re
@@ -26,14 +25,7 @@ from StatsCompiler import StatsWindow  # Import the StatsWindow class from Stats
 ctk.set_appearance_mode("dark")  # Default to light mode
 ctk.set_default_color_theme("./uvu_green.json")  # You can change this to other themes if desired
 
-import tkinter as tk
-import customtkinter as ctk
-from PIL import Image, ImageTk
-import PIL.Image
-import PIL.ImageDraw
-import PIL.ImageTk
-from PIL import Image, ImageDraw
-import io 
+
 class CustomErrorBox(tk.Toplevel):
     def __init__(self, parent, title, message):
         super().__init__(parent)
@@ -211,7 +203,7 @@ class CombinedTimer(ctk.CTkCanvas):
             parent_bg = parent_fg
         else:
             appearance_mode = ctk.get_appearance_mode()
-            parent_bg = "#1E1E1E" if appearance_mode == "Dark" else "#e6f2ec"  # fallback color
+            parent_bg = "#171717" if appearance_mode == "Dark" else "#e6f2ec"  # fallback color
 
         super().__init__(parent, width=width, height=height, 
                          highlightthickness=0, bg=parent_bg)
@@ -250,10 +242,11 @@ class CombinedTimer(ctk.CTkCanvas):
         self.label_frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self.label_frame.place(relx=0.5, rely=0.5, anchor="center")
         
+        font_family = self.parent_station.app.get_font_family() if hasattr(self, 'parent_station') else "Helvetica"
         self.timer_label = ctk.CTkLabel(
             self.label_frame, 
             text="00:00:00", 
-            font=ctk.CTkFont(family="Helvetica", size=14, weight="bold"),
+            font=ctk.CTkFont(family=font_family, size=12, weight="normal"),
             fg_color="transparent"
         )
         self.timer_label.pack(expand=True)
@@ -278,6 +271,9 @@ class CombinedTimer(ctk.CTkCanvas):
             self.start_time = time.time() - self.elapsed_time
             self.update_timer()
 
+        if hasattr(self, 'parent_station'):
+            self.parent_station.update_button_states(is_active=True)
+
     def stop(self):
         if self.is_running:
             self.elapsed_time = time.time() - self.start_time
@@ -289,6 +285,10 @@ class CombinedTimer(ctk.CTkCanvas):
             self.after_cancel(self._blink_loop_id)
             self._blink_loop_id = None
         self.is_blinking = False
+
+
+        if hasattr(self, 'parent_station'):
+            self.parent_station.update_button_states(is_active=False)
 
     def reset(self):
         self.is_running = False
@@ -338,7 +338,7 @@ class CombinedTimer(ctk.CTkCanvas):
         
         scale = 8
         width, height = int(self.width * scale), int(self.height * scale)
-        ring_width = int(min(width, height) * 0.05)
+        ring_width = int(min(width, height) * 0.07)
         center = (width // 2, height // 2)
         radius = int(min(center) * 0.97)
         
@@ -439,15 +439,62 @@ class CombinedTimer(ctk.CTkCanvas):
         if hasattr(self, 'parent_station'):
             self.parent_station.highlight_time_exceeded()
 
+    def update_font(self):
+        """Update the timer font after parent_station is set"""
+        if hasattr(self, 'parent_station') and hasattr(self.parent_station, 'app'):
+            font_family = self.parent_station.app.get_font_family()
+            self.timer_label.configure(
+                font=ctk.CTkFont(family=font_family, size=12, weight="normal")
+            )
+
+
+class ShadowFrame(ctk.CTkFrame):
+    """A frame with a drop shadow effect"""
+    def __init__(self, master, **kwargs):
+        # Extract shadow-specific properties
+        shadow_color = kwargs.pop("shadow_color", "#0D0D0D")
+        shadow_offset = kwargs.pop("shadow_offset", 4)
+        
+        # Create container frame
+        self.container = ctk.CTkFrame(master, fg_color="transparent")
+        
+        # Create shadow frame
+        self.shadow = ctk.CTkFrame(
+            self.container, 
+            fg_color=shadow_color,
+            corner_radius=kwargs.get("corner_radius", 15),
+            border_width=0
+        )
+        self.shadow.place(
+            x=shadow_offset, 
+            y=shadow_offset, 
+            relwidth=1, 
+            relheight=1
+        )
+        
+        # Create main frame on top
+        super().__init__(self.container, **kwargs)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+    
+    def pack(self, **kwargs):
+        self.container.pack(**kwargs)
+    
+    def grid(self, **kwargs):
+        self.container.grid(**kwargs)
+    
+    def place(self, **kwargs):
+        self.container.place(**kwargs)
+
+
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
         # Match the main app background color for better contrast
         super().__init__(
             parent, 
-            border_width=1,
+            border_width=0,
             border_color="#333333", 
-            corner_radius=15,  # Keep good corner radius for cards
-            fg_color="#1E1E1E"  # Same as main app background for better contrast
+            corner_radius=15,
+            fg_color="#171717"  # Keep only standard CTkFrame parameters
         )
         self.parent = parent
         self.app = app
@@ -461,7 +508,7 @@ class Station(ctk.CTkFrame):
         self.grid_rowconfigure(1, weight=1)     # Middle row
         
         self.setup_ui()
-        self.update_timer()
+        # self.update_timer()
         
         # Ensure placeholders are shown after UI setup
         self.after(100, self.ensure_placeholders)
@@ -481,10 +528,13 @@ class Station(ctk.CTkFrame):
         header_frame.grid(row=0, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
         
         # Station number label (always on the right)
-        ctk.CTkLabel(header_frame, 
-                    text=f"Station {self.station_num}",
-                    font=ctk.CTkFont(weight="bold")).pack(side="right", padx=5)
-        
+        font_family = self.app.get_font_family()
+        station_label = ctk.CTkLabel(
+            header_frame, 
+            text=f"Station {self.station_num}",
+            font=ctk.CTkFont(family=font_family, size=14, weight="bold")
+        )
+        station_label.pack(side="right", padx=5)
         # Create a container frame for station type controls (left side)
         station_type_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         station_type_frame.pack(side="left")
@@ -592,12 +642,17 @@ class Station(ctk.CTkFrame):
         self.name_entry = ctk.CTkEntry(
             left_fields,
             width=field_width,
-            height=field_height,
+            height=32,
+            border_width=1,
+            border_color="#565B5E",
+            corner_radius=9,
+            fg_color="transparent",
             placeholder_text="Name",
             font=field_font,
             placeholder_text_color=placeholder_color  # Set explicit placeholder color
         )
         self.name_entry.pack(fill="x", pady=field_pady)
+        self.add_active_glow(self.name_entry, "#00843d", "#333333")  # Add glow effect
         
         # Game Dropdown
         if self.station_type in ["XBOX", "Switch"]:
@@ -609,6 +664,10 @@ class Station(ctk.CTkFrame):
                 values=games,
                 width=field_width,
                 height=field_height,
+                border_width=1,
+                border_color="#565B5E",
+                fg_color="#171717",
+                corner_radius=9,
                 font=field_font,
                 dropdown_font=field_font,
                 justify="left",
@@ -616,6 +675,7 @@ class Station(ctk.CTkFrame):
             )
             self.game_dropdown.set("Select Game")
             self.game_dropdown.pack(fill="x", pady=field_pady)
+            self.add_active_glow(self.game_dropdown, "#00843d", "#333333")  # Add glow effect
 
         # Right Input Column
         right_fields = ctk.CTkFrame(self, fg_color="transparent")
@@ -625,12 +685,17 @@ class Station(ctk.CTkFrame):
         self.id_entry = ctk.CTkEntry(
             right_fields,
             width=field_width,
-            height=field_height,
+            height=32,
+            border_width=1,
+            border_color="#565B5E",
+            fg_color="transparent",
+            corner_radius=9,
             placeholder_text="UVID (If Applicable)",
             font=field_font
         )
         # Force focus and then remove focus to trigger the placeholder
         self.id_entry.pack(fill="x", pady=field_pady)
+        self.add_active_glow(self.id_entry, "#00843d", "#333333")  # Add glow effect
         
         # Controller Dropdown
         if self.station_type in ["XBOX", "Switch"]:
@@ -642,6 +707,10 @@ class Station(ctk.CTkFrame):
                 values=controllers,
                 width=field_width,
                 height=field_height,
+                border_width=1,
+                border_color="#565B5E",
+                fg_color="#171717",
+                corner_radius=9,
                 font=field_font,
                 dropdown_font=field_font,
                 justify="left",
@@ -649,6 +718,7 @@ class Station(ctk.CTkFrame):
             )
             self.controller_dropdown.set("Number of Controllers")
             self.controller_dropdown.pack(fill="x", pady=field_pady)
+            self.add_active_glow(self.controller_dropdown, "#00843d", "#333333")
 
         # Center Timer Column
         timer_container = ctk.CTkFrame(self, fg_color="transparent")
@@ -663,6 +733,7 @@ class Station(ctk.CTkFrame):
         self.timer.parent_station = self
         self.timer.station_type = self.station_type
         self.timer.station_num = self.station_num
+        self.timer.update_font() 
         
         if hasattr(self, 'game_var'):
             self.timer.game_var = self.game_var
@@ -679,32 +750,37 @@ class Station(ctk.CTkFrame):
         btn_container = ctk.CTkFrame(button_frame, fg_color="transparent")
         btn_container.pack()
         
-        # Load button icons with matching colors
-        self.start_icon = self.colorize_icon("./icon_cache/play.png", "#00843d")      # Green
-        self.stop_icon = self.colorize_icon("./icon_cache/square.png", "#e74c3c")     # Red
-        self.reset_icon = self.colorize_icon("./icon_cache/refresh-ccw.png", "#3498db") # Blue
+        # Load button icons with white color for inactive state
+        self.start_icon_inactive = self.colorize_icon("./icon_cache/play.png", "#FFFFFF")
+        self.stop_icon_inactive = self.colorize_icon("./icon_cache/square.png", "#FFFFFF")
+        self.reset_icon_inactive = self.colorize_icon("./icon_cache/refresh-ccw.png", "#FFFFFF")
         
-        # Green Start button
+        # Load button icons with color for active state
+        self.start_icon_active = self.colorize_icon("./icon_cache/play.png", "#4DA977")
+        self.stop_icon_active = self.colorize_icon("./icon_cache/square.png", "#A3483F")
+        self.reset_icon_active = self.colorize_icon("./icon_cache/refresh-ccw.png", "#00BFB3")
+        
+        # Green Start button (initially inactive)
         start_button = ctk.CTkButton(
             btn_container, 
-            image=self.start_icon, 
+            image=self.start_icon_inactive, 
             text="Start", 
             command=self.timer.start,
             width=80,
             height=30,
             corner_radius=20,
-            fg_color="transparent",  # Transparent background
-            border_width=1,          # Add border
-            border_color="#00843d",  # Match UVU green for border
-            text_color="#00843d",    # Text color matching border
-            hover_color="#1a2e28"    # Dark green hover effect that works in CTk
+            fg_color="transparent",
+            border_width=1,
+            border_color="#00843d",
+            text_color="#FFFFFF",
+            hover_color="#1a2e28"
         )
         start_button.pack(side="left", padx=5)
         
-        # Red Stop button
+        # Red Stop button (initially inactive)
         stop_button = ctk.CTkButton(
             btn_container,
-            image=self.stop_icon,
+            image=self.stop_icon_inactive,
             text="Stop",
             command=self.timer.stop,
             width=80,
@@ -712,16 +788,16 @@ class Station(ctk.CTkFrame):
             corner_radius=20,
             fg_color="transparent",
             border_width=1,
-            border_color="#e74c3c",  # Red color for stop
-            text_color="#e74c3c",
-            hover_color="#2d1a1a"    # Dark red hover effect
+            border_color="#00843d",
+            text_color="#FFFFFF",
+            hover_color="#1a2e28"
         )
         stop_button.pack(side="left", padx=5)
         
-        # Blue Reset button
+        # Blue Reset button (initially inactive)
         reset_button = ctk.CTkButton(
             btn_container,
-            image=self.reset_icon,
+            image=self.reset_icon_inactive,
             text="Reset",
             command=self.reset_timer,
             width=80,
@@ -729,18 +805,71 @@ class Station(ctk.CTkFrame):
             corner_radius=20,
             fg_color="transparent",
             border_width=1,
-            border_color="#3498db",  # Blue color for reset
-            text_color="#3498db",
-            hover_color="#1a202d"    # Dark blue hover effect
+            border_color="#00843d",
+            text_color="#FFFFFF",
+            hover_color="#1a2e28"
         )
         reset_button.pack(side="left", padx=5)
         
-        # Store buttons for later icon color management
+        # Store buttons for later state management
         self.start_button = start_button
         self.stop_button = stop_button
         self.reset_button = reset_button
+        
+        # Initialize button states
+        self.update_button_states(is_active=False)
 
+    def add_active_glow(self, widget, glow_color="#00FFD0", normal_color="#333333", steps=8, duration=120):
+        # Always use the provided normal_color as the "off" color
+        widget._original_border_color = normal_color
 
+        def color_to_str(color):
+            if isinstance(color, (list, tuple)):
+                return color[0]
+            return color
+
+        def hex_to_rgb(hex_color):
+            hex_color = color_to_str(hex_color).lstrip('#')
+            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+        def rgb_to_hex(rgb):
+            return '#{:02x}{:02x}{:02x}'.format(*rgb)
+
+        def interpolate_color(c1, c2, t):
+            return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+
+        def fade_to(target_color, start_color, step=0):
+            if step > steps:
+                widget.configure(border_color=target_color)
+                return
+            t = step / steps
+            rgb = interpolate_color(hex_to_rgb(start_color), hex_to_rgb(target_color), t)
+            widget.configure(border_color=rgb_to_hex(rgb))
+            widget.after(duration // steps, lambda: fade_to(target_color, start_color, step + 1))
+
+        def on_focus_in(event):
+            fade_to(glow_color, widget._original_border_color)
+
+        def on_focus_out(event):
+            fade_to(widget._original_border_color, glow_color)
+
+        def on_dropdown_open(event):
+            fade_to(glow_color, widget._original_border_color)
+
+        def on_dropdown_close(event):
+            fade_to(widget._original_border_color, glow_color)
+
+        widget.bind("<FocusIn>", on_focus_in)
+        widget.bind("<FocusOut>", on_focus_out)
+
+        if isinstance(widget, ctk.CTkComboBox):
+            widget.bind("<Button-1>", on_dropdown_open)
+            widget.bind("<FocusOut>", on_dropdown_close)
+            # For CTkComboBox, also bind to mouse click to simulate dropdown open
+            if isinstance(widget, ctk.CTkComboBox):
+                widget.bind("<Button-1>", on_dropdown_open)
+                # Optionally, also bind to <FocusOut> to fade back when dropdown closes
+                widget.bind("<FocusOut>", on_dropdown_close)
 
     def colorize_icon(self, icon_path, color_hex):
         """Recolor an icon to match the button text color"""
@@ -755,6 +884,55 @@ class Station(ctk.CTkFrame):
         result.paste(colored, (0, 0), img)
         
         return ctk.CTkImage(result, size=(15, 15))
+    
+
+    def update_button_states(self, is_active):
+        """Update button appearance based on timer active state"""
+        if is_active:
+            # Timer is active - Apply active state styling
+            
+            # Start button - disabled look with 30% opacity
+            self.start_button.configure(
+                image=self.start_icon_active,
+                border_color="#4DA977",
+                text_color="#4DA977",
+                hover=False,  # Disable hover effect
+                fg_color="transparent"
+            )
+            
+            # Stop button - active stop styling
+            self.stop_button.configure(
+                image=self.stop_icon_active,
+                border_color="#A3483F",
+                text_color="#A3483F",
+                hover_color="#2d1a1a",  # Appropriate hover effect
+                fg_color="transparent"
+            )
+            
+            # Reset button - active reset styling
+            self.reset_button.configure(
+                image=self.reset_icon_active,
+                border_color="#00BFB3",
+                text_color="#00BFB3",
+                hover_color="#1a202d",  # Appropriate hover effect 
+                fg_color="transparent"
+            )
+        else:
+            # Timer is inactive - Apply default styling
+            
+            # All buttons use the UVU green with white text
+            for button, icon in [
+                (self.start_button, self.start_icon_inactive),
+                (self.stop_button, self.stop_icon_inactive),
+                (self.reset_button, self.reset_icon_inactive)
+            ]:
+                button.configure(
+                    image=icon,
+                    border_color="#00843d",
+                    text_color="#FFFFFF",
+                    hover_color="#1a2e28",
+                    fg_color="transparent"
+                )
 
     def change_console_type(self):
         self.station_type = self.console_var.get()
@@ -763,9 +941,9 @@ class Station(ctk.CTkFrame):
         self.game_var.set('')
         self.game_dropdown.set("Select Game")
 
-    def update_timer(self):
-        self.timer.update_timer()
-        self.after(1000, self.update_timer)
+    # def update_timer(self):
+    #     self.timer.update_timer()
+    #     self.after(1000, self.update_timer)
 
     def highlight_time_exceeded(self):
         self.configure(border_color="red", border_width=3)
@@ -831,6 +1009,8 @@ class Station(ctk.CTkFrame):
         
         if hasattr(self, 'alert_label'):
             self.alert_label.place_forget()
+
+        self.update_button_states(is_active=False)
 
     def log_usage(self):
         try:
@@ -1415,45 +1595,46 @@ class GamingCenterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Gaming Center App")
-        self.geometry("1500x950")
+        self.geometry("1500x1100")
+        self.load_orbitron_font()
         self.stations = []
         self.waitlist = []
         self.timers = []
         self.waitlist_tree = None
         
         # Set the base application background color
-        self.configure(fg_color="#141414")
+        self.configure(fg_color="#090A09")
         
         # Create the main container
-        self.main_container = ctk.CTkFrame(self, fg_color="#141414", corner_radius=0)
+        self.main_container = ctk.CTkFrame(self, fg_color="#090A09", corner_radius=0)
         self.main_container.pack(fill="both", expand=True, padx=0, pady=0)
         
         # Create top bar
-        top_bar = ctk.CTkFrame(self.main_container, fg_color="#2A2A2A", height=40, corner_radius=0)
+        top_bar = ctk.CTkFrame(self.main_container, fg_color="#171717", height=40, corner_radius=0)
         top_bar.pack(fill="x")
         top_bar.pack_propagate(False)
         self.top_bar = top_bar
         
         # Create sidebar
-        sidebar = ctk.CTkFrame(self.main_container, fg_color="#2A2A2A", width=85, corner_radius=0)
+        sidebar = ctk.CTkFrame(self.main_container, fg_color="#171717", width=85, corner_radius=0)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
         self.sidebar = sidebar
         
         # Create content area
-        content_container = ctk.CTkFrame(self.main_container, fg_color="#141414", corner_radius=0)
+        content_container = ctk.CTkFrame(self.main_container, fg_color="#090A09", corner_radius=0)
         content_container.pack(side="right", fill="both", expand=True)
         
         content_area = ctk.CTkFrame(
             content_container, 
-            fg_color="#141414",
+            fg_color="#090A09",
             corner_radius=30
         )
         content_area.pack(fill="both", expand=True, padx=(0, 10), pady=(10, 10))
         
         inner_content = ctk.CTkFrame(
             content_area,
-            fg_color="#141414",
+            fg_color="#090A09",
             corner_radius=25
         )
         inner_content.pack(fill="both", expand=True, padx=15, pady=15)
@@ -1478,19 +1659,65 @@ class GamingCenterApp(ctk.CTk):
         content_area.configure(width=container_width-70, height=container_height-30)
 
 
+    def load_orbitron_font(self):
+        """Load Orbitron font after window initialization"""
+        try:
+            # Check if font is already available in system
+            available_fonts = tkFont.families()
+            if "Orbitron" in available_fonts:
+                print("Orbitron font found in system fonts")
+                return True
+            
+            # If not, try to load from the font file in your project directory
+            font_path = "./fonts/Orbitron-VariableFont_wght.ttf"
+            if os.path.exists(font_path):
+                print(f"Found font file at: {font_path}")
+                
+                # For Windows, add the font to the system temporarily
+                if os.name == 'nt':  # Windows
+                    from ctypes import windll
+                    if windll.gdi32.AddFontResourceW(os.path.abspath(font_path)):
+                        print("Font added to Windows resources")
+                
+                # Register with Tkinter
+                temp_font = tkFont.Font(family="Orbitron")
+                print(f"Registered font: {temp_font.actual()}")
+                return True
+                
+            print("Orbitron font file not found")
+            return False
+        except Exception as e:
+            print(f"Error loading font: {e}")
+            return False
+            
+    def get_font_family(self):
+        """Get the appropriate font family with fallback"""
+        try:
+            available_fonts = tkFont.families()
+            if "Orbitron" in available_fonts:
+                print("Using Orbitron font")
+                return "Orbitron"
+            else:
+                print("Orbitron font not found, using Helvetica")
+                return "Helvetica"
+        except Exception as e:
+            print(f"Error in get_font_family: {e}")
+            return "Helvetica"
+
+
     def load_station_states(self):
         save_path = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "UVU-Game-Center-App", "station_state.json")
         if not os.path.exists(save_path):
             return
-        
+
         try:
             with open(save_path, "r") as f:
                 state = json.load(f)
-            
-            now = time.time()  # Get current time once at the beginning
+
+            now = time.time()
 
             for s, station in zip(state, self.stations):
-                # First restore all fields so validation won't fail when starting timer
+                # Restore fields
                 if hasattr(station, "name_entry") and station.name_entry:
                     station.name_entry.delete(0, tk.END)
                     station.name_entry.insert(0, s.get("name", ""))
@@ -1502,40 +1729,26 @@ class GamingCenterApp(ctk.CTk):
                 if hasattr(station, "controller_var") and station.controller_var:
                     station.controller_var.set(s.get("controller", ""))
 
-                # Now handle timer state
+                # Restore timer state
                 timer_state = s.get("timer", {})
                 timer = station.timer
-                
-                # Get saved values
                 timer.time_limit = timer_state.get("time_limit", timer.time_limit)
                 saved_elapsed = timer_state.get("elapsed_time", 0)
-                saved_start_time = timer_state.get("start_time", 0)
                 was_running = timer_state.get("is_running", False)
-                
-                # Debug prints to see what's happening
-                print(f"Station {station.station_num}: Was running: {was_running}, Saved elapsed: {saved_elapsed}")
-                
-                now = time.time()
-                
-                # Now handle timer state
-                timer_state = s.get("timer", {})
-                timer = station.timer
-                
-                # Get saved values
-                timer.time_limit = timer_state.get("time_limit", timer.time_limit)
-                saved_elapsed = timer_state.get("elapsed_time", 0)
-                saved_start_time = timer_state.get("start_time", 0)
-                was_running = timer_state.get("is_running", False)
-                
-                print(f"Station {station.station_num}: Was running: {was_running}, Saved elapsed: {saved_elapsed}")
-                
+
                 if was_running:
-                    now = time.time()
                     timer.elapsed_time = saved_elapsed
                     timer.start_time = now - saved_elapsed
                     timer.is_running = True
                     timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
                     timer.update_timer()
+                else:
+                    timer.elapsed_time = saved_elapsed
+                    timer.is_running = False
+                    timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
+
+                # Restore button state
+                station.update_button_states(is_active=was_running)
         except Exception as e:
             import traceback
             print(f"Error loading station states: {e}")
@@ -1580,7 +1793,7 @@ class GamingCenterApp(ctk.CTk):
                 self.main_container,
                 width=arch_radius,
                 height=arch_radius,
-                bg="#2A2A2A",  # Match the main background
+                bg="#171717",  # Match the main background
                 highlightthickness=0
             )
             
@@ -1589,7 +1802,7 @@ class GamingCenterApp(ctk.CTk):
                 0, 0,  # Top-left of bounding box
                 arch_radius*2, arch_radius*2,  # Bottom-right of bounding box
                 start=90, extent=90,  # Draw from 90° to 180° (top-left quadrant)
-                fill="#141414",  # Content area color
+                fill="#090A09",  # Content area color
                 outline=""  # No outline
             )
             
@@ -1690,6 +1903,7 @@ class GamingCenterApp(ctk.CTk):
                 height=32,
                 corner_radius=8,
                 fg_color="transparent",
+               
                 hover_color="#3A3A3A",
                 command=self.show_menu
             )
@@ -1842,9 +2056,17 @@ class GamingCenterApp(ctk.CTk):
         self.is_running = False  # Set running flag to False
 
     def on_close(self):
+        # Stop all timers and cancel after jobs
+        for timer in self.timers:
+            if hasattr(timer, '_update_loop_id') and timer._update_loop_id:
+                timer.after_cancel(timer._update_loop_id)
+                timer._update_loop_id = None
+            if hasattr(timer, '_blink_loop_id') and timer._blink_loop_id:
+                timer.after_cancel(timer._blink_loop_id)
+                timer._blink_loop_id = None
+            timer.is_blinking = False
         self.save_station_states()
-        self.stop_timers()  # Stop all timers
-        self.destroy()      # Close the application
+        self.destroy()
 
     # Add placeholder methods for the new buttons
     def show_menu(self):
@@ -1861,6 +2083,10 @@ class GamingCenterApp(ctk.CTk):
         # Create main container with proper padding to prevent overflow
         main_frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        frames_to_focus = [main_frame, self.content_area]
+
+        for frame in frames_to_focus:
+            frame.bind("<Button-1>", lambda event, f=frame: f.focus_set())
         
         # Configure grid weights to ensure proper scaling
         for i in range(6):  # 6 rows
@@ -1870,16 +2096,36 @@ class GamingCenterApp(ctk.CTk):
         
         # Create first 4 console stations (left column) in reverse order
         for i in range(4):
-            station = Station(main_frame, self, "XBOX", 4 - i)  # Pass self to Station
+            # Create shadow frame with proper corner radius and coloring
+            shadow = ctk.CTkFrame(
+                main_frame,
+                corner_radius=15,
+                fg_color="#282828",  # Darker shadow color
+                border_width=0
+            )
+            # Grid the shadow with offset padding to create the drop shadow effect
+            shadow.grid(row=i, column=0, padx=(10, 14), pady=(10, 14), sticky="nsew")
+            
+            # Then create actual station on top of shadow
+            station = Station(main_frame, self, "XBOX", 4 - i)
             station.grid(row=i, column=0, padx=10, pady=10, sticky="nsew")
             self.stations.append(station)
-            self.timers.append(station.timer)  # Add the timer to the list
-            
-        # Create 5th console station (top center)
-        station = Station(main_frame, self, "XBOX", 5)  # Pass self to Station
-        station.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+            self.timers.append(station.timer)
+        
+        # Create 5th console station (top center) with shadow
+        shadow = ctk.CTkFrame(
+            main_frame,
+            corner_radius=15,
+            fg_color="#282828",  # Darker shadow color
+            border_width=0
+        )
+        # Grid with offset padding
+        shadow.grid(row=0, column=1, columnspan=2, padx=(10, 14), pady=(10, 14), sticky="nsew")
+        
+        station = Station(main_frame, self, "XBOX", 5)
+        station.grid(row=0, column=1, columnspan=2, padx=10, pady=10, sticky="nsew")
         self.stations.append(station)
-        self.timers.append(station.timer)  # Add the timer to the list
+        self.timers.append(station.timer)
         
         # Create other activity stations (under 5th console)
         activities = [
@@ -1892,10 +2138,21 @@ class GamingCenterApp(ctk.CTk):
         ]
         row, col = 1, 1  # Start position (under 5th console)
         for activity, num in activities:
-            station = Station(main_frame, self, activity, num)  # Pass self to Station
+            # Create shadow
+            shadow = ctk.CTkFrame(
+                main_frame,
+                corner_radius=15,
+                fg_color="#282828",  # Darker shadow color
+                border_width=0
+            )
+            # Grid with offset padding
+            shadow.grid(row=row, column=col, padx=(10, 14), pady=(10, 14), sticky="nsew")
+            
+            # Create station
+            station = Station(main_frame, self, activity, num)
             station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             self.stations.append(station)
-            self.timers.append(station.timer)  # Add the timer to the list
+            self.timers.append(station.timer)
             col += 1
             if col > 2:  # Move to next row after 2 columns
                 col = 1
@@ -2104,7 +2361,6 @@ class GamingCenterApp(ctk.CTk):
             self.placeholder_buttons_frame,
             image=x_icon,
             text="",
-           
             width=30,
             height=30,
             fg_color="gray",
@@ -2372,7 +2628,7 @@ class GamingCenterApp(ctk.CTk):
             self.bowling_waitlist.append(result)
             self.update_waitlist_tree()
             self.update_waitlist_count()  # Update the sidebar count label
-            
+
     def send_sms(self, phone_number, party_name, station_name):
         """Send SMS via email-to-SMS gateways for all major carriers simultaneously."""
         email = "uvuslwcgamecenter@gmail.com"
