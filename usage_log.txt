@@ -1940,3 +1940,12 @@ Duration: 00:01:04
 Game: Batman: Arkham Knight
 Controllers: 2
 --------------------------------------------------
+Date: 2025-05-21 20:47:44.50
+Station Type: XBOX
+Station Number: 5
+User Name: 
+ID Number: N/A
+Duration: 00:38:22
+Game: Assassins Creed: Mirage
+Controllers: 1
+--------------------------------------------------

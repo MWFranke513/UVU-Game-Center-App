@@ -32,8 +32,8 @@ from PIL import Image, ImageTk
 import PIL.Image
 import PIL.ImageDraw
 import PIL.ImageTk
-
-
+from PIL import Image, ImageDraw
+import io 
 class CustomErrorBox(tk.Toplevel):
     def __init__(self, parent, title, message):
         super().__init__(parent)
@@ -211,7 +211,7 @@ class CombinedTimer(ctk.CTkCanvas):
             parent_bg = parent_fg
         else:
             appearance_mode = ctk.get_appearance_mode()
-            parent_bg = "gray16" if appearance_mode == "Dark" else "#e6f2ec"  # fallback color
+            parent_bg = "#1E1E1E" if appearance_mode == "Dark" else "#e6f2ec"  # fallback color
 
         super().__init__(parent, width=width, height=height, 
                          highlightthickness=0, bg=parent_bg)
@@ -441,7 +441,14 @@ class CombinedTimer(ctk.CTkCanvas):
 
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
-        super().__init__(parent, border_width=2, corner_radius=10)
+        # Match the main app background color for better contrast
+        super().__init__(
+            parent, 
+            border_width=1,
+            border_color="#333333", 
+            corner_radius=15,  # Keep good corner radius for cards
+            fg_color="#1E1E1E"  # Same as main app background for better contrast
+        )
         self.parent = parent
         self.app = app
         self.station_type = station_type
@@ -672,40 +679,82 @@ class Station(ctk.CTkFrame):
         btn_container = ctk.CTkFrame(button_frame, fg_color="transparent")
         btn_container.pack()
         
-        # Load button icons
-        self.start_icon = ctk.CTkImage(Image.open("./icon_cache/play.png"), size=(15, 15))
-        self.stop_icon = ctk.CTkImage(Image.open("./icon_cache/square.png"), size=(15, 15))
-        self.reset_icon = ctk.CTkImage(Image.open("./icon_cache/refresh-ccw.png"), size=(15, 15))
+        # Load button icons with matching colors
+        self.start_icon = self.colorize_icon("./icon_cache/play.png", "#00843d")      # Green
+        self.stop_icon = self.colorize_icon("./icon_cache/square.png", "#e74c3c")     # Red
+        self.reset_icon = self.colorize_icon("./icon_cache/refresh-ccw.png", "#3498db") # Blue
         
-        ctk.CTkButton(
+        # Green Start button
+        start_button = ctk.CTkButton(
             btn_container, 
             image=self.start_icon, 
             text="Start", 
             command=self.timer.start,
             width=80,
             height=30,
-            corner_radius=20
-        ).pack(side="left", padx=5)
+            corner_radius=20,
+            fg_color="transparent",  # Transparent background
+            border_width=1,          # Add border
+            border_color="#00843d",  # Match UVU green for border
+            text_color="#00843d",    # Text color matching border
+            hover_color="#1a2e28"    # Dark green hover effect that works in CTk
+        )
+        start_button.pack(side="left", padx=5)
         
-        ctk.CTkButton(
+        # Red Stop button
+        stop_button = ctk.CTkButton(
             btn_container,
             image=self.stop_icon,
             text="Stop",
             command=self.timer.stop,
             width=80,
             height=30,
-            corner_radius=20
-        ).pack(side="left", padx=5)
+            corner_radius=20,
+            fg_color="transparent",
+            border_width=1,
+            border_color="#e74c3c",  # Red color for stop
+            text_color="#e74c3c",
+            hover_color="#2d1a1a"    # Dark red hover effect
+        )
+        stop_button.pack(side="left", padx=5)
         
-        ctk.CTkButton(
+        # Blue Reset button
+        reset_button = ctk.CTkButton(
             btn_container,
             image=self.reset_icon,
             text="Reset",
             command=self.reset_timer,
             width=80,
             height=30,
-            corner_radius=20
-        ).pack(side="left", padx=5)
+            corner_radius=20,
+            fg_color="transparent",
+            border_width=1,
+            border_color="#3498db",  # Blue color for reset
+            text_color="#3498db",
+            hover_color="#1a202d"    # Dark blue hover effect
+        )
+        reset_button.pack(side="left", padx=5)
+        
+        # Store buttons for later icon color management
+        self.start_button = start_button
+        self.stop_button = stop_button
+        self.reset_button = reset_button
+
+
+
+    def colorize_icon(self, icon_path, color_hex):
+        """Recolor an icon to match the button text color"""
+        # Open the icon
+        img = Image.open(icon_path).convert("RGBA")
+        
+        # Create a solid color image of the same size
+        colored = Image.new("RGBA", img.size, color_hex)
+        
+        # Use the original image as a mask
+        result = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        result.paste(colored, (0, 0), img)
+        
+        return ctk.CTkImage(result, size=(15, 15))
 
     def change_console_type(self):
         self.station_type = self.console_var.get()
@@ -1367,31 +1416,67 @@ class GamingCenterApp(ctk.CTk):
         super().__init__()
         self.title("Gaming Center App")
         self.geometry("1500x950")
-        self.stations = []  # Keep track of all stations
-        self.waitlist = []  # List to keep track of people on the waitlist
+        self.stations = []
+        self.waitlist = []
         self.timers = []
-        self.waitlist_tree = None  # Initialize waitlist_tree as None
-
-        # Create the main content frame that will contain everything else
-        self.main_container = ctk.CTkFrame(self)
-        self.main_container.pack(fill="both", expand=True)
-
-        # Create and setup the sidebar
-        self.setup_sidebar()
-
-                # Create the content area
-        self.content_area = ctk.CTkFrame(self.main_container)
-        self.content_area.pack(side="left", fill="both", expand=True)
-
-        #         # Create main container with more padding
-        # main_frame = ctk.CTkFrame(self.content_area)
-        # main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        # self.create_menu()
+        self.waitlist_tree = None
+        
+        # Set the base application background color
+        self.configure(fg_color="#141414")
+        
+        # Create the main container
+        self.main_container = ctk.CTkFrame(self, fg_color="#141414", corner_radius=0)
+        self.main_container.pack(fill="both", expand=True, padx=0, pady=0)
+        
+        # Create top bar
+        top_bar = ctk.CTkFrame(self.main_container, fg_color="#2A2A2A", height=40, corner_radius=0)
+        top_bar.pack(fill="x")
+        top_bar.pack_propagate(False)
+        self.top_bar = top_bar
+        
+        # Create sidebar
+        sidebar = ctk.CTkFrame(self.main_container, fg_color="#2A2A2A", width=85, corner_radius=0)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+        self.sidebar = sidebar
+        
+        # Create content area
+        content_container = ctk.CTkFrame(self.main_container, fg_color="#141414", corner_radius=0)
+        content_container.pack(side="right", fill="both", expand=True)
+        
+        content_area = ctk.CTkFrame(
+            content_container, 
+            fg_color="#141414",
+            corner_radius=30
+        )
+        content_area.pack(fill="both", expand=True, padx=(0, 10), pady=(10, 10))
+        
+        inner_content = ctk.CTkFrame(
+            content_area,
+            fg_color="#141414",
+            corner_radius=25
+        )
+        inner_content.pack(fill="both", expand=True, padx=15, pady=15)
+        self.content_area = inner_content
+        
+        # Setup UI components
+        self.setup_top_bar(top_bar)
+        self.setup_sidebar(sidebar)
         self.setup_ui()
         
         self.load_station_states()
-        # Bind the close event to the stop_timers method
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        # Create arch overlay AFTER all other UI elements
+        # This ensures it will be on top in the stacking order
+        self.after(200, self.create_arch_overlay)
+
+    def _adjust_content_area_size(self, content_area):
+        """Adjust content area size after placement"""
+        container_width = self.main_container.winfo_width()
+        container_height = self.main_container.winfo_height()
+        content_area.configure(width=container_width-70, height=container_height-30)
+
 
     def load_station_states(self):
         save_path = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "UVU-Game-Center-App", "station_state.json")
@@ -1484,14 +1569,181 @@ class GamingCenterApp(ctk.CTk):
             json.dump(state, f)
 
 
-    def setup_sidebar(self):
-        # Create the sidebar frame with dark background
-        self.sidebar = ctk.CTkFrame(self.main_container, fg_color="gray16", width=85, corner_radius=20)
-        self.sidebar.pack(side="left", fill="y", padx=(0, 20))
-        self.sidebar.pack_propagate(False)  # Prevent the sidebar from shrinking
 
+    def create_arch_overlay(self):
+        """Create an arch effect using a canvas directly"""
+        arch_radius = 30
+        
+        try:
+            # Create a transparent canvas
+            self.arch_overlay = ctk.CTkCanvas(
+                self.main_container,
+                width=arch_radius,
+                height=arch_radius,
+                bg="#2A2A2A",  # Match the main background
+                highlightthickness=0
+            )
+            
+            # Draw a circle in the content area color
+            self.arch_overlay.create_arc(
+                0, 0,  # Top-left of bounding box
+                arch_radius*2, arch_radius*2,  # Bottom-right of bounding box
+                start=90, extent=90,  # Draw from 90° to 180° (top-left quadrant)
+                fill="#141414",  # Content area color
+                outline=""  # No outline
+            )
+            
+            # Position at the inner corner where sidebar and topbar meet
+            self.arch_overlay.place(x=158-arch_radius, y=90-arch_radius)
+            
+            # Force the arch overlay to the top of the stacking order
+            # This is the key fix - using tkraise() with an explicit aboveThis parameter
+            self.after(100, lambda: self.main_container.tk.call('raise', self.arch_overlay._w))
+        except Exception as e:
+            print(f"Error creating arch overlay: {e}")
+
+    def create_visible_arch_test(self):
+        """Test version with a bright color to see positioning"""
+        arch_radius = 30
+        
+        # Create the image
+        arch_image = Image.new('RGBA', (arch_radius, arch_radius), (0, 0, 0, 0))
+        
+        # Use a bright test color to see if it's positioned correctly
+        test_color = (255, 0, 255, 255)  # Bright magenta for testing
+        
+        # Draw quarter circle
+        for x in range(arch_radius):
+            for y in range(arch_radius):
+                distance = (x**2 + y**2)**0.5
+                if distance <= arch_radius:
+                    arch_image.putpixel((x, y), test_color)
+        
+        # Convert to CTkImage
+        arch_ctk_image = ctk.CTkImage(arch_image, size=(arch_radius, arch_radius))
+        
+        # Create and position overlay
+        self.arch_overlay = ctk.CTkLabel(
+            self.main_container,
+            image=arch_ctk_image,
+            text="",
+            fg_color="transparent"
+        )
+        
+        # Test different positions - try this first to see where it appears
+        self.arch_overlay.place(x=85, y=40, anchor="nw")
+        self.arch_overlay.lift()
+
+    def create_proper_arch_overlay(self):
+        """Final version with correct color matching your content area"""
+        arch_radius = 25  # Slightly smaller for better proportion
+        
+        # Create image with scale factor for anti-aliasing
+        scale_factor = 3
+        scaled_radius = arch_radius * scale_factor
+        arch_image = Image.new('RGBA', (scaled_radius, scaled_radius), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(arch_image)
+        
+        # This should match your inner content frame color exactly
+        # Look at your code: inner_content has fg_color="#1E1E1E"
+        content_bg_color = (30, 30, 30, 255)  # #1E1E1E converted to RGBA
+        
+        # Draw a perfect circle and take only the top-left quarter
+        # Position circle so we get the curved corner effect
+        draw.ellipse([0, 0, scaled_radius * 2, scaled_radius * 2], fill=content_bg_color)
+        
+        # Crop to get only the top-left quarter
+        arch_image = arch_image.crop((0, 0, scaled_radius, scaled_radius))
+        
+        # Resize down for anti-aliasing
+        arch_image = arch_image.resize((arch_radius, arch_radius), Image.Resampling.LANCZOS)
+        
+        # Convert to CTkImage
+        arch_ctk_image = ctk.CTkImage(arch_image, size=(arch_radius, arch_radius))
+        
+        # Create overlay
+        self.arch_overlay = ctk.CTkLabel(
+            self.main_container,
+            image=arch_ctk_image,
+            text="",
+            fg_color="transparent"
+        )
+        
+        # Position where the content area corner should be
+        # You might need to adjust these coordinates based on your padding
+        self.arch_overlay.place(x=85, y=40, anchor="nw")
+        self.arch_overlay.lift()
+
+
+    def setup_top_bar(self, top_bar):
+        """Create a top bar with help and menu icons"""
+        # Add triple dot menu icon on the left
+        menu_icon_path = "./icon_cache/ellipsis.png"  # Assuming you have this icon
+        try:
+            menu_image = Image.open(menu_icon_path)
+            menu_icon = ctk.CTkImage(menu_image, size=(18, 18))
+            menu_button = ctk.CTkButton(
+                top_bar,
+                image=menu_icon,
+                text="",
+                width=32,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color="#3A3A3A",
+                command=self.show_menu
+            )
+            menu_button.pack(side="left", padx=10)
+        except Exception as e:
+            print(f"Error loading menu icon: {e}")
+            # Fallback text button
+            menu_button = ctk.CTkButton(
+                top_bar,
+                text="≡",
+                width=32,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color="#3A3A3A",
+                command=self.show_menu
+            )
+            menu_button.pack(side="left", padx=10)
+        
+        # Add help icon on the right
+        help_icon_path = "./icon_cache/circle-help.png"  # Assuming you have this icon
+        try:
+            help_image = Image.open(help_icon_path)
+            help_icon = ctk.CTkImage(help_image, size=(18, 18))
+            help_button = ctk.CTkButton(
+                top_bar,
+                image=help_icon,
+                text="",
+                width=32,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color="#3A3A3A",
+                command=self.show_help
+            )
+            help_button.pack(side="right", padx=10)
+        except Exception as e:
+            print(f"Error loading help icon: {e}")
+            # Fallback text button
+            help_button = ctk.CTkButton(
+                top_bar,
+                text="?",
+                width=32,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent", 
+                hover_color="#3A3A3A",
+                command=self.show_help
+            )
+            help_button.pack(side="right", padx=10)        
+
+    def setup_sidebar(self, sidebar):
         # Add the main logo at the top
-        logo_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent", height=60)
+        logo_frame = ctk.CTkFrame(sidebar, fg_color="transparent", height=60)
         logo_frame.pack(fill="x", pady=(10, 20))
         logo_frame.pack_propagate(False)
 
@@ -1515,6 +1767,7 @@ class GamingCenterApp(ctk.CTk):
         )
         logo_label.place(relx=0.5, rely=0.5, anchor="center")
 
+        # Load sidebar icons
         home = ctk.CTkImage(Image.open("./icon_cache/house.png"), size=(24, 24))
         games = ctk.CTkImage(Image.open("./icon_cache/gamepad-2.png"), size=(24, 24))
         waitlist = ctk.CTkImage(Image.open("./icon_cache/list-plus.png"), size=(24, 24))
@@ -1584,48 +1837,50 @@ class GamingCenterApp(ctk.CTk):
         pass
 
     def stop_timers(self):
-
         for timer in self.timers:  # Assuming self.timers is a list of your timer instances
-
             timer.stop()  # Call the stop method for each timer
-
         self.is_running = False  # Set running flag to False
-
 
     def on_close(self):
         self.save_station_states()
         self.stop_timers()  # Stop all timers
         self.destroy()      # Close the application
 
+    # Add placeholder methods for the new buttons
+    def show_menu(self):
+        """Show the application menu"""
+        print("Menu clicked - functionality to be implemented")
+        # Placeholder for menu functionality
+
+    def show_help(self):
+        """Show help information"""
+        print("Help clicked - functionality to be implemented")
+        # Placeholder for help functionality
+
     def setup_ui(self):
-        # Create main container with more padding
-        main_frame = ctk.CTkFrame(self.content_area)
-        main_frame.pack(fill="both", expand=True, padx=0, pady=0)
-        # Configure grid weights
+        # Create main container with proper padding to prevent overflow
+        main_frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Configure grid weights to ensure proper scaling
         for i in range(6):  # 6 rows
             main_frame.grid_rowconfigure(i, weight=1)
         for i in range(3):  # 3 columns
             main_frame.grid_columnconfigure(i, weight=1)
-        # # Add button to view and edit games at the top right
-        # games_button = ctk.CTkButton(main_frame, text="View/Edit Games", command=self.open_games_window, corner_radius=20)
-        # waitlist_button = ctk.CTkButton(main_frame, text="Waitlist", command=self.show_waitlist_window, corner_radius=20)
-        # waitlist_button.grid(row=0, column=3, padx=10, pady=10, sticky="ne")
-        # games_button.grid(row=0, column=2, padx=10, pady=10, sticky="ne")
-
-        # # Notification bubble for waitlist
-        # self.notification_bubble = ctk.CTkLabel(main_frame, text="", fg_color="red", text_color="white", corner_radius=10)
-        # self.notification_bubble.grid(row=0, column=1, padx=10, pady=10, sticky="ne")
+        
         # Create first 4 console stations (left column) in reverse order
         for i in range(4):
             station = Station(main_frame, self, "XBOX", 4 - i)  # Pass self to Station
             station.grid(row=i, column=0, padx=10, pady=10, sticky="nsew")
             self.stations.append(station)
             self.timers.append(station.timer)  # Add the timer to the list
+            
         # Create 5th console station (top center)
         station = Station(main_frame, self, "XBOX", 5)  # Pass self to Station
         station.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
         self.stations.append(station)
         self.timers.append(station.timer)  # Add the timer to the list
+        
         # Create other activity stations (under 5th console)
         activities = [
             ("Ping-Pong", 1),
@@ -1645,6 +1900,7 @@ class GamingCenterApp(ctk.CTk):
             if col > 2:  # Move to next row after 2 columns
                 col = 1
                 row += 1
+
 
     def get_games_for_console(self, console_type):
         try:
