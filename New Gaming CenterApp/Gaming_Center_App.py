@@ -1,7 +1,12 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import tkinter as tk
 from tkinter import simpledialog, messagebox, ttk, font as tkFont
 import customtkinter as ctk
 from customtkinter import CTkImage
+from CTkScrollableDropdown import CTkScrollableDropdown
+
 from CTkListbox import *
 from pathlib import Path
 from PIL import Image, ImageTk, ImageDraw
@@ -11,7 +16,6 @@ import requests
 from io import BytesIO
 import math
 import json
-import os
 import re
 import smtplib
 from email.mime.text import MIMEText
@@ -654,11 +658,12 @@ class Station(ctk.CTkFrame):
         self.name_entry.pack(fill="x", pady=field_pady)
         self.add_active_glow(self.name_entry, "#00843d", "#333333")  # Add glow effect
         
-        # Game Dropdown
+        # Game Dropdown (use CTkComboBox as anchor)
         if self.station_type in ["XBOX", "Switch"]:
             self.game_var = ctk.StringVar()
             games = self.app.get_games_for_console(self.station_type)
-            self.game_dropdown = ctk.CTkComboBox(
+
+            self.game_combobox = ctk.CTkComboBox(
                 left_fields,
                 variable=self.game_var,
                 values=games,
@@ -669,13 +674,24 @@ class Station(ctk.CTkFrame):
                 fg_color="#171717",
                 corner_radius=9,
                 font=field_font,
-                dropdown_font=field_font,
                 justify="left",
-                state="readonly"
+                state="readonly"  # Optional: makes it act like a dropdown
             )
-            self.game_dropdown.set("Select Game")
-            self.game_dropdown.pack(fill="x", pady=field_pady)
-            self.add_active_glow(self.game_dropdown, "#00843d", "#333333")  # Add glow effect
+            self.game_combobox.pack(fill="x", pady=field_pady)
+            self.add_active_glow(self.game_combobox, "#00843d", "#333333")
+
+            # Attach the scrollable dropdown
+            self.game_dropdown = CTkScrollableDropdown(
+                self.game_combobox,
+                values=games,
+                command=lambda v: self.game_var.set(v),
+                width=240,
+                height=220,
+                font=field_font,
+                justify="left",
+                resize=False,
+                button_height=32  # Makes each option taller
+            )
 
         # Right Input Column
         right_fields = ctk.CTkFrame(self, fg_color="transparent")
@@ -697,11 +713,12 @@ class Station(ctk.CTkFrame):
         self.id_entry.pack(fill="x", pady=field_pady)
         self.add_active_glow(self.id_entry, "#00843d", "#333333")  # Add glow effect
         
-        # Controller Dropdown
+        # Controller Dropdown (use CTkComboBox as anchor)
         if self.station_type in ["XBOX", "Switch"]:
             self.controller_var = ctk.StringVar()
             controllers = ["1", "2", "3", "4"]
-            self.controller_dropdown = ctk.CTkComboBox(
+
+            self.controller_combobox = ctk.CTkComboBox(
                 right_fields,
                 variable=self.controller_var,
                 values=controllers,
@@ -712,13 +729,21 @@ class Station(ctk.CTkFrame):
                 fg_color="#171717",
                 corner_radius=9,
                 font=field_font,
-                dropdown_font=field_font,
                 justify="left",
                 state="readonly"
             )
-            self.controller_dropdown.set("Number of Controllers")
-            self.controller_dropdown.pack(fill="x", pady=field_pady)
-            self.add_active_glow(self.controller_dropdown, "#00843d", "#333333")
+            self.controller_combobox.pack(fill="x", pady=field_pady)
+            self.add_active_glow(self.controller_combobox, "#00843d", "#333333")
+
+            self.controller_dropdown = CTkScrollableDropdown(
+                self.controller_combobox,
+                values=controllers,
+                command=lambda v: self.controller_var.set(v),
+                width=field_width,
+                height=120,
+                font=field_font,
+                justify="left"
+            )
 
         # Center Timer Column
         timer_container = ctk.CTkFrame(self, fg_color="transparent")
@@ -820,7 +845,6 @@ class Station(ctk.CTkFrame):
         self.update_button_states(is_active=False)
 
     def add_active_glow(self, widget, glow_color="#00FFD0", normal_color="#333333", steps=8, duration=120):
-        # Always use the provided normal_color as the "off" color
         widget._original_border_color = normal_color
 
         def color_to_str(color):
@@ -853,23 +877,10 @@ class Station(ctk.CTkFrame):
         def on_focus_out(event):
             fade_to(widget._original_border_color, glow_color)
 
-        def on_dropdown_open(event):
-            fade_to(glow_color, widget._original_border_color)
-
-        def on_dropdown_close(event):
-            fade_to(widget._original_border_color, glow_color)
-
-        widget.bind("<FocusIn>", on_focus_in)
-        widget.bind("<FocusOut>", on_focus_out)
-
-        if isinstance(widget, ctk.CTkComboBox):
-            widget.bind("<Button-1>", on_dropdown_open)
-            widget.bind("<FocusOut>", on_dropdown_close)
-            # For CTkComboBox, also bind to mouse click to simulate dropdown open
-            if isinstance(widget, ctk.CTkComboBox):
-                widget.bind("<Button-1>", on_dropdown_open)
-                # Optionally, also bind to <FocusOut> to fade back when dropdown closes
-                widget.bind("<FocusOut>", on_dropdown_close)
+        # Only bind focus events if not a ComboBox (prevents dropdown from closing)
+        if not isinstance(widget, ctk.CTkComboBox):
+            widget.bind("<FocusIn>", on_focus_in)
+            widget.bind("<FocusOut>", on_focus_out)
 
     def colorize_icon(self, icon_path, color_hex):
         """Recolor an icon to match the button text color"""
@@ -891,7 +902,7 @@ class Station(ctk.CTkFrame):
         if is_active:
             # Timer is active - Apply active state styling
             
-            # Start button - disabled look with 30% opacity
+            # Start button
             self.start_button.configure(
                 image=self.start_icon_active,
                 border_color="#4DA977",
@@ -1527,6 +1538,7 @@ class BowlingWaitlistDialog(ctk.CTkToplevel):
         size = self.size_entry.get().strip()
         notes = self.notes_entry.get().strip()
         lanes_needed = int(self.lanes_needed_var.get())
+        station = self.station_var.get()
         email = self.email_entry.get().strip()  # Get email value
         
         # Validate the phone number
@@ -1578,7 +1590,6 @@ class BowlingWaitlistDialog(ctk.CTkToplevel):
             self.destroy()
         else:
             messagebox.showerror("Error", "Please fill out all required fields.")
-
 
     def on_cancel(self):
         """Cancel the dialog without saving changes"""
@@ -1653,6 +1664,8 @@ class GamingCenterApp(ctk.CTk):
         self.after(200, self.create_arch_overlay)
 
     def _adjust_content_area_size(self, content_area):
+        """Adjust content area size after placement"""
+        container_width = self.main
         """Adjust content area size after placement"""
         container_width = self.main_container.winfo_width()
         container_height = self.main_container.winfo_height()
@@ -1865,31 +1878,22 @@ class GamingCenterApp(ctk.CTk):
         # Position circle so we get the curved corner effect
         draw.ellipse([0, 0, scaled_radius * 2, scaled_radius * 2], fill=content_bg_color)
         
+        
+        # This should match your inner content frame color exactly
+        # Look at your code: inner_content has fg_color="#1E1E1E"
+        content_bg_color = (30, 30, 30, 255)   # #1E1E1E converted to RGBA
+        
+        # Draw a perfect circle and take only the top-left quarter
+        # Position circle so we get the curved corner effect
+        draw.ellipse([0, 0, scaled_radius * 2, scaled_radius * 2], fill=content_bg_color)
+        
         # Crop to get only the top-left quarter
-        arch_image = arch_image.crop((0, 0, scaled_radius, scaled_radius))
-        
-        # Resize down for anti-aliasing
-        arch_image = arch_image.resize((arch_radius, arch_radius), Image.Resampling.LANCZOS)
-        
-        # Convert to CTkImage
-        arch_ctk_image = ctk.CTkImage(arch_image, size=(arch_radius, arch_radius))
-        
-        # Create overlay
-        self.arch_overlay = ctk.CTkLabel(
-            self.main_container,
-            image=arch_ctk_image,
-            text="",
-            fg_color="transparent"
-        )
-        
-        # Position where the content area corner should be
-        # You might need to adjust these coordinates based on your padding
-        self.arch_overlay.place(x=85, y=40, anchor="nw")
         self.arch_overlay.lift()
 
 
     def setup_top_bar(self, top_bar):
         """Create a top bar with help and menu icons"""
+       
         # Add triple dot menu icon on the left
         menu_icon_path = "./icon_cache/ellipsis.png"  # Assuming you have this icon
         try:
@@ -1924,6 +1928,7 @@ class GamingCenterApp(ctk.CTk):
             menu_button.pack(side="left", padx=10)
         
         # Add help icon on the right
+
         help_icon_path = "./icon_cache/circle-help.png"  # Assuming you have this icon
         try:
             help_image = Image.open(help_icon_path)
@@ -2438,7 +2443,7 @@ class GamingCenterApp(ctk.CTk):
             self.add_button.configure(
                 command=lambda: self.add_to_waitlist(station_names)
             )
-        else:  # Bowling Lanes
+        elif waitlist_type == "Bowling Lanes":
             self.title_label.configure(text="Bowling Lanes Waitlist")
             self.count_label.configure(text=str(len(self.bowling_waitlist)))
             self.waitlist_tree.heading("station", text="LANE")
@@ -2772,23 +2777,6 @@ class GamingCenterApp(ctk.CTk):
             status = self.send_sms(phone_number, party_name, station_name)
         
         print(status)  # Print the status for debugging
-        
-        # Determine success based on status
-        if "successfully" in status.lower():
-            return "Notification sent successfully!"
-        else:
-            return "Failed to send notification."
-    def send_sms_notification_old(self, entry):
-        """Send an SMS notification to the party through all carriers."""
-        phone_number = entry['phone']
-        party_name = entry['party']
-        station_name = entry['station']
-
-        # Send the SMS through all carriers
-        status = self.send_sms(phone_number, party_name, station_name)
-        print(status)  # Print the status for debugging
-        return status
-        print(status)  # Print the status for debugging
 
     def handle_click(self, event):
         """Handle clicks on the treeview to show action buttons"""
@@ -2894,7 +2882,7 @@ class GamingCenterApp(ctk.CTk):
         x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
         pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
         message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
-        
+
         # Add entries and their corresponding buttons
         for entry in current_waitlist:
             if search_text and search_text not in entry['party'].lower():
@@ -2970,98 +2958,6 @@ class GamingCenterApp(ctk.CTk):
         # Update count label with current waitlist count
         if hasattr(self, 'count_label'):
             self.count_label.configure(text=str(len(current_waitlist)))
-
-    def edit_waitlist_entry(self, entry):
-        """
-        Open a dialog to edit an existing waitlist entry.
-        """
-        waitlist_type = self.waitlist_type_var.get()
-        
-        if waitlist_type == "Game Center":
-            # Get the list of station names for the dropdown
-            station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
-            dialog_class = WaitlistDialog
-            current_waitlist = self.waitlist
-        else:  # Bowling Lanes
-            station_names = [f"Lane {i}" for i in range(1, 7)]
-            dialog_class = BowlingWaitlistDialog
-            current_waitlist = self.bowling_waitlist
-
-        # Create the edit dialog with the current entry's data
-        dialog = dialog_class(
-            self,
-            station_names,
-            title=f"Edit {'Bowling' if waitlist_type == 'Bowling Lanes' else 'Game Center'} Waitlist Entry",
-            prompt="Edit details:"
-        )
-
-        # Pre-populate the dialog fields with the current entry's data
-        dialog.name_entry.insert(0, entry["party"])
-        dialog.phone_entry.insert(0, entry["phone"])
-        dialog.size_entry.insert(0, str(entry["size"]))
-        dialog.notes_entry.insert(0, entry["notes"])
-        
-        # Handle station differently for each dialog type
-        if waitlist_type == "Game Center":
-            dialog.station_var.set(entry["station"])
-        
-        # Pre-populate email if it exists
-        if 'email' in entry and entry['email']:
-            dialog.email_entry.insert(0, entry["email"])
-        
-        # If it's a bowling entry, pre-populate the lanes needed field
-        if waitlist_type == "Bowling Lanes" and 'lanes_needed' in entry:
-            dialog.lanes_needed_var.set(str(entry["lanes_needed"]))
-            dialog.update_lane_selector()
-            
-            # Set preferred lanes if they exist
-            if 'preferred_lanes' in entry and entry['preferred_lanes']:
-                dialog.specify_lanes_var.set(True)
-                dialog.toggle_lane_preferences()
-                for i, lane in enumerate(entry['preferred_lanes']):
-                    if i < len(dialog.lane_selectors):
-                        lane_dropdown = [w for w in dialog.lane_selectors[i].winfo_children() if isinstance(w, ctk.CTkComboBox)]
-                        if lane_dropdown:
-                            lane_dropdown[0].set(lane)
-
-        # Show the dialog and get the result
-        result = dialog.show()
-        if result:
-            # Update the entry in the waitlist
-            if entry in current_waitlist:
-                index = current_waitlist.index(entry)
-                current_waitlist[index] = result
-                self.update_waitlist_tree()
-                self.update_count_label()
-            self.update_waitlist_tree()
-            self.update_waitlist_count()  # Update the sidebar count label
-
-    def remove_waitlist_entry(self, entry):
-        """Remove an entry from the waitlist."""
-        waitlist_type = self.waitlist_type_var.get()
-        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
-        
-        if entry in current_waitlist:
-            current_waitlist.remove(entry)
-            self.update_waitlist_tree()
-            self.update_count_label()
-            self.update_waitlist_count()  # This will now correctly count both lists
-            self.update_notification_bubble()  # Update notification for all changes
-            # Only update notification bubble for game center waitlist
-            if waitlist_type == "Game Center":
-                self.update_notification_bubble()
-
-    def complete_waitlist_entry(self, entry):
-        """Mark an entry as complete."""
-        waitlist_type = self.waitlist_type_var.get()
-        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
-        
-        if entry in current_waitlist:
-            current_waitlist.remove(entry)
-            self.update_waitlist_tree()
-            self.update_count_label()
-            self.update_waitlist_count()  # This will now correctly count both lists
-            self.update_notification_bubble()  # Update notification for all changes
 
     def calculate_wait_time(self, station_name):
         try:
