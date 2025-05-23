@@ -23,7 +23,12 @@ from email.utils import formatdate
 import threading
 import cProfile
 from datetime import datetime, timedelta
-from StatsCompiler import StatsWindow  # Import the StatsWindow class from StatsCompiler.py
+from StatsCompiler import StatsManager
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+import textwrap  # <-- Add this import
+from functools import partial
 
 # Configure customtkinter
 ctk.set_appearance_mode("dark")  # Default to light mode
@@ -1141,7 +1146,6 @@ class GamesWindow(ctk.CTkToplevel):
 
     def setup_ui(self):
         style = ttk.Style()
-        style.theme_use("clam")
         
         # Configure notebook without creating custom elements
         style.configure("TNotebook", 
@@ -1653,7 +1657,9 @@ class GamingCenterApp(ctk.CTk):
         self.waitlist = []
         self.timers = []
         self.waitlist_tree = None
-        
+        self.pages = {}  # Add this to hold your pages
+        self.active_sidebar_btn = None  # Track active sidebar button
+
         # Set the base application background color
         self.configure(fg_color="#090A09")
         
@@ -1695,24 +1701,1081 @@ class GamingCenterApp(ctk.CTk):
         # Setup UI components
         self.setup_top_bar(top_bar)
         self.setup_sidebar(sidebar)
-        self.setup_ui()
-        
-        self.load_station_states()
-        self.protocol("WM_DELETE_WINDOW", self.on_close)
-        
-        # Create arch overlay AFTER all other UI elements
-        # This ensures it will be on top in the stacking order
-        self.after(200, self.create_arch_overlay)
-        self.after(300, self.load_station_states)
+        self.setup_pages()  # New method to create all pages
+        self.show_page("home")  # Show home by default
+        self.create_arch_overlay()
 
-    def _adjust_content_area_size(self, content_area):
-        """Adjust content area size after placement"""
-        container_width = self.main
-        """Adjust content area size after placement"""
-        container_width = self.main_container.winfo_width()
-        container_height = self.main_container.winfo_height()
-        content_area.configure(width=container_width-70, height=container_height-30)
+    def setup_pages(self):
+        # Create all pages as frames, but only pack/grid the active one
+        self.pages["home"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.pages["waitlist"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.pages["stats"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.pages["reservations"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        # ...add more as needed...
 
+        # Build the home page (station cards)
+        self.setup_home_page(self.pages["home"])
+        # Build waitlist and stats pages
+        self.setup_waitlist_page(self.pages["waitlist"])
+        self.setup_stats_page(self.pages["stats"])
+        self.setup_reservations_page(self.pages["reservations"])
+
+    def show_page(self, page_name):
+        # Hide all pages
+        for page in self.pages.values():
+            page.pack_forget()
+        # Show the selected page
+        self.pages[page_name].pack(fill="both", expand=True)
+        # Update sidebar active state
+        self.set_active_sidebar(page_name)
+
+        self.pages[page_name].pack(fill="both", expand=True)
+        self.set_active_sidebar(page_name)
+        if hasattr(self, "arch_overlay"):
+            self.arch_overlay.lift()
+
+    def set_active_sidebar(self, page_name):
+        # Reset all sidebar buttons to default
+        for name, btn in self.sidebar_buttons.items():
+            btn.configure(fg_color="transparent")
+        # Highlight the active one
+        if page_name in self.sidebar_buttons:
+            self.sidebar_buttons[page_name].configure(fg_color="#00843d")  # Example active color
+
+
+    def setup_home_page(self, frame):
+        main_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        frames_to_focus = [main_frame, frame]
+
+        for f in frames_to_focus:
+            f.bind("<Button-1>", lambda event, f=f: f.focus_set())
+
+        for i in range(6):  # 6 rows
+            main_frame.grid_rowconfigure(i, weight=1)
+        for i in range(3):  # 3 columns
+            main_frame.grid_columnconfigure(i, weight=1)
+
+        # Create first 4 console stations (left column) in reverse order
+        for i in range(4):
+            shadow = ctk.CTkFrame(
+                main_frame,
+                corner_radius=15,
+                fg_color="#282828",
+                border_width=0
+            )
+            shadow.grid(row=i, column=0, padx=(10, 14), pady=(10, 14), sticky="nsew")
+            station = Station(main_frame, self, "XBOX", 4 - i)
+            station.grid(row=i, column=0, padx=10, pady=10, sticky="nsew")
+            self.stations.append(station)
+            self.timers.append(station.timer)
+
+        # 5th console station (top center)
+        shadow = ctk.CTkFrame(
+            main_frame,
+            corner_radius=15,
+            fg_color="#282828",
+            border_width=0
+        )
+        shadow.grid(row=0, column=1, columnspan=2, padx=(10, 14), pady=(10, 14), sticky="nsew")
+        station = Station(main_frame, self, "XBOX", 5)
+        station.grid(row=0, column=1, columnspan=2, padx=10, pady=10, sticky="nsew")
+        self.stations.append(station)
+        self.timers.append(station.timer)
+
+        # Other activity stations
+        activities = [
+            ("Ping-Pong", 1),
+            ("Ping-Pong", 2),
+            ("Foosball", 1),
+            ("Air Hockey", 1),
+            ("PoolTable", 1),
+            ("PoolTable", 2),
+        ]
+        row, col = 1, 1
+        for activity, num in activities:
+            shadow = ctk.CTkFrame(
+                main_frame,
+                corner_radius=15,
+                fg_color="#282828",
+                border_width=0
+            )
+            shadow.grid(row=row, column=col, padx=(10, 14), pady=(10, 14), sticky="nsew")
+            station = Station(main_frame, self, activity, num)
+            station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+            self.stations.append(station)
+            self.timers.append(station.timer)
+            col += 1
+            if col > 2:
+                col = 1
+                row += 1
+
+
+    def setup_reservations_page(self, frame):
+        import pandas as pd
+
+        url = "https://uvu365-my.sharepoint.com/:x:/g/personal/10699677_uvu_edu/EfDDWIdsIgpEsoV6krvPkIgBJPVtMi1Kbqz0F0-lbURXDw?e=zaL1aK&nav=MTVfezEzQTdENUIwLThGNjMtNDI4Ni1CMjg2LTE2Q0NGQTNDOEU5M30"
+        loading_label = ctk.CTkLabel(frame, text="Loading reservations...", font=("Helvetica", 16))
+        loading_label.pack(pady=20)
+
+        def load_data():
+            try:
+                df = pd.read_excel(url)
+                loading_label.destroy()
+                # Display the first 10 rows as a simple table
+                text = df.head(10).to_string(index=False)
+                reservations_text = ctk.CTkTextbox(frame, width=900, height=400, font=("Consolas", 12))
+                reservations_text.insert("1.0", text)
+                reservations_text.configure(state="disabled")
+                reservations_text.pack(padx=20, pady=20)
+            except Exception as e:
+                loading_label.configure(text=f"Failed to load reservations:\n{e}")
+
+        import threading
+        threading.Thread(target=load_data, daemon=True).start()
+
+    def setup_waitlist_page(self, frame):
+        # Initialize bowling waitlist if it doesn't exist
+        if not hasattr(self, 'bowling_waitlist'):
+            self.bowling_waitlist = []
+
+        main_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Header frame with title, toggle and count
+        header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 20))
+
+        self.waitlist_type_var = ctk.StringVar(value="Game Center")
+        waitlist_toggle = ctk.CTkSegmentedButton(
+            header_frame,
+            values=["Game Center", "Bowling Lanes"],
+            variable=self.waitlist_type_var,
+            command=self.switch_waitlist_type
+        )
+        waitlist_toggle.pack(side="left", padx=(0, 20))
+
+        title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        title_frame.pack(side="left")
+
+        self.title_label = ctk.CTkLabel(
+            title_frame,
+            text="Gaming Center Waitlist",
+            font=("Helvetica", 20, "bold")
+        )
+        self.title_label.pack(side="left", padx=5)
+
+        self.count_label = ctk.CTkLabel(
+            title_frame,
+            text=str(len(self.waitlist)),
+            fg_color="blue",
+            text_color="white",
+            corner_radius=10,
+            width=30
+        )
+        self.count_label.pack(side="left", padx=5)
+
+        search_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        search_frame.pack(side="right")
+        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
+        self.search_entry.pack(side="right", padx=5)
+
+        # Content frame for treeview and buttons
+        content_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        content_frame.pack(fill="both", expand=True)
+
+        # Treeview styling
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure(
+            "Waitlist.Treeview",
+            background="#2b2b2b",
+            foreground="white",
+            fieldbackground="#2b2b2b",
+            rowheight=50,
+            font=("Helvetica", 12)
+        )
+        style.configure(
+            "Waitlist.Treeview.Heading",
+            background="#333333",
+            foreground="white",
+            font=("Helvetica", 12, "bold"),
+            relief="flat"
+        )
+        style.map(
+            "Waitlist.Treeview",
+            background=[("selected", "#1f538d")],
+            foreground=[("selected", "white")]
+        )
+
+        # Treeview columns
+        columns = ("party", "size", "notes", "station", "quotedTime", "arrival")
+        self.waitlist_tree = ttk.Treeview(
+            content_frame,
+            columns=columns,
+            show="headings",
+            style="Waitlist.Treeview"
+        )
+
+        # Configure column headings
+        self.headings = {
+            "party": "PARTY",
+            "size": "SIZE",
+            "notes": "NOTES",
+            "station": "STATION",
+  # Will be changed to "LANE" for bowling
+            "quotedTime": "QUOTED TIME",
+            "arrival": "ARRIVAL"
+        }
+
+        for col, heading in self.headings.items():
+            self.waitlist_tree.heading(col, text=heading)
+            if col == "size":
+                self.waitlist_tree.column(col, width=50, anchor="center")  # Narrow size column
+            else:
+                self.waitlist_tree.column(col, width=150, anchor="w")  # Adjust width of other columns
+
+        # Create a frame for the buttons column
+        buttons_frame = ctk.CTkFrame(content_frame, width=200)  # Set a fixed width for the actions column
+        buttons_frame.pack(side="right", fill="y", padx=(10, 0))
+        
+        # Add a header for the actions column
+        ctk.CTkLabel(buttons_frame, text="ACTIONS", font=("Helvetica", 11, "bold")).pack(pady=(0, 0))
+
+        # Placeholder buttons (shown when no entries exist)
+        self.placeholder_buttons_frame = ctk.CTkFrame(buttons_frame, fg_color="transparent")
+        self.placeholder_buttons_frame.pack(pady=10, padx=5)
+
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✓",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"
+        ).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✕",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"
+        ).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✎",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"
+        ).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✉",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"
+        ).pack(side="left", padx=2)
+
+        # Treeview scrollbar
+        tree_scroll = ctk.CTkScrollbar(content_frame, orientation="vertical", command=self.waitlist_tree.yview)
+        self.waitlist_tree.configure(yscrollcommand=tree_scroll.set)
+        self.waitlist_tree.pack(side="left", fill="both", expand=True)
+        tree_scroll.pack(side="right", fill="y")
+
+        # Store references for later updates
+        self.buttons_frame = buttons_frame
+
+        # Add floating action button
+        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+        self.add_button = ctk.CTkButton(
+            main_frame,
+            text="+",
+            width=60,
+            height=60,
+            corner_radius=60,
+            font=("Helvetica", 24, "bold"),
+            command=lambda: self.add_to_waitlist(station_names)
+        )
+        self.add_button.place(relx=0.95, rely=0.95, anchor="se")
+
+        # Bind search functionality
+        def update_tree(event=None):
+            search_text = self.search_entry.get().lower()
+            self.update_waitlist_tree(search_text)
+
+        self.search_entry.bind('<KeyRelease>', update_tree)
+        self.update_waitlist_tree()
+
+    def setup_stats_page(self, frame):
+        """Set up the complete statistics page in the main app window"""
+        # Create main container frame
+        self.stats_main_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        self.stats_main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # Initialize stats manager
+        self.stats_manager = StatsManager()
+        
+        # Configure theme colors and appearance
+        self.stats_colors = {
+            "primary": "#00843d",      # UVU Green
+            "secondary": "#4c7553",    # Muted green
+            "accent": "#add557",       # Light green accent
+            "text_light": "#FFFFFF",   # Light text
+            "text_dark": "#1a1a1a",    # Dark text
+            "success": "#28a745",      # Success green
+            "warning": "#ffc107",      # Warning yellow
+            "danger": "#dc3545",       # Error red
+            "card_bg": "#2a2a2a",      # Card background
+            "hover": "#3a3a3a",        # Hover state
+        }
+        
+        self.stats_fonts = {
+            "heading": ("Roboto", 18, "bold"),
+            "subheading": ("Roboto", 16, "normal"),
+            "body": ("Roboto", 12, "normal"),
+            "small": ("Roboto", 10, "normal"),
+            "label": ("Roboto", 12, "bold"),
+        }
+
+        # Configure grid layout
+        self.stats_main_frame.grid_columnconfigure(0, weight=1)
+        self.stats_main_frame.grid_rowconfigure(0, weight=0)  # Header
+        self.stats_main_frame.grid_rowconfigure(1, weight=1)  # Content
+        
+        # Create header with filters and title
+        header_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
+        header_frame.grid_columnconfigure(0, weight=1)
+        header_frame.grid_columnconfigure(1, weight=0)
+        
+        # Title 
+        title_label = ctk.CTkLabel(
+            header_frame, 
+            text="Gaming Center Statistics", 
+            font=("Roboto", 24, "bold"),
+            text_color=self.stats_colors["text_light"]
+        )
+        title_label.grid(row=0, column=0, sticky="w", padx=10, pady=10)
+        
+        # Filter container
+        filter_frame = ctk.CTkFrame(
+            header_frame, 
+            fg_color=self.stats_colors["card_bg"],
+            corner_radius=10
+        )
+        filter_frame.grid(row=0, column=1, sticky="e", padx=10, pady=10)
+        
+        # Time period selector
+        ctk.CTkLabel(
+            filter_frame, 
+            text="Time Period:", 
+            font=self.stats_fonts["label"]
+        ).pack(side="left", padx=(15, 5), pady=10)
+        
+        period_choices = [
+            'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 
+            'This Month', 'Last Month', 'This Semester', 'Last Semester', 
+            'This Year', 'Last Year', 'All Time'
+        ]
+        self.stats_period_var = tk.StringVar(value='Today')
+        self.period_dropdown = ctk.CTkComboBox(
+            filter_frame, 
+            variable=self.stats_period_var, 
+            values=period_choices,
+            state='readonly',
+            width=180, 
+            height=32,
+            corner_radius=6,
+            dropdown_hover_color=self.stats_colors["hover"],
+            button_color=self.stats_colors["primary"],
+            button_hover_color=self.stats_colors["secondary"],
+            dropdown_fg_color=self.stats_colors["card_bg"],
+        )
+        self.period_dropdown.pack(side="left", padx=(5, 15), pady=10)
+        self.period_dropdown.configure(command=self.update_stats)
+        
+        # Create notebook for tabbed interface
+        self.stats_notebook = ctk.CTkTabview(
+            self.stats_main_frame, 
+            corner_radius=10,
+            segmented_button_selected_color=self.stats_colors["primary"],
+            segmented_button_selected_hover_color=self.stats_colors["secondary"],
+            segmented_button_unselected_color="#3a3a3a",
+            segmented_button_unselected_hover_color="#4a4a4a",
+            command=self.on_stats_tab_change
+        )
+        self.stats_notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        # Create tabs
+        summary_tab = self.stats_notebook.add("Summary")
+        station_tab = self.stats_notebook.add("Station Details")
+        games_tab = self.stats_notebook.add("Game Rankings")
+        
+        # Set up content for each tab
+        self.setup_stats_summary_tab(summary_tab)
+        self.setup_stats_station_tab(station_tab)
+        self.setup_stats_games_tab(games_tab)
+        
+        # Add export button container at bottom
+        footer_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent", height=50)
+        footer_frame.grid(row=2, column=0, sticky="ew", pady=(5, 0))
+        footer_frame.grid_columnconfigure(0, weight=1)
+        
+        # Export button
+        export_button = ctk.CTkButton(
+            footer_frame, 
+            text="Export Data", 
+            command=self.export_stats_to_excel,
+            height=36,
+            corner_radius=8,
+            font=self.stats_fonts["label"],
+            hover_color=self.stats_colors["secondary"],
+        )
+        export_button.pack(side="right", padx=10, pady=5)
+        
+        # Status indicator
+        self.stats_status_label = ctk.CTkLabel(
+            footer_frame,
+            text="",
+            font=self.stats_fonts["small"],
+            text_color="gray70"
+        )
+        self.stats_status_label.pack(side="left", padx=10, pady=5)
+        
+        # Initialize tooltip manager
+        self.stats_tooltip_texts = {
+            "export_button": "Export current statistics to CSV files",
+            "period_dropdown": "Select the time period for statistics",
+            "station_dropdown": "Select a specific station to view detailed statistics",
+            "total_time": "Total usage time across all stations",
+            "total_sessions": "Total number of user sessions",
+            "avg_session": "Average duration of all sessions",
+            "station_usage": "Breakdown of usage by station type",
+            "game_rankings": "Most popular games based on play time"
+        }
+        
+        # Update statistics
+        self.update_stats()
+
+    def setup_stats_summary_tab(self, parent):
+        """Set up the summary tab with key statistics"""
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_columnconfigure(1, weight=1)
+        parent.grid_rowconfigure(0, weight=0)
+        parent.grid_rowconfigure(1, weight=1)
+        
+        # Top Row - Key Metrics cards
+        usage_content, _ = self.create_stats_card(
+            parent, "Usage Statistics", row=0, column=0, padx=(0, 5), pady=(0, 10)
+        )
+
+        usage_content.grid_columnconfigure(0, weight=2)
+        usage_content.grid_columnconfigure(1, weight=3)
+        
+        self.total_time_label = self.create_stats_metric_display(
+            usage_content, "Total Usage Time:", 0)
+        self.total_sessions_label = self.create_stats_metric_display(
+            usage_content, "Total Sessions:", 1)
+        self.avg_session_label = self.create_stats_metric_display(
+            usage_content, "Average Session:", 2)
+        
+        # Right card - Usage Chart
+        chart_content, _ = self.create_stats_card(
+            parent, "Usage Trends", row=0, column=1, padx=(5, 0), pady=(0, 10))
+        
+        self.summary_chart_frame = chart_content
+        self.summary_chart_canvas = self.create_stats_matplotlib_graph(chart_content)
+        self.summary_chart_canvas.get_tk_widget().pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Bottom row - Station Type Breakdown
+        station_type_content, _ = self.create_stats_card(
+            parent, "Station Type Breakdown", row=1, column=0, colspan=2)
+        
+        station_type_content.grid_columnconfigure(0, weight=3)
+        station_type_content.grid_columnconfigure(1, weight=2)
+        station_type_content.grid_rowconfigure(0, weight=1)
+        
+        # Table frame
+        tree_frame = ctk.CTkFrame(station_type_content, fg_color="transparent")
+        tree_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=5)
+        
+        self.type_tree = ttk.Treeview(
+            tree_frame, 
+            columns=('Station Type', 'Sessions', 'Total Time', 'Avg Time'), 
+            show='headings', 
+            height=6, 
+            style="Custom.Treeview"
+        )
+        self.type_tree.heading('Station Type', text='Station Type')
+        self.type_tree.heading('Sessions', text='Sessions')
+        self.type_tree.heading('Total Time', text='Total Time')
+        self.type_tree.heading('Avg Time', text='Avg Time')
+        
+        self.type_tree.column('Station Type', width=150, anchor='w')
+        self.type_tree.column('Sessions', width=80, anchor='center')
+        self.type_tree.column('Total Time', width=100, anchor='center')
+        self.type_tree.column('Avg Time', width=100, anchor='center')
+        
+        tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.type_tree.yview)
+        self.type_tree.configure(yscrollcommand=tree_scrollbar.set)
+        tree_scrollbar.pack(side="right", fill="y")
+        self.type_tree.pack(fill="both", expand=True)
+        
+        # Chart frame
+        chart_frame = ctk.CTkFrame(station_type_content, fg_color="transparent")
+        chart_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
+        
+        self.station_type_graph = self.create_stats_matplotlib_graph(chart_frame)
+        self.station_type_graph.get_tk_widget().pack(fill="both", expand=True)
+
+    def setup_stats_station_tab(self, parent):
+        """Set up the station details tab"""
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(0, weight=0)
+        parent.grid_rowconfigure(1, weight=1)
+        
+        # Station selector card
+        selector_content, _ = self.create_stats_card(
+            parent, "Station Selection", row=0, column=0, pady=(0, 10))
+        
+        ctk.CTkLabel(
+            selector_content,
+            text="Select Station:",
+            font=self.stats_fonts["body"]
+        ).pack(side="left", padx=(5, 10), pady=10)
+        
+        self.station_var = tk.StringVar()
+        self.station_dropdown = ctk.CTkComboBox(
+            selector_content,
+            variable=self.station_var,
+            state='readonly',
+            width=250,
+            height=32,
+            corner_radius=6,
+            dropdown_hover_color=self.stats_colors["hover"],
+            button_color=self.stats_colors["primary"],
+            button_hover_color=self.stats_colors["secondary"],
+            dropdown_fg_color=self.stats_colors["card_bg"]
+        )
+        self.station_dropdown.pack(side="left", padx=10, pady=10)
+        self.station_dropdown.configure(command=self.update_stats_station_stats)
+        
+        # Populate the dropdown
+        stations = self.stats_manager.get_all_stations()
+        self.station_dropdown.configure(values=stations)
+        
+        # Station details area
+        details_content, _ = self.create_stats_card(parent, "Station Statistics", row=1, column=0)
+        details_content.grid_columnconfigure(0, weight=1)
+        details_content.grid_columnconfigure(1, weight=1)
+        details_content.grid_rowconfigure(0, weight=1)
+        
+        # Left side - Station metrics
+        left_frame = ctk.CTkFrame(details_content, fg_color="transparent")
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=5)
+        
+        self.station_tree = ttk.Treeview(
+            left_frame,
+            columns=('Metric', 'Value'),
+            show='headings',
+            height=10,
+            style="Custom.Treeview"
+        )
+        self.station_tree.heading('Metric', text='Metric')
+        self.station_tree.heading('Value', text='Value')
+        self.station_tree.column('Metric', width=150, anchor='w')
+        self.station_tree.column('Value', width=200, anchor='e')
+        
+        tree_scrollbar = ttk.Scrollbar(left_frame, orient="vertical", command=self.station_tree.yview)
+        self.station_tree.configure(yscrollcommand=tree_scrollbar.set)
+        tree_scrollbar.pack(side="right", fill="y")
+        self.station_tree.pack(fill="both", expand=True)
+        
+        # Right side - Station usage chart
+        right_frame = ctk.CTkFrame(details_content, fg_color="transparent")
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
+        
+        self.station_chart_frame = right_frame
+        self.station_type_usage_graph = self.create_stats_matplotlib_graph(right_frame)
+        self.station_type_usage_graph.get_tk_widget().pack(fill="both", expand=True)
+
+    def setup_stats_games_tab(self, parent):
+        """Set up the game rankings tab"""
+        parent.grid_columnconfigure(0, weight=4)
+        parent.grid_columnconfigure(1, weight=3)
+        parent.grid_rowconfigure(0, weight=1)
+        
+        # Game rankings card - left side
+        games_content, _ = self.create_stats_card(
+            parent, "Game Rankings", row=0, column=0, padx=(0, 5))
+        
+        self.games_tree = ttk.Treeview(
+            games_content,
+            columns=('Rank', 'Game', 'Sessions', 'Total Time'),
+            show='headings',
+            height=15,
+            style="Custom.Treeview"
+        )
+        self.games_tree.heading('Rank', text='Rank')
+        self.games_tree.heading('Game', text='Game')
+        self.games_tree.heading('Sessions', text='Sessions')
+        self.games_tree.heading('Total Time', text='Total Time')
+        
+        self.games_tree.column('Rank', width=50, anchor='center')
+        self.games_tree.column('Game', width=220, anchor='w')
+        self.games_tree.column('Sessions', width=80, anchor='center')
+        self.games_tree.column('Total Time', width=120, anchor='center')
+        
+        game_scrollbar = ttk.Scrollbar(games_content, orient="vertical", command=self.games_tree.yview)
+        self.games_tree.configure(yscrollcommand=game_scrollbar.set)
+        game_scrollbar.pack(side="right", fill="y")
+        self.games_tree.pack(fill="both", expand=True)
+        
+        # Game chart card - right side
+        chart_content, _ = self.create_stats_card(
+            parent, "Game Popularity", row=0, column=1, padx=(5, 0))
+        
+        self.game_rankings_frame = chart_content
+        self.game_rankings_graph = self.create_stats_matplotlib_graph(chart_content)
+        self.game_rankings_graph.get_tk_widget().pack(fill="both", expand=True)
+
+    def create_stats_card(self, parent, title, row=0, column=0, rowspan=1, colspan=1, padx=10, pady=10):
+        """Create a consistent card-style container for statistics"""
+        card = ctk.CTkFrame(
+            parent, 
+            fg_color=self.stats_colors["card_bg"],
+            corner_radius=10, 
+            border_width=0
+        )
+        card.grid(row=row, column=column, rowspan=rowspan, columnspan=colspan, 
+                sticky="nsew", padx=padx, pady=pady)
+        
+        # Add shadow effect
+        shadow = ctk.CTkFrame(
+            parent,
+            fg_color="gray20",
+            corner_radius=10,
+            border_width=0
+        )
+        
+        shadow_padx = self._stats_add_padding_offset(padx, 2)
+        shadow_pady = self._stats_add_padding_offset(pady, 2)
+        
+        shadow.grid(row=row, column=column, rowspan=rowspan, columnspan=colspan, 
+                sticky="nsew", padx=shadow_padx, pady=shadow_pady)
+        card.lift()
+        
+        # Card title
+        title_label = ctk.CTkLabel(
+            card, 
+            text=title, 
+            font=self.stats_fonts["subheading"],
+            anchor="w", 
+            text_color=self.stats_colors["text_light"]
+        )
+        title_label.pack(anchor="w", padx=15, pady=(15, 5))
+        
+        # Separator
+        separator = ctk.CTkFrame(card, height=1, fg_color="gray40")
+        separator.pack(fill="x", padx=15, pady=(5, 10))
+        
+        # Container for content
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        
+        return content_frame, card
+
+    def _stats_add_padding_offset(self, padding, offset):
+        """Helper method for card shadows"""
+        if isinstance(padding, tuple):
+            return (padding[0] + offset, padding[1] + offset)
+        else:
+            return padding + offset
+
+    def create_stats_metric_display(self, parent, label_text, row, icon_name=None):
+        """Create a metric display with label and value"""
+        if icon_name:
+            icon_label = ctk.CTkLabel(
+                parent, 
+                text="●",
+                font=("Roboto", 16),
+                width=20,
+                text_color=self.stats_colors["accent"]
+            )
+            icon_label.grid(row=row, column=0, sticky="w", padx=(0, 5), pady=(10, 10))
+        
+        ctk.CTkLabel(
+            parent,
+            text=label_text,
+            font=self.stats_fonts["body"],
+            anchor="w"
+        ).grid(row=row, column=0, sticky="w", padx=(30, 10), pady=(10, 10))
+        
+        value_label = ctk.CTkLabel(
+            parent,
+            text="Loading...",
+            font=self.stats_fonts["heading"],
+            anchor="e",
+            text_color=self.stats_colors["accent"]
+        )
+        value_label.grid(row=row, column=1, sticky="e", padx=(10, 0), pady=(10, 10))
+        
+        return value_label
+
+    def create_stats_matplotlib_graph(self, parent):
+        """Create a Matplotlib graph with dark theme"""
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots()
+        
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
+        
+        fig.tight_layout(pad=3.0)
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        return canvas
+
+    def update_stats(self, event=None):
+        """Update all statistics based on selected time period"""
+        period = self.stats_period_var.get()
+        self.stats_status_label.configure(text=f"Loading {period} statistics...")
+        self.update_idletasks()
+        
+        stats = self.stats_manager.get_summary_stats(period)
+        
+        self.animate_stats_label_update(self.total_time_label, stats['total_time'])
+        self.animate_stats_label_update(self.total_sessions_label, str(stats['total_sessions']))
+        self.animate_stats_label_update(self.avg_session_label, stats['avg_session'])
+
+        self.type_tree.delete(*self.type_tree.get_children())
+        for station_type, type_stats in stats['station_types'].items():
+            self.type_tree.insert('', 'end', values=(
+                station_type,
+                type_stats['sessions'],
+                type_stats['total_time'],
+                type_stats['avg_time']
+            ))
+
+        if self.stats_notebook.get() == "Game Rankings":
+            self.update_stats_game_rankings()
+
+        self.update_stats_summary_graph(stats)
+        self.update_stats_station_type_graph(stats['station_types'])
+        
+        self.stats_status_label.configure(text=f"Showing statistics for: {period}")
+
+    def animate_stats_label_update(self, label, new_value):
+        """Animate label updates"""
+        label.configure(text=new_value)
+        self.update_idletasks()
+
+    def update_stats_station_stats(self, event=None):
+        """Update station statistics display"""
+        station = self.station_var.get()
+        if not station:
+            return
+            
+        self.stats_status_label.configure(text=f"Loading statistics for {station}...")
+        self.update_idletasks()
+        
+        stats = self.stats_manager.get_station_stats(station)
+        self.station_tree.delete(*self.station_tree.get_children())
+        
+        highlight_keys = ['Total Sessions', 'Total Time', 'Average Session']
+        for metric, value in stats.items():
+            tag = "highlight" if metric in highlight_keys else ""
+            item_id = self.station_tree.insert('', 'end', values=(metric, value), tags=(tag,))
+            if tag:
+                self.station_tree.tag_configure("highlight", background=self.stats_colors["primary"])
+        
+        self.update_stats_station_usage_graph(station)
+        self.stats_status_label.configure(text=f"Showing statistics for: {station}")
+
+    def update_stats_game_rankings(self):
+        """Update the game rankings display"""
+        rankings = self.stats_manager.get_game_rankings(self.stats_period_var.get())
+        self.games_tree.delete(*self.games_tree.get_children())
+        
+        for rank, (game, stats) in enumerate(rankings.items(), 1):
+            tag = f"rank{rank}" if rank <= 3 else ""
+            self.games_tree.insert('', 'end', values=(
+                rank,
+                game,
+                stats['sessions'],
+                stats['total_time']
+            ), tags=(tag,))
+        
+        self.games_tree.tag_configure("rank1", background="#ffd700", foreground="#1a1a1a")
+        self.games_tree.tag_configure("rank2", background="#c0c0c0", foreground="#1a1a1a")
+        self.games_tree.tag_configure("rank3", background="#cd7f32", foreground="#1a1a1a")
+        
+        self.update_stats_game_rankings_graph(rankings)
+
+    def update_stats_summary_graph(self, stats):
+        """Update the summary graph"""
+        fig = self.summary_chart_canvas.figure
+        fig.clear()
+        
+        total_time = self._stats_convert_time_to_minutes(stats['total_time'])
+        total_sessions = stats['total_sessions']
+        avg_session = self._stats_convert_time_to_minutes(stats['avg_session'])
+        
+        ax = fig.add_subplot(111)
+        x_pos = [0, 1, 2]
+        categories = ['Total Time\n(hours)', 'Total\nSessions', 'Avg Session\n(minutes)']
+        total_time_hours = total_time / 60
+        values = [total_time_hours, total_sessions, avg_session]
+        colors = [self.stats_colors["primary"], self.stats_colors["secondary"], self.stats_colors["accent"]]
+        
+        bars = ax.bar(x_pos, values, color=colors, width=0.6)
+        for bar in bars:
+            if values[bars.index(bar)] > 0:
+                label = f"{values[bars.index(bar)]:.1f}" if isinstance(values[bars.index(bar)], float) else f"{values[bars.index(bar)]}"
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + (max(values) * 0.02), 
+                    label, ha='center', va='bottom', color='white', fontweight='bold')
+        
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(categories)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('gray')
+        ax.spines['bottom'].set_color('gray')
+        
+        ax.set_title(f"Usage Summary: {self.stats_period_var.get()}", color='white', fontsize=12, pad=10)
+        fig.tight_layout()
+        self.summary_chart_canvas.draw()
+
+    def update_stats_station_type_graph(self, station_types):
+        """Update station type breakdown pie chart"""
+        fig = self.station_type_graph.figure
+        fig.clear()
+        
+        labels = list(station_types.keys())
+        sessions = [type_stats['sessions'] for type_stats in station_types.values()]
+        
+        if sum(sessions) == 0:
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, "No data available", 
+                    ha='center', va='center', fontsize=12, color='white')
+            fig.tight_layout()
+            self.station_type_graph.draw()
+            return
+        
+        ax = fig.add_subplot(111)
+        colors = [self.get_stats_station_color(label) for label in labels]
+        max_index = sessions.index(max(sessions))
+        explode = [0.05 if i == max_index else 0 for i in range(len(sessions))]
+        
+        wedges, texts, autotexts = ax.pie(
+            sessions, 
+            labels=labels, 
+            autopct='%1.1f%%', 
+            startangle=90, 
+            colors=colors,
+            explode=explode,
+            shadow=True,
+            wedgeprops={'edgecolor': 'white', 'linewidth': 1, 'antialiased': True},
+            textprops={'color': 'white', 'fontsize': 9}
+        )
+        
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontweight('bold')
+        
+        ax.set_title("Station Usage Distribution", color='white', fontsize=12)
+        fig.tight_layout()
+        self.station_type_graph.draw()
+
+    def update_stats_station_usage_graph(self, station):
+        """Update station usage pattern graph"""
+        fig = self.station_type_usage_graph.figure
+        fig.clear()
+        
+        if not station:
+            return
+            
+        ax = fig.add_subplot(111)
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        
+        # Generate usage patterns (placeholder - would use real data)
+        import hashlib
+        seed = int(hashlib.md5(station.encode()).hexdigest(), 16) % 1000
+        np.random.seed(seed)
+        morning = np.random.randint(0, 5, 7)
+        afternoon = np.random.randint(1, 8, 7)
+        evening = np.random.randint(2, 10, 7)
+        
+        width = 0.6
+        ax.bar(days, morning, width, label='Morning', color=self.stats_colors["primary"])
+        ax.bar(days, afternoon, width, bottom=morning, label='Afternoon', color=self.stats_colors["secondary"])
+        ax.bar(days, evening, width, bottom=morning+afternoon, label='Evening', color=self.stats_colors["accent"])
+        
+        ax.set_title(f"Weekly Usage Pattern: {station}", color='white', fontsize=12)
+        ax.set_ylabel("Hours Used", color='white')
+        ax.legend(loc='upper right', facecolor=self.stats_colors["card_bg"], edgecolor='gray')
+        
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('gray')
+        ax.spines['bottom'].set_color('gray')
+        
+        fig.tight_layout()
+        self.station_type_usage_graph.draw()
+
+    def update_stats_game_rankings_graph(self, rankings):
+        """Update game rankings graph"""
+        fig = self.game_rankings_graph.figure
+        fig.clear()
+        
+        if not rankings:
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, "No game data available", 
+                    ha='center', va='center', fontsize=12, color='white')
+            fig.tight_layout()
+            self.game_rankings_graph.draw()
+            return
+        
+        games = list(rankings.keys())[:8]
+        sessions = [stats['sessions'] for game, stats in rankings.items()][:8]
+        
+        ax = fig.add_subplot(111)
+        colors = self._stats_generate_color_gradient(
+            self.stats_colors["primary"], 
+            self.stats_colors["accent"], 
+            len(games)
+        )
+        
+        bars = ax.barh(
+            games, 
+            sessions, 
+            color=colors,
+            height=0.5, 
+            edgecolor='white',
+            linewidth=0.5
+        )
+        
+        for i, bar in enumerate(bars):
+            width = bar.get_width()
+            ax.text(
+                width - (max(sessions) * 0.05),
+                bar.get_y() + bar.get_height()/2,
+                f"{sessions[i]}",
+                va='center',
+                color='white',
+                fontweight='bold'
+            )
+        
+        ax.set_title("Most Popular Games", color='white', fontsize=12)
+        ax.set_xlabel("Number of Sessions", color='white')
+        labels = [textwrap.fill(game, 20) for game in games]
+        ax.set_yticks(range(len(games)))
+        ax.set_yticklabels(labels)
+        
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('gray')
+        ax.spines['bottom'].set_color('gray')
+        
+        fig.tight_layout()
+        self.game_rankings_graph.draw()
+
+    def _stats_convert_time_to_minutes(self, time_str):
+        """Convert time string to minutes"""
+        try:
+            if 'day' in time_str:
+                days_part, time_part = time_str.split(', ')
+                days = int(days_part.split()[0])
+                hours, minutes, seconds = map(int, time_part.split(':'))
+                return days * 24 * 60 + hours * 60 + minutes
+            else:
+                parts = time_str.split(':')
+                if len(parts) == 3:
+                    hours, minutes, seconds = map(int, parts)
+                    return hours * 60 + minutes
+                elif len(parts) == 2:
+                    minutes, seconds = map(int, parts)
+                    return minutes
+        except Exception as e:
+            print(f"Error parsing time: {time_str}")
+            print(f"Error details: {e}")
+        return 0
+
+    def _stats_generate_color_gradient(self, start_color, end_color, steps):
+        """Generate color gradient"""
+        def hex_to_rgb(hex_color):
+            hex_color = hex_color.lstrip('#')
+            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        
+        def rgb_to_hex(rgb):
+            return '#{:02x}{:02x}{:02x}'.format(int(rgb[0]), int(rgb[1]), int(rgb[2]))
+        
+        start_rgb = hex_to_rgb(start_color)
+        end_rgb = hex_to_rgb(end_color)
+        
+        colors = []
+        for i in range(steps):
+            r = start_rgb[0] + (end_rgb[0] - start_rgb[0]) * i / (steps-1)
+            g = start_rgb[1] + (end_rgb[1] - start_rgb[1]) * i / (steps-1)
+            b = start_rgb[2] + (end_rgb[2] - start_rgb[2]) * i / (steps-1)
+            colors.append(rgb_to_hex((r, g, b)))
+        
+        return colors
+
+    def get_stats_station_color(self, station_type):
+        """Return color for station type"""
+        color_map = {
+            'XBOX': '#107C10',         # Xbox green
+            'Playstation': '#006FCD',  # PlayStation blue
+            'Switch': '#E60012',       # Nintendo red
+            'PC': '#00ADEF',           # Windows blue
+            'Ping-Pong': '#FF69B4',    # Hot pink
+            'PoolTable': '#008080',    # Teal
+            'Air Hockey': '#1E90FF',   # Dodger blue
+            'Foosball': '#FF8C00',     # Dark orange
+            'VR': '#9370DB',           # Medium purple
+            'Board Games': '#2E8B57'   # Sea green
+        }
+        return color_map.get(station_type, self.stats_colors["primary"])
+
+    def export_stats_to_excel(self):
+        """Export statistics to Excel/CSV files"""
+        try:
+            self.stats_status_label.configure(text="Exporting data...")
+            self.update_idletasks()
+            
+            result = self.stats_manager.export_daily_stats()
+            self.stats_status_label.configure(text="✓ Export complete!")
+            
+            messagebox.showinfo("Export Complete", 
+                            f"Statistics have been exported to the 'statistics' folder.")
+            
+            self.after(3000, lambda: self.stats_status_label.configure(text=""))
+        except Exception as e:
+            self.stats_status_label.configure(text="❌ Export failed")
+            messagebox.showerror("Export Error", f"Failed to export data: {str(e)}")
+
+    def on_stats_tab_change(self):
+        """Handle tab change events"""
+        active_tab = self.stats_notebook.get()
+        if active_tab == "Summary":
+            self.update_stats()
+        elif active_tab == "Station Details":
+            self.update_stats_station_stats(None)
+        elif active_tab == "Game Rankings":  
+            self.update_stats_game_rankings()
 
     def load_orbitron_font(self):
         """Load Orbitron font after window initialization"""
@@ -1792,6 +2855,8 @@ class GamingCenterApp(ctk.CTk):
                     
                 if s.get("controller") and hasattr(station, "controller_var") and station.controller_var:
                     station.controller_var.set(s.get("controller", ""))
+
+               
 
                 # Restore timer state
                 timer_state = s.get("timer", {})
@@ -2036,14 +3101,12 @@ class GamingCenterApp(ctk.CTk):
             logo_ctk_image = ctk.CTkImage(logo_image, size=(60, 60))
         except Exception as e:
             print(f"Error loading logo image: {e}")
-            # Use a placeholder image or skip the logo if the image fails to load
             logo_ctk_image = None
 
-        # Create logo label with image
         logo_label = ctk.CTkLabel(
             logo_frame,
             image=logo_ctk_image,
-            text="",  # Ensure no default text is displayed
+            text="",
             width=85,
             height=85
         )
@@ -2052,25 +3115,28 @@ class GamingCenterApp(ctk.CTk):
         # Load sidebar icons
         home = ctk.CTkImage(Image.open("./icon_cache/house.png"), size=(24, 24))
         games = ctk.CTkImage(Image.open("./icon_cache/gamepad-2.png"), size=(24, 24))
+        reservations_icon = ctk.CTkImage(Image.open("./icon_cache/calendar-clock.png"), size=(24, 24))
         waitlist = ctk.CTkImage(Image.open("./icon_cache/list-plus.png"), size=(24, 24))
         stats = ctk.CTkImage(Image.open("./icon_cache/chart-pie.png"), size=(24, 24))
 
         # Create sidebar buttons with hover effects
-        self.create_sidebar_button(home, "Home", command=self.show_home)
-        self.create_sidebar_button(games, "Games", command=self.open_games_window)
-        self.waitlist_button = self.create_sidebar_button(waitlist, "Waitlist", command=self.show_waitlist_window)
-        self.create_sidebar_button(stats, "Stats", command=self.open_stats_window)
+        self.sidebar_buttons = {}
+        self.sidebar_buttons["home"] = self.create_sidebar_button(home, "Home", command=lambda: self.show_page("home"))
+        self.sidebar_buttons["games"] = self.create_sidebar_button(games, "Games", command=self.open_games_window)
+        self.sidebar_buttons["reservations"] = self.create_sidebar_button(
+            reservations_icon, "Reservations", command=lambda: self.show_page("reservations")
+        )
+        self.sidebar_buttons["waitlist"] = self.create_sidebar_button(waitlist, "Waitlist", command=lambda: self.show_page("waitlist"))
+        self.sidebar_buttons["stats"] = self.create_sidebar_button(stats, "Stats", command=lambda: self.show_page("stats"))
+
 
         # Add a count label to the Waitlist button
         self.waitlist_count_label = ctk.CTkLabel(
-            self.waitlist_button,
+            self.sidebar_buttons["waitlist"],
             text="0",
             fg_color="red",
             text_color="white",
             corner_radius=10,
-            width=20,
-            height=20,
-            font=("Helvetica", 10, "bold")
         )
         self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Position in the top-right corner
         self.update_waitlist_count()  # Initialize the counter
@@ -2089,7 +3155,7 @@ class GamingCenterApp(ctk.CTk):
     def create_sidebar_button(self, icon, tooltip, command=None):
         # Create button frame
         btn_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        btn_frame.pack(fill="x", pady=5)
+        btn_frame.pack(fill="x", pady=1)
 
         # Create the actual button
         btn = ctk.CTkButton(
@@ -2164,11 +3230,10 @@ class GamingCenterApp(ctk.CTk):
         
         # Create first 4 console stations (left column) in reverse order
         for i in range(4):
-            # Create shadow frame with proper corner radius and coloring
             shadow = ctk.CTkFrame(
                 main_frame,
                 corner_radius=15,
-                fg_color="#282828",  # Darker shadow color
+                fg_color="#282828",
                 border_width=0
             )
             # Grid the shadow with offset padding to create the drop shadow effect
@@ -2184,7 +3249,7 @@ class GamingCenterApp(ctk.CTk):
         shadow = ctk.CTkFrame(
             main_frame,
             corner_radius=15,
-            fg_color="#282828",  # Darker shadow color
+            fg_color="#282828",
             border_width=0
         )
         # Grid with offset padding
@@ -2210,7 +3275,7 @@ class GamingCenterApp(ctk.CTk):
             shadow = ctk.CTkFrame(
                 main_frame,
                 corner_radius=15,
-                fg_color="#282828",  # Darker shadow color
+                fg_color="#282828",
                 border_width=0
             )
             # Grid with offset padding
@@ -2243,9 +3308,6 @@ class GamingCenterApp(ctk.CTk):
         for station in self.stations:
             if hasattr(station, 'update_games_list'):
                 station.update_games_list()
-
-    def open_stats_window(self):
-        StatsWindow(self)
 
     def open_games_window(self):
         GamesWindow(self)
@@ -2281,215 +3343,211 @@ class GamingCenterApp(ctk.CTk):
         else:
             self.waitlist_count_label.place_forget()  # Hide the label when there are no parties     
 
-    def show_waitlist_window(self):
-        """Method for GamingCenterApp class"""
-        # Initialize bowling waitlist if it doesn't exist
-        if not hasattr(self, 'bowling_waitlist'):
-            self.bowling_waitlist = []  # Create a separate list for bowling waitlist
+    # def show_waitlist_window(self):
+    #     """Method for GamingCenterApp class"""
+    #     # Initialize bowling waitlist if it doesn't exist
+    #     if not hasattr(self, 'bowling_waitlist'):
+    #         self.bowling_waitlist = []  # Create a separate list for bowling waitlist
         
-        waitlist_window = ctk.CTkToplevel(self)
-        waitlist_window.title("Waitlist")
-        waitlist_window.geometry("1200x800")
-        self.waitlist_window = waitlist_window  # Store reference to the window
+    #     waitlist_window = ctk.CTkToplevel(self)
+    #     waitlist_window.title("Waitlist")
+    #     waitlist_window.geometry("1200x800")
+    #     self.waitlist_window = waitlist_window  # Store reference to the window
 
-        waitlist_window.lift()
-        waitlist_window.focus_force()
-        waitlist_window.grab_set()
+    #     waitlist_window.lift()
+    #     waitlist_window.focus_force()
+    #     waitlist_window.grab_set()
         
-        # Create main container
-        main_frame = ctk.CTkFrame(waitlist_window)
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+    #     # Create main container
+    #     main_frame = ctk.CTkFrame(waitlist_window)
+    #     main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Header frame with title, toggle and count
-        header_frame = ctk.CTkFrame(main_frame)
-        header_frame.pack(fill="x", pady=(0, 20))
+    #     # Header frame with title, toggle and count
+    #     header_frame = ctk.CTkFrame(main_frame)
+    #     header_frame.pack(fill="x", pady=(0, 20))
         
-        # Create toggle for waitlist type
-        self.waitlist_type_var = ctk.StringVar(value="Game Center")
-        waitlist_toggle = ctk.CTkSegmentedButton(
-            header_frame,
-            values=["Game Center", "Bowling Lanes"],
-            variable=self.waitlist_type_var,
-            command=self.switch_waitlist_type
-        )
-        waitlist_toggle.pack(side="left", padx=(0, 20))
+    #     # Create toggle for waitlist type
+    #     self.waitlist_type_var = ctk.StringVar(value="Game Center")
+    #     waitlist_toggle = ctk.CTkSegmentedButton(
+    #         header_frame,
+    #         values=["Game Center", "Bowling Lanes"],
+    #         variable=self.waitlist_type_var,
+    #         command=self.switch_waitlist_type
+    #     )
+    #     waitlist_toggle.pack(side="left", padx=(0, 20))
         
-        title_frame = ctk.CTkFrame(header_frame)
-        title_frame.pack(side="left")
+    #     title_frame = ctk.CTkFrame(header_frame)
+    #     title_frame.pack(side="left")
         
-        # Title label that will update based on selected waitlist type
-        self.title_label = ctk.CTkLabel(
-            title_frame, 
-            text="Gaming Center Waitlist", 
-            font=("Helvetica", 20, "bold")
-        )
-        self.title_label.pack(side="left", padx=5)
+    #     # Title label that will update based on selected waitlist type
+    #     self.title_label = ctk.CTkLabel(
+    #         title_frame, 
+    #         text="Gaming Center Waitlist", 
+    #         font=("Helvetica", 20, "bold")
+    #     )
+    #     self.title_label.pack(side="left", padx=5)
         
-        # Count label that will update based on selected waitlist
-        self.count_label = ctk.CTkLabel(
-            title_frame, 
-            text=str(len(self.waitlist)), 
-            fg_color="blue", 
-            text_color="white",
-            corner_radius=10, 
-            width=30
-        )
-        self.count_label.pack(side="left", padx=5)
+    #     # Count label that will update based on selected waitlist
+    #     self.count_label = ctk.CTkLabel(
+    #         title_frame, 
+    #         text=str(len(self.waitlist)), 
+    #         fg_color="blue", 
+    #         text_color="white",
+    #         corner_radius=10, 
+    #         width=30
+    #     )
+    #     self.count_label.pack(side="left", padx=5)
 
-        # Search frame
-        search_frame = ctk.CTkFrame(header_frame)
-        search_frame.pack(side="right")
-        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
-        self.search_entry.pack(side="right", padx=5)
+    #     # Search frame
+    #     search_frame = ctk.CTkFrame(header_frame)
+    #     search_frame.pack(side="right")
+    #     self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
+    #     self.search_entry.pack(side="right", padx=5)
 
-        # Create a frame to hold both the treeview and buttons side by side
-        content_frame = ctk.CTkFrame(main_frame)
-        content_frame.pack(fill="both", expand=True)
+    #     # Create a frame to hold both the treeview and buttons side by side
+    #     content_frame = ctk.CTkFrame(main_frame)
+    #     content_frame.pack(fill="both", expand=True)
 
-        # Create custom style for Treeview
-        style = ttk.Style()
-        style.theme_use("default")
+    #     # Create custom style for Treeview
+    #     style = ttk.Style()
+    #     style.theme_use("default")
 
-        style.configure(
-            "Waitlist.Treeview",
-            background="#2b2b2b",
-            foreground="white",
-            fieldbackground="#2b2b2b",
-            rowheight=50,
-            font=("Helvetica", 12)
-        )
-        style.configure(
-            "Waitlist.Treeview.Heading",
-            background="#333333",
-            foreground="white",
-            font=("Helvetica", 12, "bold"),
-            relief="flat"
-        )
-        style.map(
-            "Waitlist.Treeview",
-            background=[("selected", "#1f538d")],
-            foreground=[("selected", "white")]
-        )
+    #     style.configure(
+    #         "Waitlist.Treeview",
+    #         background="#2b2b2b",
+    #         foreground="white",
+    #         fieldbackground="#2b2b2b",
+    #         rowheight=50,
+    #         font=("Helvetica", 12)
+    #     )
+    #     style.configure(
+    #         "Waitlist.Treeview.Heading",
+    #         background="#333333",
+    #         foreground="white",
+    #         font=("Helvetica", 12, "bold"),
+    #         relief="flat"
+    #     )
+    #     style.map(
+    #         "Waitlist.Treeview",
+    #         background=[("selected", "#1f538d")],
+    #         foreground=[("selected", "white")]
+    #     )
 
-        # Create columns - same structure for both waitlist types
-        columns = ("party", "size", "notes", "station", "quotedTime", "arrival")
-        self.waitlist_tree = ttk.Treeview(
-            content_frame,
-            columns=columns,
-            show="headings",
-            style="Waitlist.Treeview"
-        )
+    #     # Create columns - same structure for both waitlist types
+    #     columns = ("party", "size", "notes", "station", "quotedTime", "arrival")
+    #     self.waitlist_tree = ttk.Treeview(
+    #         content_frame,
+    #         columns=columns,
+    #         show="headings",
+    #         style="Waitlist.Treeview"
+    #     )
         
-        # Configure column headings and widths
-        self.headings = {
-            "party": "PARTY",
-            "size": "SIZE",
-            "notes": "NOTES",
-            "station": "STATION",  # Will be changed to "LANE" for bowling
-            "quotedTime": "QUOTED TIME",
-            "arrival": "ARRIVAL"
-        }
+    #     # Configure column headings and widths
+    #     self.headings = {
+    #         "party": "PARTY",
+    #         "size": "SIZE",
+    #         "notes": "NOTES",
+    #         "station": "STATION",  # Will be changed to "LANE" for bowling
+    #         "quotedTime": "QUOTED TIME",
+    #         "arrival": "ARRIVAL"
+    #     }
         
-        for col, heading in self.headings.items():
-            self.waitlist_tree.heading(col, text=heading)
-            if col == "size":
-                self.waitlist_tree.column(col, width=50, anchor="center")  # Narrow size column
-            else:
-                self.waitlist_tree.column(col, width=150, anchor="w")  # Adjust width of other columns
+    #     for col, heading in self.headings.items():
+    #         self.waitlist_tree.heading(col, text=heading)
+    #         if col == "size":
+    #             self.waitlist_tree.column(col, width=50, anchor="center")  # Narrow size column
+    #         else:
+    #             self.waitlist_tree.column(col, width=150, anchor="w")  # Adjust width of other columns
 
-        # Create a frame for the buttons column
-        buttons_frame = ctk.CTkFrame(content_frame, width=200)  # Set a fixed width for the actions column
-        buttons_frame.pack(side="right", fill="y", padx=(10, 0))
+    #     # Create a frame for the buttons column
+    #     buttons_frame = ctk.CTkFrame(content_frame, width=200)  # Set a fixed width for the actions column
+    #     buttons_frame.pack(side="right", fill="y", padx=(10, 0))
         
-        # Add a header for the actions column
-        ctk.CTkLabel(buttons_frame, text="ACTIONS", font=("Helvetica", 11, "bold")).pack(pady=(0, 0))
+    #     # Add a header for the actions column
+    #     ctk.CTkLabel(buttons_frame, text="ACTIONS", font=("Helvetica", 11, "bold")).pack(pady=(0, 0))
 
-        # Load icons
-        check_icon = ctk.CTkImage(Image.open("./icon_cache/check.png"), size=(16, 16))
-        x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
-        pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
-        message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
+    #     # Load icons
+    #     check_icon = ctk.CTkImage(Image.open("./icon_cache/check.png"), size=(16, 16))
+    #     x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
+    #     pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
+    #     message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
 
-        # Add a single row of placeholder buttons (grayed-out and un-clickable)
-        self.placeholder_buttons_frame = ctk.CTkFrame(buttons_frame)
-        self.placeholder_buttons_frame.pack(pady=10, padx=5)
+    #     # Add a single row of placeholder buttons (grayed-out and un-clickable)
+    #     self.placeholder_buttons_frame = ctk.CTkFrame(buttons_frame)
+    #     self.placeholder_buttons_frame.pack(pady=10, padx=5)
 
-        ctk.CTkButton(
-            self.placeholder_buttons_frame,
-            image=check_icon,
-            text="",
-            width=30,
-            height=30,
-            fg_color="gray",
-            hover_color="gray",
-            state="disabled"  # Disable the button
-        ).pack(side="left", padx=2)
+    #     ctk.CTkButton(
+    #         self.placeholder_buttons_frame,
+    #         text="✓",
+    #         width=30,
+    #         height=30,
+    #         fg_color="gray",
+    #         hover_color="gray",
+    #         state="disabled"
+    #     ).pack(side="left", padx=2)
+    #     ctk.CTkButton(
+    #         self.placeholder_buttons_frame,
+    #         text="✕",
+    #         width=30,
+    #         height=30,
+    #         fg_color="gray",
+    #         hover_color="gray",
+    #         state="disabled"
+    #     ).pack(side="left", padx=2)
+    #     ctk.CTkButton(
+    #         self.placeholder_buttons_frame,
+    #         text="✎",
+    #         width=30,
+    #         height=30,
+    #         fg_color="gray",
+    #         hover_color="gray",
+    #         state="disabled"
+    #     ).pack(side="left", padx=2)
+    #     ctk.CTkButton(
+    #         self.placeholder_buttons_frame,
+    #         text="✉",
+    #         width=30,
+    #         height=30,
+    #         fg_color="gray",
+    #         hover_color="gray",
+    #         state="disabled"
+    #     ).pack(side="left", padx=2)
 
-        ctk.CTkButton(
-            self.placeholder_buttons_frame,
-            image=x_icon,
-            text="",
-            width=30,
-            height=30,
-            fg_color="gray",
-            hover_color="gray",
-            state="disabled"  # Disable the button
-        ).pack(side="left", padx=2)
+    #     # Now it's safe to call:
+    #     self.update_waitlist_tree()
 
-        ctk.CTkButton(
-            self.placeholder_buttons_frame,
-            image=pencil_icon,
-            text="",
-            width=30,
-            height=30,
-            fg_color="gray",
-            hover_color="gray",
-            state="disabled"  # Disable the button
-        ).pack(side="left", padx=2)
-
-        ctk.CTkButton(
-            self.placeholder_buttons_frame,
-            image=message_icon,
-            text="",
-            width=30,
-            height=30,
-            fg_color="gray",
-            hover_color="gray",
-            state="disabled"  # Disable the button
-        ).pack(side="left", padx=2)
-
-        # Pack the treeview with scrollbar
-        tree_scroll = ctk.CTkScrollbar(content_frame, orientation="vertical", command=self.waitlist_tree.yview)
-        self.waitlist_tree.configure(yscrollcommand=tree_scroll.set)
+    #     # Pack the treeview with scrollbar
+    #     tree_scroll = ctk.CTkScrollbar(content_frame, orientation="vertical", command=self.waitlist_tree.yview)
+    #     self.waitlist_tree.configure(yscrollcommand=tree_scroll.set)
         
-        self.waitlist_tree.pack(side="left", fill="both", expand=True)
-        tree_scroll.pack(side="right", fill="y")
+    #     self.waitlist_tree.pack(side="left", fill="both", expand=True)
+    #     tree_scroll.pack(side="right", fill="y")
 
-        # Store reference to buttons_frame for updating
-        self.buttons_frame = buttons_frame
+    #     # Store reference to buttons_frame for updating
+    #     self.buttons_frame = buttons_frame
 
-        # Add floating action button - will be updated based on waitlist type
-        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
-        self.add_button = ctk.CTkButton(
-            waitlist_window,
-            text="+",
-            width=60,
-            height=60,
-            corner_radius=60,
+    #     # Add floating action button - will be updated based on waitlist type
+    #     station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+    #     self.add_button = ctk.CTkButton(
+    #         waitlist_window,
+    #         text="+",
+    #         width=60,
+    #         height=60,
+    #         corner_radius=60,
 
-            font=("Helvetica", 24, "bold"),
-            command=lambda: self.add_to_waitlist(station_names)
-        )
-        self.add_button.place(relx=0.95, rely=0.95, anchor="se")
+    #         font=("Helvetica", 24, "bold"),
+    #         command=lambda: self.add_to_waitlist(station_names)
+    #     )
+    #     self.add_button.place(relx=0.95, rely=0.95, anchor="se")
 
-        def update_tree(event=None):
-            search_text = self.search_entry.get().lower()
-            self.update_waitlist_tree(search_text)
+    #     def update_tree(event=None):
+    #         search_text = self.search_entry.get().lower()
+    #         self.update_waitlist_tree(search_text)
 
-        self.search_entry.bind('<KeyRelease>', update_tree)
+    #     self.search_entry.bind('<KeyRelease>', update_tree)
         
-        # Update the waitlist display
-        self.update_waitlist_tree()
+    #     # Update the waitlist display
+    #     self.update_waitlist_tree()
 
     def switch_waitlist_type(self, value=None):
         """Switch between Game Center and Bowling Lanes waitlists"""
@@ -2854,6 +3912,24 @@ class GamingCenterApp(ctk.CTk):
                     if bbox:
                         self.show_action_buttons(item, bbox)
 
+    def complete_waitlist_entry(self, entry):
+        """Mark a waitlist entry as complete and remove it from the list."""
+        waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        if entry in current_waitlist:
+            current_waitlist.remove(entry)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()
+
+    def remove_waitlist_entry(self, entry):
+        """Remove a waitlist entry from the appropriate list."""
+        waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        if entry in current_waitlist:
+            current_waitlist.remove(entry)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()
+
     def show_action_buttons(self, item, bbox):
         """Show action buttons in a popup window"""
         # Get the corresponding entry from waitlist
@@ -2886,8 +3962,8 @@ class GamingCenterApp(ctk.CTk):
             height=30,
             fg_color="green",
             hover_color="darkgreen",
-            command=lambda: [self.complete_waitlist_entry(entry), popup.destroy()]
-        )
+            command=partial(self.complete_waitlist_entry, entry)
+        ).pack(side="left", padx=2)
         
         remove_btn = ctk.CTkButton(
             button_frame,
@@ -2896,8 +3972,9 @@ class GamingCenterApp(ctk.CTk):
             height=30,
             fg_color="red",
             hover_color="darkred",
-            command=lambda: [self.remove_waitlist_entry(entry), popup.destroy()]
-        )
+            command=partial(self.remove_waitlist_entry, entry)
+        ).pack(side="left", padx=2)
+        
         
         edit_btn = ctk.CTkButton(
             button_frame,
@@ -2906,8 +3983,8 @@ class GamingCenterApp(ctk.CTk):
             height=30,
             fg_color="blue",
             hover_color="darkblue",
-            command=lambda: [self.edit_waitlist_entry(entry), popup.destroy()]
-        )
+            command=partial(self.edit_waitlist_entry, entry)
+        ).pack(side="left", padx=2)
         
         complete_btn.pack(side="left", padx=2)
         remove_btn.pack(side="left", padx=2)
@@ -2969,6 +4046,8 @@ class GamingCenterApp(ctk.CTk):
                 entry['arrival']
             ))
             
+
+            self.waitlist_tree.bind("<Button-1>", self.handle_click)
             entry_buttons = ctk.CTkFrame(self.buttons_frame)
             entry_buttons.pack(pady=10, padx=5)
             
@@ -2981,7 +4060,7 @@ class GamingCenterApp(ctk.CTk):
                 height=30,
                 fg_color="green",
                 hover_color="darkgreen",
-                command=lambda e=entry: self.complete_waitlist_entry(e)
+                command=partial(GamingCenterApp.complete_waitlist_entry, self, entry)
             ).pack(side="left", padx=2)
             
             ctk.CTkButton(
@@ -2992,9 +4071,9 @@ class GamingCenterApp(ctk.CTk):
                 height=30,
                 fg_color="red",
                 hover_color="darkred",
-                command=lambda e=entry: self.remove_waitlist_entry(e)
+                command=partial(self.remove_waitlist_entry, entry)
             ).pack(side="left", padx=2)
-            
+
             ctk.CTkButton(
                 entry_buttons,
                 image=pencil_icon,
@@ -3003,7 +4082,7 @@ class GamingCenterApp(ctk.CTk):
                 height=30,
                 fg_color="blue",
                 hover_color="darkblue",
-                command=lambda e=entry: self.edit_waitlist_entry(e)
+                command=partial(self.edit_waitlist_entry, entry)
             ).pack(side="left", padx=2)
             
             # Add Send SMS button
@@ -3015,7 +4094,7 @@ class GamingCenterApp(ctk.CTk):
                 height=30,
                 fg_color="purple",
                 hover_color="#800080",
-                command=lambda e=entry: self.send_sms_notification(e)
+                command=partial(self.send_sms_notification, entry)
             ).pack(side="left", padx=2)
         
         # Update count label with current waitlist count
@@ -3041,6 +4120,7 @@ class EnhancedTooltip:
         self.widget = widget
         self.text = text
         self.tooltip = None
+        self._after_id = None
         
         # Bind events
         self.widget.bind('<Enter>', self.show_tooltip)
@@ -3103,9 +4183,12 @@ class EnhancedTooltip:
         tooltip_height = text_label.winfo_height() + 16  # Add padding
         self.tooltip.geometry(f"{tooltip_width}x{tooltip_height}")
         self.tooltip.geometry(f"+{x - tooltip_width//2}+{y}")
+        self._after_id = self.tooltip.after(5000, self.hide_tooltip)
     
     def hide_tooltip(self, event=None):
-        """Hide the tooltip"""
+        if self._after_id:
+            self.tooltip.after_cancel(self._after_id)
+            self._after_id = None
         if self.tooltip:
             self.tooltip.destroy()
             self.tooltip = None
