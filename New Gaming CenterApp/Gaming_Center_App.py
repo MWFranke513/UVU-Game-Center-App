@@ -1727,7 +1727,7 @@ class ReservationSystem:
         """Create modern header section"""
         header_frame = ctk.CTkFrame(
             container, 
-            fg_color=("#f0f0f0", "#1a1a1a"),
+            fg_color="#171717",  # Consistent dark background
             corner_radius=15,
             height=80
         )
@@ -1739,7 +1739,7 @@ class ReservationSystem:
             header_frame, 
             text="🎳 Bowling Reservations",
             font=("SF Pro Display", 28, "bold"),
-            text_color=("#2d3748", "#ffffff")
+            text_color="#e6f2ec"  # Light greenish text for dark bg
         )
         title_label.pack(side="left", padx=30, pady=20)
         
@@ -1755,8 +1755,9 @@ class ReservationSystem:
             width=120,
             height=35,
             corner_radius=20,
-            fg_color=("#4a5568", "#2d3748"),
-            hover_color=("#2d3748", "#4a5568")
+            fg_color="#232323",  # Slightly lighter dark
+            hover_color="#333333",
+            text_color="#e6f2ec"
         )
         settings_btn.pack(side="left", padx=(0, 10))
         
@@ -1765,7 +1766,7 @@ class ReservationSystem:
             controls_frame,
             text="🔄 Ready",
             font=("SF Pro Display", 14),
-            text_color=("#38a169", "#68d391")
+            text_color="#38a169"  # Green accent
         )
         self.reservations_status.pack(side="left", padx=(0, 15))
         
@@ -1777,8 +1778,9 @@ class ReservationSystem:
             width=120,
             height=35,
             corner_radius=20,
-            fg_color=("#3182ce", "#4299e1"),
-            hover_color=("#2c5aa0", "#3182ce")
+            fg_color="#00843d",  # UVU green
+            hover_color="#006e33",
+            text_color="#e6f2ec"
         )
         refresh_button.pack(side="left")
 
@@ -1786,10 +1788,10 @@ class ReservationSystem:
         """Create modern calendar section"""
         calendar_frame = ctk.CTkFrame(
             container, 
-            fg_color=("#ffffff", "#2d3748"),
+            fg_color="#171717",  # Consistent dark background
             corner_radius=15,
             border_width=1,
-            border_color=("#e2e8f0", "#4a5568")
+            border_color="#232323"
         )
         calendar_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 15))
         calendar_frame.grid_columnconfigure(0, weight=1)
@@ -1800,28 +1802,28 @@ class ReservationSystem:
             calendar_frame,
             text="📅 Select Date",
             font=("SF Pro Display", 18, "bold"),
-            text_color=("#2d3748", "#ffffff")
+            text_color="#e6f2ec"
         )
         cal_header.grid(row=0, column=0, pady=20, sticky="n")
         
-        # Modern calendar widget
+        # Modern calendar widget (fully dark theme)
         self.calendar = Calendar(
             calendar_frame,
             selectmode='day',
             date_pattern='yyyy-mm-dd',
-            background='#ffffff',
-            foreground='#2d3748',
-            bordercolor='#3182ce',
-            selectbackground='#3182ce',
-            selectforeground='white',
-            normalbackground='#ffffff',
-            normalforeground='#2d3748',
-            weekendbackground='#f7fafc',
-            weekendforeground='#4a5568',
-            othermonthbackground='#edf2f7',
-            othermonthforeground='#a0aec0',
-            headersbackground='#3182ce',
-            headersforeground='white',
+            background='#171717',           # Main background (dark)
+            foreground='#e6f2ec',           # Main text (light greenish)
+            bordercolor='#00843d',          # UVU green border
+            selectbackground='#00843d',     # Selected day background (green)
+            selectforeground='#ffffff',     # Selected day text (white)
+            normalbackground='#171717',     # Normal day background (dark)
+            normalforeground='#e6f2ec',     # Normal day text (light)
+            weekendbackground='#232323',    # Weekend background (slightly lighter dark)
+            weekendforeground='#a0aec0',    # Weekend text (gray-blue)
+            othermonthbackground='#232323', # Other month days (dark)
+            othermonthforeground='#565B5E', # Other month text (gray)
+            headersbackground='#232323',    # Header background (dark)
+            headersforeground='#e6f2ec',    # Header text (light)
             font=('SF Pro Display', 11),
             borderwidth=0,
             showweeknumbers=False
@@ -1839,11 +1841,11 @@ class ReservationSystem:
         # Selected date header with modern styling
         date_header_frame = ctk.CTkFrame(
             right_frame, 
-            fg_color=("#ffffff", "#2d3748"),
+            fg_color=("#ffffff", "#171717"),
             corner_radius=15,
             height=90,
             border_width=1,
-            border_color=("#e2e8f0", "#4a5568")
+            border_color=("#e2e8f0", "#171717")
         )
         date_header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
         date_header_frame.grid_propagate(False)
@@ -1885,10 +1887,10 @@ class ReservationSystem:
         # Time slots container with modern styling
         slots_container = ctk.CTkFrame(
             right_frame, 
-            fg_color=("#ffffff", "#2d3748"),
+            fg_color=("#ffffff", "#171717"),
             corner_radius=15,
             border_width=1,
-            border_color=("#e2e8f0", "#4a5568")
+            border_color=("#e2e8f0", "#171717")
         )
         slots_container.grid(row=1, column=0, sticky="nsew")
         
