@@ -6,7 +6,6 @@ from tkinter import simpledialog, messagebox, ttk, font as tkFont
 import customtkinter as ctk
 from customtkinter import CTkImage
 from CTkScrollableDropdown import CTkScrollableDropdown
-import pandas
 from CTkListbox import *
 from pathlib import Path
 from PIL import Image, ImageTk, ImageDraw
@@ -29,6 +28,14 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import textwrap  # <-- Add this import
 from functools import partial
+import pandas as pd
+from datetime import datetime, time, timedelta
+from tkinter import messagebox
+from tkcalendar import Calendar
+import gspread
+from google.oauth2.service_account import Credentials
+import json
+import os
 
 # Configure customtkinter
 ctk.set_appearance_mode("dark")  # Default to light mode
@@ -1647,11 +1654,1811 @@ class BowlingWaitlistDialog(ctk.CTkToplevel):
         self.grab_set()  # Make the dialog modal
         self.wait_window()  # Wait for the window to be destroyed
         return self.result  # Return the result after the window is closed
+
+
+class ReservationSystem:
+    def __init__(self, parent_app):
+        # Operating hours configuration - easily editable
+        self.operating_hours = {
+            'open_time': time(12, 0),    # 9:00 AM
+            'close_time': time(22, 0),  # 10:00 PM
+            'slot_duration': 30,        # 30 minutes per slot
+            'lanes_count': 6
+        }
+
+        # Store reference to parent app for dialog creation
+        self.parent_app = parent_app
+        
+        # Initialize Google Sheets connection variables
+        self.gc = None
+        self.worksheet = None
+        self.reservations_data = pd.DataFrame()
+        self.reservations_status = None
+        self.sheet_id = "1H_6poRS4jEH4zXzmBS1VVJAkIM001kQLtY5jhdGTX1w"
+        self.selected_date = datetime.now().date()
+
+        self.column_mapping = {
+            'Date': 'Date',
+            'Time': 'Time',
+            'Party Name': 'Group Name',
+            'Party Size': '# of People',
+            'Lane': 'Lane',  # Changed from '# of Lanes'
+            'Phone Number': 'Phone',
+            'Email': 'Email',
+            'Special Requests': 'Special Requests',
+            'Status': 'Payment'
+        }
+        
+    def setup_reservations_page(self, frame):
+        """Setup the main reservations page with modern UI"""
+        # Google Sheets setup
+        SHEET_ID = "1H_6poRS4jEH4zXzmBS1VVJAkIM001kQLtY5jhdGTX1w"
+        
+        # Create main container with modern styling
+        container = ctk.CTkFrame(frame, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Configure grid with better proportions
+        container.grid_columnconfigure(0, weight=1, minsize=350)  # Calendar column
+        container.grid_columnconfigure(1, weight=2, minsize=600)  # Time slots column
+        container.grid_rowconfigure(1, weight=1)
+        
+        # Modern header with gradient-like appearance
+        self._create_header(container)
+        
+        # Left side - Calendar with modern styling
+        self._create_calendar_section(container)
+        
+        # Right side - Time slots with improved UX
+        self._create_time_slots_section(container)
+        
+        # Initialize Google Sheets connection
+        self.gc = None
+        self.worksheet = None
+        self.reservations_data = pd.DataFrame()
+        self.sheet_id = SHEET_ID
+        
+        # Initialize with today's date
+        self.selected_date = datetime.now().date()
+        self.setup_google_sheets()
+        self.load_reservations_data()
+
+    def _create_header(self, container):
+        """Create modern header section"""
+        header_frame = ctk.CTkFrame(
+            container, 
+            fg_color=("#f0f0f0", "#1a1a1a"),
+            corner_radius=15,
+            height=80
+        )
+        header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 20))
+        header_frame.grid_propagate(False)
+        
+        # Title with modern typography
+        title_label = ctk.CTkLabel(
+            header_frame, 
+            text="🎳 Bowling Reservations",
+            font=("SF Pro Display", 28, "bold"),
+            text_color=("#2d3748", "#ffffff")
+        )
+        title_label.pack(side="left", padx=30, pady=20)
+        
+        # Status and controls section
+        controls_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        controls_frame.pack(side="right", padx=30, pady=15)
+        
+        # Settings button
+        settings_btn = ctk.CTkButton(
+            controls_frame,
+            text="⚙️ Settings",
+            command=self.show_settings_dialog,
+            width=120,
+            height=35,
+            corner_radius=20,
+            fg_color=("#4a5568", "#2d3748"),
+            hover_color=("#2d3748", "#4a5568")
+        )
+        settings_btn.pack(side="left", padx=(0, 10))
+        
+        # Status indicator
+        self.reservations_status = ctk.CTkLabel(
+            controls_frame,
+            text="🔄 Ready",
+            font=("SF Pro Display", 14),
+            text_color=("#38a169", "#68d391")
+        )
+        self.reservations_status.pack(side="left", padx=(0, 15))
+        
+        # Refresh button with modern styling
+        refresh_button = ctk.CTkButton(
+            controls_frame,
+            text="🔄 Refresh",
+            command=self.refresh_reservations_data,
+            width=120,
+            height=35,
+            corner_radius=20,
+            fg_color=("#3182ce", "#4299e1"),
+            hover_color=("#2c5aa0", "#3182ce")
+        )
+        refresh_button.pack(side="left")
+
+    def _create_calendar_section(self, container):
+        """Create modern calendar section"""
+        calendar_frame = ctk.CTkFrame(
+            container, 
+            fg_color=("#ffffff", "#2d3748"),
+            corner_radius=15,
+            border_width=1,
+            border_color=("#e2e8f0", "#4a5568")
+        )
+        calendar_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 15))
+        calendar_frame.grid_columnconfigure(0, weight=1)
+        calendar_frame.grid_rowconfigure(1, weight=1)
+        
+        # Calendar header
+        cal_header = ctk.CTkLabel(
+            calendar_frame,
+            text="📅 Select Date",
+            font=("SF Pro Display", 18, "bold"),
+            text_color=("#2d3748", "#ffffff")
+        )
+        cal_header.grid(row=0, column=0, pady=20, sticky="n")
+        
+        # Modern calendar widget
+        self.calendar = Calendar(
+            calendar_frame,
+            selectmode='day',
+            date_pattern='yyyy-mm-dd',
+            background='#ffffff',
+            foreground='#2d3748',
+            bordercolor='#3182ce',
+            selectbackground='#3182ce',
+            selectforeground='white',
+            normalbackground='#ffffff',
+            normalforeground='#2d3748',
+            weekendbackground='#f7fafc',
+            weekendforeground='#4a5568',
+            othermonthbackground='#edf2f7',
+            othermonthforeground='#a0aec0',
+            headersbackground='#3182ce',
+            headersforeground='white',
+            font=('SF Pro Display', 11),
+            borderwidth=0,
+            showweeknumbers=False
+        )
+        self.calendar.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        self.calendar.bind('<<CalendarSelected>>', self.on_date_selected)
+
+    def _create_time_slots_section(self, container):
+        """Create modern time slots section"""
+        right_frame = ctk.CTkFrame(container, fg_color="transparent")
+        right_frame.grid(row=1, column=1, sticky="nsew")
+        right_frame.grid_rowconfigure(1, weight=1)
+        right_frame.grid_columnconfigure(0, weight=1)
+        
+        # Selected date header with modern styling
+        date_header_frame = ctk.CTkFrame(
+            right_frame, 
+            fg_color=("#ffffff", "#2d3748"),
+            corner_radius=15,
+            height=90,
+            border_width=1,
+            border_color=("#e2e8f0", "#4a5568")
+        )
+        date_header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
+        date_header_frame.grid_propagate(False)
+        
+        # Date info
+        date_info_frame = ctk.CTkFrame(date_header_frame, fg_color="transparent")
+        date_info_frame.pack(side="left", fill="y", padx=25)
+        
+        self.selected_date_label = ctk.CTkLabel(
+            date_info_frame,
+            text=f"📅 {datetime.now().strftime('%A, %B %d, %Y')}",
+            font=("SF Pro Display", 20, "bold"),
+            text_color=("#2d3748", "#ffffff")
+        )
+        self.selected_date_label.pack(pady=(20, 5))
+        
+        self.date_summary_label = ctk.CTkLabel(
+            date_info_frame,
+            text="Select a time slot below",
+            font=("SF Pro Display", 14),
+            text_color=("#718096", "#a0aec0")
+        )
+        self.date_summary_label.pack()
+        
+        # Add reservation button
+        add_reservation_btn = ctk.CTkButton(
+            date_header_frame,
+            text="➕ New Reservation",
+            command=self.add_new_reservation_for_date,
+            width=160,
+            height=45,
+            corner_radius=25,
+            font=("SF Pro Display", 14, "bold"),
+            fg_color=("#38a169", "#68d391"),
+            hover_color=("#2f855a", "#38a169")
+        )
+        add_reservation_btn.pack(side="right", padx=25, pady=22)
+        
+        # Time slots container with modern styling
+        slots_container = ctk.CTkFrame(
+            right_frame, 
+            fg_color=("#ffffff", "#2d3748"),
+            corner_radius=15,
+            border_width=1,
+            border_color=("#e2e8f0", "#4a5568")
+        )
+        slots_container.grid(row=1, column=0, sticky="nsew")
+        
+        # Slots header
+        slots_header = ctk.CTkLabel(
+            slots_container,
+            text="🎯 Available Time Slots",
+            font=("SF Pro Display", 18, "bold"),
+            text_color=("#2d3748", "#ffffff")
+        )
+        slots_header.pack(pady=(20, 10))
+        
+        # Scrollable frame for time slots
+        self.slots_scrollable = ctk.CTkScrollableFrame(
+            slots_container,
+            fg_color="transparent",
+            corner_radius=10
+        )
+        self.slots_scrollable.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+    def _create_time_slot_card(self, time_slot, date_reservations):
+        """Create a modern card for each time slot with updated colors"""
+        # Check if this time slot is fully booked
+        reserved_lanes = self._count_reserved_lanes(date_reservations, time_slot)
+        available_lanes = self.operating_hours['lanes_count'] - reserved_lanes
+        is_fully_booked = available_lanes == 0
+        
+        # Choose card colors based on availability
+        if is_fully_booked:
+            card_fg_color = ("#ffebee", "#4a1a1a")  # Light red background for fully booked
+            border_color = ("#f44336", "#d32f2f")   # Red border
+            availability_color = ("#c62828", "#ff5252")
+            availability_text = "No lanes available"
+        elif available_lanes <= 2:  # Low availability
+            card_fg_color = ("#fff3e0", "#4a2a1a")  # Light orange background
+            border_color = ("#ff9800", "#f57c00")   # Orange border
+            availability_color = ("#e65100", "#ff9800")
+            availability_text = f"Only {available_lanes} lanes available"
+        else:
+            card_fg_color = ("#2d2d2d", "#2d2d2d")  # Dark background for available
+            border_color = ("#00843d", "#00843d")   # Green accent border
+            availability_color = ("#00843d", "#4caf50")
+            availability_text = f"{available_lanes} of {self.operating_hours['lanes_count']} lanes available"
+        
+        # Main card frame with conditional styling
+        card_frame = ctk.CTkFrame(
+            self.slots_scrollable, 
+            fg_color=card_fg_color,
+            corner_radius=12,
+            border_width=2 if is_fully_booked else 1,
+            border_color=border_color
+        )
+        card_frame.pack(fill="x", pady=8, padx=5)
+        
+        # Time header with reservation count button
+        time_header = ctk.CTkFrame(card_frame, fg_color="transparent")
+        time_header.pack(fill="x", padx=20, pady=(15, 10))
+        
+        # Time label with conditional color
+        time_color = ("#c62828", "#ff5252") if is_fully_booked else ("#ffffff", "#ffffff")
+        time_label = ctk.CTkLabel(
+            time_header,
+            text=time_slot,
+            font=("SF Pro Display", 16, "bold"),
+            text_color=time_color
+        )
+        time_label.pack(side="left")
+        
+        # Add "FULLY BOOKED" indicator for fully booked slots
+        if is_fully_booked:
+            booked_indicator = ctk.CTkLabel(
+                time_header,
+                text="🚫 FULLY BOOKED",
+                font=("SF Pro Display", 12, "bold"),
+                text_color=("#c62828", "#ff5252"),
+                fg_color=("#ffcdd2", "#2a1010"),
+                corner_radius=15,
+                width=120,
+                height=25
+            )
+            booked_indicator.pack(side="left", padx=(20, 0))
+        
+        # Add "View Reservations" button if there are reservations for this time slot
+        if reserved_lanes > 0:
+            view_reservations_btn = ctk.CTkButton(
+                time_header,
+                text=f"📋 View {reserved_lanes} Reservation{'s' if reserved_lanes > 1 else ''}",
+                command=lambda: self.show_time_slot_reservations(time_slot, date_reservations),
+                width=180,
+                height=25,
+                corner_radius=15,
+                font=("SF Pro Display", 11),
+                fg_color=("#3182ce", "#4299e1") if not is_fully_booked else ("#90a4ae", "#455a64"),
+                hover_color=("#2c5aa0", "#3182ce") if not is_fully_booked else ("#78909c", "#37474f")
+            )
+            view_reservations_btn.pack(side="left", padx=(20, 0))
+        
+        availability_label = ctk.CTkLabel(
+            time_header,
+            text=availability_text,
+            font=("SF Pro Display", 12, "bold"),
+            text_color=availability_color
+        )
+        availability_label.pack(side="right")
+        
+        # Lanes grid
+        lanes_frame = ctk.CTkFrame(card_frame, fg_color="transparent")
+        lanes_frame.pack(fill="x", padx=20, pady=(0, 15))
+        
+        # Configure grid for lanes
+        for i in range(self.operating_hours['lanes_count']):
+            lanes_frame.grid_columnconfigure(i, weight=1)
+        
+        # Create lane buttons with proper state handling
+        for lane in range(1, self.operating_hours['lanes_count'] + 1):
+            self._create_lane_button(lanes_frame, time_slot, lane, date_reservations, is_fully_booked)
+
+
+    def _create_lane_button(self, parent, time_slot, lane, date_reservations, is_fully_booked=False):
+        """Create a lane button with proper lane number handling and conditional styling"""
+        lane_reserved = self.is_lane_reserved(date_reservations, time_slot, lane)
+        
+        if lane_reserved:
+            reservation = lane_reserved
+            # Ensure lane number is properly formatted
+            lane_num = reservation.get('Lane', f"Lane {lane}").replace("Lane ", "")
+            party_name = reservation.get('Party Name', 'Reserved')[:12]
+            party_size = reservation.get('Party Size', '')
+            
+            # Reserved lane - red color, clickable for editing
+            lane_btn = ctk.CTkButton(
+                parent,
+                text=f"Lane {lane_num}\n{party_name}\n({party_size})",
+                width=90,
+                height=70,
+                corner_radius=10,
+                font=("SF Pro Display", 10, "bold"),
+                fg_color=("#e53e3e", "#fc8181"),  # Red for reserved
+                hover_color=("#c53030", "#e53e3e"),
+                text_color="white",
+                command=lambda r=reservation: self.edit_reservation(r)
+            )
+        else:
+            # Available lane - color depends on overall time slot status
+            if is_fully_booked:
+                # This shouldn't happen, but just in case
+                lane_btn = ctk.CTkButton(
+                    parent,
+                    text=f"Lane {lane}\nUnavailable",
+                    width=90,
+                    height=70,
+                    corner_radius=10,
+                    font=("SF Pro Display", 11, "bold"),
+                    fg_color=("#9e9e9e", "#616161"),  # Gray for unavailable
+                    hover_color=("#757575", "#424242"),
+                    text_color="white",
+                    state="disabled"
+                )
+            else:
+                # Available lane - green color, clickable for quick booking
+                lane_btn = ctk.CTkButton(
+                    parent,
+                    text=f"Lane {lane}\nAvailable",
+                    width=90,
+                    height=70,
+                    corner_radius=10,
+                    font=("SF Pro Display", 11, "bold"),
+                    fg_color=("#00843d", "#38a169"),  # Green for available
+                    hover_color=("#00662c", "#2f855a"),
+                    text_color="white",
+                    command=lambda t=time_slot, l=lane: self.quick_add_reservation(t, l)
+                )
+        
+        lane_btn.grid(row=0, column=lane-1, padx=3, pady=5, sticky="ew")
+
+        
+    def setup_google_sheets(self):
+        """Initialize Google Sheets connection with better error handling"""
+        try:
+            # Define the scope
+            scope = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive.file"
+            ]
+            
+            # ...existing credentials loading code...
+            credentials_filename = "google_credentials.json"
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            possible_paths = [
+                os.path.join(script_dir, credentials_filename),
+                os.path.join(os.getcwd(), credentials_filename),
+                os.path.join(os.path.dirname(script_dir), credentials_filename),
+                credentials_filename,
+            ]
+            
+            project_folders = ["New Gaming Center App", "Gaming Center App", "src", "app"]
+            for folder in project_folders:
+                folder_path = os.path.join(os.path.dirname(script_dir), folder)
+                if os.path.exists(folder_path):
+                    possible_paths.append(os.path.join(folder_path, credentials_filename))
+            
+            credentials_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    credentials_path = path
+                    print(f"✅ Found credentials file at: {path}")
+                    break
+            
+            if not credentials_path:
+                self._update_status("❌ Credentials file not found", "error")
+                self._show_credentials_help()
+                return
+            
+            # Validate JSON file
+            try:
+                with open(credentials_path, 'r', encoding='utf-8') as f:
+                    cred_data = json.load(f)
+                service_email = cred_data.get('client_email', 'Not found')
+                print(f"✅ Valid credentials file. Service account: {service_email}")
+            except json.JSONDecodeError as e:
+                self._update_status("❌ Invalid JSON file", "error")
+                print(f"JSON Error: {e}")
+                return
+            except Exception as e:
+                self._update_status("❌ Cannot read credentials", "error")
+                print(f"File read error: {e}")
+                return
+            
+            # Load credentials and authorize
+            credentials = Credentials.from_service_account_file(credentials_path, scopes=scope)
+            self.gc = gspread.authorize(credentials)
+            
+            # Test connection and setup headers
+            try:
+                spreadsheet = self.gc.open_by_key(self.sheet_id)
+                self.worksheet = spreadsheet.sheet1
+                
+                # Check and setup headers
+                self._setup_sheet_headers()
+                
+                self._update_status("✅ Connected", "success")
+                
+            except gspread.exceptions.APIError as api_error:
+                self._handle_api_error(api_error, cred_data.get('client_email'))
+            except Exception as e:
+                self._update_status("❌ Connection failed", "error")
+                print(f"Connection error: {e}")
+                
+        except Exception as e:
+            self._update_status("❌ Setup failed", "error")
+            print(f"Setup error: {e}")
+
+
+    def _setup_sheet_headers(self):
+        """Validate existing headers without modifying them"""
+        try:
+            current_headers = self.worksheet.row_values(1)
+            print(f"Current headers in sheet: {current_headers}")
+            
+            # Verify all required columns exist
+            missing_columns = [sheet_col for sheet_col in self.column_mapping.values() 
+                            if sheet_col not in current_headers]
+            
+            if missing_columns:
+                print(f"⚠️ Missing columns in sheet: {missing_columns}")
+                self._update_status("⚠️ Some columns missing", "warning")
+            else:
+                print("✅ All mapped columns present")
+            
+            print("Column mapping:")
+            for our_header, sheet_header in self.column_mapping.items():
+                print(f"  {our_header} → {sheet_header}")
+                
+        except Exception as e:
+            print(f"Error checking headers: {e}")
+            self._update_status("❌ Header check failed", "error")
+            raise
+
+    def _update_status(self, message, status_type):
+        """Update status label with appropriate styling"""
+        colors = {
+            "success": ("#38a169", "#68d391"),
+            "error": ("#e53e3e", "#fc8181"),
+            "warning": ("#d69e2e", "#f6e05e"),
+            "info": ("#3182ce", "#63b3ed")
+        }
+        
+        color = colors.get(status_type, colors["info"])
+        
+        # Only update if the status label exists
+        if hasattr(self, 'reservations_status') and self.reservations_status:
+            self.reservations_status.configure(text=message, text_color=color)
+        else:
+            # Fallback to console output if status label doesn't exist yet
+            print(f"Status: {message}")
+
+    def _handle_api_error(self, api_error, service_email):
+        """Handle Google Sheets API errors with helpful messages"""
+        error_msg = str(api_error)
+        if "PERMISSION_DENIED" in error_msg:
+            self._update_status("❌ Permission denied", "error")
+            print(f"❌ Please share your Google Sheet with: {service_email}")
+            print("Make sure to give 'Editor' permissions to the service account email.")
+        elif "RESOURCE_EXHAUSTED" in error_msg:
+            self._update_status("❌ API quota exceeded", "warning")
+            print("API quota exceeded. Please try again later.")
+        elif "NOT_FOUND" in error_msg:
+            self._update_status("❌ Sheet not found", "error")
+            print(f"Spreadsheet with ID {self.sheet_id} not found. Check the Sheet ID.")
+        else:
+            self._update_status("❌ API error", "error")
+            print(f"API Error: {error_msg}")
+
+    def _show_credentials_help(self):
+        """Show helpful information about credentials setup"""
+        current_dir = os.getcwd()
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        print("\n" + "="*60)
+        print("📋 GOOGLE CREDENTIALS SETUP HELP")
+        print("="*60)
+        print(f"Current working directory: {current_dir}")
+        print(f"Script directory: {script_dir}")
+        print("\n📁 Place 'google_credentials.json' in one of these locations:")
+        print(f"   • {script_dir}")
+        print(f"   • {current_dir}")
+        print("\n🔑 To get credentials:")
+        print("   1. Go to Google Cloud Console")
+        print("   2. Create a Service Account")
+        print("   3. Download the JSON key file")
+        print("   4. Rename it to 'google_credentials.json'")
+        print("   5. Share your Google Sheet with the service account email")
+        print("="*60)
+
+    def generate_time_slots(self):
+        """Generate time slots based on operating hours (non-military time)"""
+        slots = []
+        current_time = datetime.combine(datetime.today(), self.operating_hours['open_time'])
+        end_time = datetime.combine(datetime.today(), self.operating_hours['close_time'])
+        
+        while current_time < end_time:
+            # Format in 12-hour format
+            time_str = current_time.strftime("%I:%M %p").lstrip('0')
+            slots.append(time_str)
+            current_time += timedelta(minutes=self.operating_hours['slot_duration'])
+        
+        return slots
+
+    def update_time_slots(self):
+        """Update time slots display with modern card-based layout"""
+        # Clear existing slots
+        for widget in self.slots_scrollable.winfo_children():
+            widget.destroy()
+        
+        # Generate time slots
+        time_slots = self.generate_time_slots()
+        
+        # Get reservations for selected date
+        date_reservations = self.get_reservations_for_date(self.selected_date)
+        
+        # Update date summary
+        reservation_count = len(date_reservations)
+        if reservation_count > 0:
+            self.date_summary_label.configure(text=f"{reservation_count} reservations today")
+        else:
+            self.date_summary_label.configure(text="No reservations today")
+        
+        # Create time slot cards
+        for time_slot in time_slots:
+            self._create_time_slot_card(time_slot, date_reservations)
+
+    def _create_time_slot_card(self, time_slot, date_reservations):
+        """Create a modern card for each time slot with updated colors"""
+        # Main card frame with dark theme
+        card_frame = ctk.CTkFrame(
+            self.slots_scrollable, 
+            fg_color=("#2d2d2d", "#2d2d2d"),  # Dark background
+            corner_radius=12,
+            border_width=1,
+            border_color=("#00843d", "#00843d")  # Green accent border
+        )
+        card_frame.pack(fill="x", pady=8, padx=5)
+        
+        # Time header with reservation count button
+        time_header = ctk.CTkFrame(card_frame, fg_color="transparent")
+        time_header.pack(fill="x", padx=20, pady=(15, 10))
+        
+        time_label = ctk.CTkLabel(
+            time_header,
+            text=time_slot,
+            font=("SF Pro Display", 16, "bold"),
+            text_color=("#ffffff", "#ffffff")  # White text
+        )
+        time_label.pack(side="left")
+        
+        # Availability indicator with dynamic colors
+        reserved_lanes = self._count_reserved_lanes(date_reservations, time_slot)
+        available_lanes = self.operating_hours['lanes_count'] - reserved_lanes
+        
+        # Add "View Reservations" button if there are reservations for this time slot
+        if reserved_lanes > 0:
+            view_reservations_btn = ctk.CTkButton(
+                time_header,
+                text=f"📋 View {reserved_lanes} Reservation{'s' if reserved_lanes > 1 else ''}",
+                command=lambda: self.show_time_slot_reservations(time_slot, date_reservations),
+                width=180,
+                height=25,
+                corner_radius=15,
+                font=("SF Pro Display", 11),
+                fg_color=("#3182ce", "#4299e1"),
+                hover_color=("#2c5aa0", "#3182ce")
+            )
+            view_reservations_btn.pack(side="left", padx=(20, 0))
+        
+        availability_text = f"{available_lanes} of {self.operating_hours['lanes_count']} lanes available"
+        availability_label = ctk.CTkLabel(
+            time_header,
+            text=availability_text,
+            font=("SF Pro Display", 12),
+            text_color=("#00843d" if available_lanes > 0 else "#e53e3e")  # Green when available, red when full
+        )
+        availability_label.pack(side="right")
+        
+        # Lanes grid
+        lanes_frame = ctk.CTkFrame(card_frame, fg_color="transparent")
+        lanes_frame.pack(fill="x", padx=20, pady=(0, 15))
+        
+        # Configure grid for lanes
+        for i in range(self.operating_hours['lanes_count']):
+            lanes_frame.grid_columnconfigure(i, weight=1)
+        
+        # Create lane buttons
+        for lane in range(1, self.operating_hours['lanes_count'] + 1):
+            self._create_lane_button(lanes_frame, time_slot, lane, date_reservations)
+
+    def _create_lane_button(self, parent, time_slot, lane, date_reservations):
+        """Create a lane button with proper lane number handling"""
+        lane_reserved = self.is_lane_reserved(date_reservations, time_slot, lane)
+        
+        if lane_reserved:
+            # Get reservation details
+            reservation = lane_reserved
+            party_name = reservation.get('Party Name', 'Reserved')[:12]
+            party_size = reservation.get('Party Size', '')
+            
+            # Get lane number (could be "Lane X" or just number)
+            lane_num = reservation.get('Lane', str(lane))
+            if isinstance(lane_num, str) and lane_num.startswith('Lane '):
+                lane_num = lane_num.replace('Lane ', '')
+            
+            lane_btn = ctk.CTkButton(
+                parent,
+                text=f"Lane {lane_num}\n{party_name}\n({party_size})",
+                width=90,
+                height=70,
+                corner_radius=10,
+                font=("SF Pro Display", 10, "bold"),
+                fg_color=("#e53e3e", "#fc8181"),
+                hover_color=("#c53030", "#e53e3e"),
+                text_color="white",
+                command=lambda r=reservation: self.edit_reservation(r)
+            )
+        else:
+            # Available lane
+            lane_btn = ctk.CTkButton(
+                parent,
+                text=f"Lane {lane}\nAvailable",
+                width=90,
+                height=70,
+                corner_radius=10,
+                font=("SF Pro Display", 11, "bold"),
+                fg_color=("#00843d", "#38a169"),
+                hover_color=("#00662c", "#2f855a"),
+                text_color="white",
+                command=lambda t=time_slot, l=lane: self.quick_add_reservation(t, l)
+            )
+        
+        lane_btn.grid(row=0, column=lane-1, padx=3, pady=5, sticky="ew")
+
+    def _count_reserved_lanes(self, date_reservations, time_slot):
+        """Count how many lanes are reserved for a specific time slot"""
+        if date_reservations.empty:
+            return 0
+        
+        normalized_slot_time = self._normalize_time(time_slot)
+        
+        # Normalize all reservation times and compare
+        reservations_at_time = date_reservations[
+            date_reservations['Time'].apply(self._normalize_time) == normalized_slot_time
+        ]
+        
+        return len(reservations_at_time)
+
+    def _normalize_time(self, time_str):
+        """Normalize time string to 24-hour format (HH:MM) with better format handling"""
+        if not time_str or pd.isna(time_str):
+            return ""
+        
+        time_str = str(time_str).strip().upper()
+        
+        # Handle range formats like "12-1pm" or "12pm to 1pm"
+        if '-' in time_str and ('PM' in time_str or 'AM' in time_str):
+            # Extract the start time from ranges like "12-1pm"
+            start_part = time_str.split('-')[0].strip()
+            if 'PM' in time_str:
+                start_part += ' PM'
+            elif 'AM' in time_str:
+                start_part += ' AM'
+            time_str = start_part
+        elif ' TO ' in time_str:
+            # Extract the start time from ranges like "12pm to 1pm"
+            start_part = time_str.split(' TO ')[0].strip()
+            time_str = start_part
+        
+        # Handle various time formats
+        time_formats = [
+            "%I:%M %p",  # 12-hour with AM/PM (e.g., "2:30 PM")
+            "%I %p",     # 12-hour without minutes (e.g., "2 PM")
+            "%I%p",      # 12-hour without space (e.g., "2PM")
+            "%H:%M",     # 24-hour (e.g., "14:30")
+            "%H:%M:%S",  # 24-hour with seconds (e.g., "14:30:00")
+            "%I:%M%p",   # 12-hour without space (e.g., "2:30PM")
+        ]
+        
+        for fmt in time_formats:
+            try:
+                time_obj = datetime.strptime(time_str, fmt)
+                return time_obj.strftime("%H:%M")
+            except ValueError:
+                continue
+
+                # If all formats fail, try to extract time from string
+        time_match = re.search(r'(\d{1,2}):?(\d{2})?\s*([AP]M)?', time_str, re.IGNORECASE)
+        if time_match:
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2)) if time_match.group(2) else 0
+            period = time_match.group(3).upper() if time_match.group(3) else None
+            
+            if period == 'PM' and hour < 12:
+                hour += 12
+            elif period == 'AM' and hour == 12:
+                hour = 0
+                
+            return f"{hour:02d}:{minute:02d}"
+        
+        # If still no match, return original string
+        print(f"Could not normalize time: {time_str}")
+        return time_str
+    
+    def show_settings_dialog(self):
+        """Show settings dialog for operating hours"""
+        dialog = ctk.CTkToplevel(self.parent_app)
+        dialog.title("⚙️ Bowling Alley Settings")
+        dialog.geometry("500x400")
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.transient(self)
+        
+        # Main frame
+        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=30, pady=30)
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text="⚙️ Operating Hours Settings",
+            font=("SF Pro Display", 24, "bold")
+        )
+        title_label.pack(pady=(0, 30))
+        
+        # Settings fields
+        settings_frame = ctk.CTkFrame(main_frame, corner_radius=15)
+        settings_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Opening time
+        self._create_time_setting(settings_frame, "🌅 Opening Time:", 
+                                 self.operating_hours['open_time'], "open_time")
+        
+        # Closing time
+        self._create_time_setting(settings_frame, "🌙 Closing Time:", 
+                                 self.operating_hours['close_time'], "close_time")
+        
+        # Slot duration
+        duration_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        duration_frame.pack(fill="x", pady=15, padx=20)
+        
+        ctk.CTkLabel(duration_frame, text="⏱️ Time Slot Duration:", 
+                    font=("SF Pro Display", 14, "bold")).pack(side="left")
+        
+        self.duration_var = ctk.CTkComboBox(
+            duration_frame,
+            values=["15 minutes", "30 minutes", "45 minutes", "60 minutes"],
+            width=150
+        )
+        self.duration_var.pack(side="right", padx=10)
+        self.duration_var.set(f"{self.operating_hours['slot_duration']} minutes")
+        
+        # Number of lanes
+        lanes_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        lanes_frame.pack(fill="x", pady=15, padx=20)
+        
+        ctk.CTkLabel(lanes_frame, text="🎳 Number of Lanes:", 
+                    font=("SF Pro Display", 14, "bold")).pack(side="left")
+        
+        self.lanes_var = ctk.CTkComboBox(
+            lanes_frame,
+            values=[str(i) for i in range(1, 13)],  # 1-12 lanes
+            width=150
+        )
+        self.lanes_var.pack(side="right", padx=10)
+        self.lanes_var.set(str(self.operating_hours['lanes_count']))
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        button_frame.pack(pady=20)
+        
+        save_btn = ctk.CTkButton(
+            button_frame,
+            text="💾 Save Settings",
+            command=lambda: self.save_settings(dialog),
+            width=150,
+            height=40,
+            corner_radius=20,
+            font=("SF Pro Display", 14, "bold"),
+            fg_color=("#38a169", "#68d391"),
+            hover_color=("#2f855a", "#38a169")
+        )
+        save_btn.pack(side="left", padx=10)
+        
+        cancel_btn = ctk.CTkButton(
+            button_frame,
+            text="❌ Cancel",
+            command=dialog.destroy,
+            width=120,
+            height=40,
+            corner_radius=20
+        )
+        cancel_btn.pack(side="left", padx=10)
+
+        # Google Sheets section
+        sheets_section = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        sheets_section.pack(fill="x", pady=15, padx=20)
+        
+        ctk.CTkLabel(
+            sheets_section,
+            text="📊 Google Sheets Setup",
+            font=("SF Pro Display", 16, "bold")
+        ).pack(anchor="w", pady=(0, 10))
+        
+        setup_sheet_btn = ctk.CTkButton(
+            sheets_section,
+            text="🔧 Setup Sheet Headers",
+            command=self.setup_sheet_manually,
+            width=200,
+            height=35,
+            corner_radius=20,
+            font=("SF Pro Display", 12),
+            fg_color=("#3182ce", "#4299e1"),
+            hover_color=("#2c5aa0", "#3182ce")
+        )
+        setup_sheet_btn.pack(anchor="w")
+
+
+
+    def _create_time_setting(self, parent, label_text, current_time, setting_key):
+        """Create a time setting field"""
+        time_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        time_frame.pack(fill="x", pady=15, padx=20)
+        
+        ctk.CTkLabel(time_frame, text=label_text, 
+                    font=("SF Pro Display", 14, "bold")).pack(side="left")
+        
+        # Hour selection
+        hour_var = ctk.CTkComboBox(
+            time_frame,
+            values=[f"{i:02d}" for i in range(24)],
+            width=60
+        )
+        hour_var.pack(side="right", padx=5)
+        hour_var.set(f"{current_time.hour:02d}")
+        
+        ctk.CTkLabel(time_frame, text=":", font=("SF Pro Display", 14, "bold")).pack(side="right")
+        
+        # Minute selection
+        minute_var = ctk.CTkComboBox(
+            time_frame,
+            values=["00", "15", "30", "45"],
+            width=60
+        )
+        minute_var.pack(side="right", padx=5)
+        minute_var.set(f"{current_time.minute:02d}")
+        
+        # Store references for saving
+        setattr(self, f"{setting_key}_hour", hour_var)
+        setattr(self, f"{setting_key}_minute", minute_var)
+
+    def save_settings(self, dialog):
+        """Save operating hours settings"""
+        try:
+            # Parse new settings
+            new_settings = {
+                'open_time': time(
+                    int(self.open_time_hour.get()),
+                    int(self.open_time_minute.get())
+                ),
+                'close_time': time(
+                    int(self.close_time_hour.get()),
+                    int(self.close_time_minute.get())
+                ),
+                'slot_duration': int(self.duration_var.get().split()[0]),
+                'lanes_count': int(self.lanes_var.get())
+            }
+            
+            # Validate settings
+            if new_settings['open_time'] >= new_settings['close_time']:
+                messagebox.showerror("Error", "Opening time must be before closing time!")
+                return
+            
+            # Update settings
+            self.operating_hours.update(new_settings)
+            
+            # Refresh the display
+            self.update_time_slots()
+            
+            dialog.destroy()
+            messagebox.showinfo("Success", "Settings saved successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
+
+    # ... (Include all the remaining methods from your original code with similar improvements)
+    
+    def load_reservations_data(self):
+        """Load data using the actual spreadsheet columns"""
+        if not self.worksheet:
+            self._update_status("❌ No connection", "error")
+            return
+        
+        try:
+            self._update_status("🔄 Loading...", "info")
+            self._setup_sheet_headers()  # Validate headers first
+            
+            # Get all data
+            all_values = self.worksheet.get_all_values()
+            if len(all_values) < 2:  # Only headers or empty
+                self.reservations_data = pd.DataFrame(columns=list(self.column_mapping.keys()))
+                self._update_status("⚠️ Sheet is empty", "warning")
+                return
+                
+            # Create DataFrame with actual headers
+            headers = all_values[0]
+            data_rows = all_values[1:]
+            raw_df = pd.DataFrame(data_rows, columns=headers)
+            
+            # Map to our expected columns
+            self.reservations_data = pd.DataFrame()
+            for our_col, sheet_col in self.column_mapping.items():
+                if sheet_col in raw_df.columns:
+                    self.reservations_data[our_col] = raw_df[sheet_col]
+                else:
+                    self.reservations_data[our_col] = ''
+            
+            # Convert "Lane" from number to "Lane X" format
+            if 'Lane' in self.reservations_data.columns:
+                self.reservations_data['Lane'] = self.reservations_data['Lane'].apply(
+                    lambda x: f"Lane {x}" if str(x).isdigit() else x
+                )
+            
+            # Clean and convert data types
+            self._clean_reservations_data()
+            
+            print(f"✅ Loaded {len(self.reservations_data)} reservations")
+            print("Sample data:\n", self.reservations_data.head(3))
+            self._update_status("✅ Data loaded", "success")
+            
+            self.update_calendar_view()
+            self.update_time_slots()
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Load error: {error_msg}")
+            self._update_status("❌ Load failed", "error")
+            self.reservations_data = pd.DataFrame(columns=list(self.column_mapping.keys()))
+
+
+    def _clean_reservations_data(self):
+        """Clean and convert data types in loaded reservations"""
+        # Add proper type conversion for Lane
+        if 'Lane' in self.reservations_data.columns:
+            self.reservations_data['Lane'] = self.reservations_data['Lane'].apply(
+                lambda x: f"Lane {x}" if str(x).isdigit() else x
+            )
+    # Rest of your existing cleaning code...
+        # Date conversion
+        if 'Date' in self.reservations_data.columns:
+            self.reservations_data['Date'] = pd.to_datetime(
+                self.reservations_data['Date'],
+                errors='coerce'
+            ).dt.date
+        
+        # Numeric fields
+        if 'Party Size' in self.reservations_data.columns:
+            self.reservations_data['Party Size'] = pd.to_numeric(
+                self.reservations_data['Party Size'],
+                errors='coerce'
+            ).fillna(0).astype(int)
+        
+        # Text fields
+        text_cols = ['Time', 'Lane', 'Party Name', 'Phone Number', 'Email', 'Special Requests', 'Status']
+        for col in text_cols:
+            if col in self.reservations_data.columns:
+                self.reservations_data[col] = self.reservations_data[col].fillna('').astype(str)
+        
+        # Remove completely empty rows
+        self.reservations_data = self.reservations_data.dropna(how='all')
+
+
+
+    def setup_sheet_manually(self):
+        """Manually setup the Google Sheet with proper headers"""
+        try:
+            if not self.worksheet:
+                print("No worksheet connection available")
+                return False
+            
+            expected_headers = ['Date', 'Time', 'Lane', 'Party Name', 'Party Size', 
+                            'Phone Number', 'Email', 'Special Requests', 'Status']
+            
+            # Clear the first row and set headers
+            self.worksheet.clear()
+            self.worksheet.update('A1:I1', [expected_headers])
+            
+            # Add some sample data for testing (optional)
+            sample_data = [
+                ['2025-01-15', '2:00 PM', 'Lane 1', 'John Doe', '4', '555-1234', 'john@email.com', 'Birthday party', 'Confirmed'],
+                ['2025-01-15', '3:00 PM', 'Lane 2', 'Jane Smith', '6', '555-5678', 'jane@email.com', '', 'Confirmed']
+            ]
+            
+            # Uncomment the next line if you want sample data
+            # self.worksheet.update('A2:I3', sample_data)
+            
+            print("✅ Sheet setup completed successfully")
+            return True
+            
+        except Exception as e:
+            print(f"Error setting up sheet: {e}")
+            return False
+
+    def on_date_selected(self, event=None):
+        """Handle date selection from calendar"""
+        selected = self.calendar.get_date()
+        self.selected_date = datetime.strptime(selected, '%Y-%m-%d').date()
+        
+        # Update the date label with better formatting
+        formatted_date = self.selected_date.strftime('%A, %B %d, %Y')
+        self.selected_date_label.configure(text=f"📅 {formatted_date}")
+        
+        # Update time slots for selected date
+        self.update_time_slots()
+
+    def update_calendar_view(self):
+        """Update calendar to show days with reservations"""
+        if self.reservations_data.empty:
+            return
+        
+        # Get unique dates with reservations
+        reservation_dates = self.reservations_data['Date'].dropna().unique()
+        
+        # Mark dates with reservations on the calendar
+        for date in reservation_dates:
+            if isinstance(date, (datetime, pd.Timestamp)):
+                date = date.date()
+            
+            # Add visual indicator for dates with reservations
+            try:
+                self.calendar.calevent_create(date, 'Reservations', 'reservation')
+            except:
+                pass  # Date might be outside current calendar view
+
+    def get_reservations_for_date(self, date):
+        """Get all reservations for a specific date"""
+        if self.reservations_data.empty:
+            return pd.DataFrame()
+        
+        return self.reservations_data[self.reservations_data['Date'] == date]
+
+    def is_lane_reserved(self, date_reservations, time_slot, lane):
+        """Check if a specific lane is reserved at a specific time"""
+        if date_reservations.empty:
+            return False
+        
+        normalized_time = self._normalize_time(time_slot)
+        
+        reservations = date_reservations[
+            (date_reservations['Time'].apply(self._normalize_time) == normalized_time) &
+            (date_reservations['Lane'].str.contains(f"Lane {lane}", na=False))
+        ]
+        
+        if not reservations.empty:
+            return reservations.iloc[0].to_dict()
+        
+        return False
+
+    def quick_add_reservation(self, time_slot, lane):
+        """Quick add reservation for specific time and lane"""
+        self.show_reservation_dialog(
+            preset_date=self.selected_date,
+            preset_time=time_slot,
+            preset_lane=f"Lane {lane}"
+        )
+
+    def add_new_reservation_for_date(self):
+        """Add reservation for currently selected date"""
+        self.show_reservation_dialog(preset_date=self.selected_date)
+
+    def show_reservation_dialog(self, reservation=None, preset_date=None, preset_time=None, preset_lane=None):
+        """Show reservation dialog with proper parenting and styling"""
+        dialog = ctk.CTkToplevel(self.parent_app)
+        dialog.title("🎳 Bowling Reservation")
+        dialog.geometry("600x800")
+        dialog.grab_set()
+        
+        # Ensure dialog stays on top and is properly centered
+        dialog.transient(self.parent_app)
+        dialog.lift()
+        
+        # Main container with proper theming
+        main_container = ctk.CTkFrame(
+            dialog, 
+            fg_color=("#171717", "#171717"),  # Match main background
+            corner_radius=15
+        )
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Scrollable frame for content
+        scroll_frame = ctk.CTkScrollableFrame(
+            main_container,
+            fg_color="transparent",
+            corner_radius=10
+        )
+        scroll_frame.pack(fill="both", expand=True)
+        
+        # Title with accent color
+        title = "✏️ Edit Reservation" if reservation else "➕ New Reservation"
+        title_label = ctk.CTkLabel(
+            scroll_frame, 
+            text=title, 
+            font=("SF Pro Display", 24, "bold"),
+            text_color=("#00843d", "#00843d")  # Green accent
+        )
+        title_label.pack(pady=(0, 20))
+        
+        # Rest of your dialog implementation...
+        # [Keep all your existing form fields and logic, just ensure they're children of scroll_frame]
+        
+        # Form container
+        form_frame = ctk.CTkFrame(scroll_frame, corner_radius=15)
+        form_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        fields = {}
+        
+        # Date and Time section
+        datetime_section = ctk.CTkFrame(form_frame, fg_color="transparent")
+        datetime_section.pack(fill="x", padx=25, pady=20)
+        
+        section_title = ctk.CTkLabel(
+            datetime_section,
+            text="📅 Date & Time",
+            font=("SF Pro Display", 18, "bold")
+        )
+        section_title.pack(anchor="w", pady=(0, 15))
+        
+        # Date field
+        date_frame = self._create_form_field(datetime_section, "Date:", "date")
+        fields['Date'] = ctk.CTkEntry(date_frame, width=200, height=35, corner_radius=10)
+        fields['Date'].pack(side="right", padx=10)
+        if preset_date:
+            fields['Date'].insert(0, preset_date.strftime('%Y-%m-%d'))
+        elif reservation:
+            fields['Date'].insert(0, str(reservation.get('Date', '')))
+        
+        # Time field
+        time_frame = self._create_form_field(datetime_section, "Time:", "time")
+        time_slots = self.generate_time_slots()
+        fields['Time'] = ctk.CTkComboBox(
+            time_frame,
+            values=time_slots,
+            width=200,
+            height=35,
+            corner_radius=10
+        )
+        fields['Time'].pack(side="right", padx=10)
+        if preset_time:
+            fields['Time'].set(preset_time)
+        elif reservation:
+            fields['Time'].set(reservation.get('Time', ''))
+        
+        # Lane field
+        lane_frame = self._create_form_field(datetime_section, "Lane:", "lane")
+        fields['Lane'] = ctk.CTkComboBox(
+            lane_frame,
+            values=[f"Lane {i}" for i in range(1, self.operating_hours['lanes_count'] + 1)],
+            width=200,
+            height=35,
+            corner_radius=10
+        )
+        fields['Lane'].pack(side="right", padx=10)
+        if preset_lane:
+            fields['Lane'].set(preset_lane)
+        elif reservation:
+            fields['Lane'].set(reservation.get('Lane', ''))
+        
+        # Customer Information section
+        customer_section = ctk.CTkFrame(form_frame, fg_color="transparent")
+        customer_section.pack(fill="x", padx=25, pady=20)
+        
+        customer_title = ctk.CTkLabel(
+            customer_section,
+            text="👥 Customer Information",
+            font=("SF Pro Display", 18, "bold")
+        )
+        customer_title.pack(anchor="w", pady=(0, 15))
+        
+        # Customer fields
+        customer_fields = [
+            ("Party Name", "👤"),
+            ("Party Size", "👨‍👩‍👧‍👦"),
+            ("Phone Number", "📞"),
+            ("Email", "📧")
+        ]
+        
+        for field_name, icon in customer_fields:
+            field_frame = self._create_form_field(customer_section, f"{field_name}:", icon)
+            fields[field_name] = ctk.CTkEntry(field_frame, width=300, height=35, corner_radius=10)
+            fields[field_name].pack(side="right", padx=10)
+            if reservation:
+                fields[field_name].insert(0, str(reservation.get(field_name, '')))
+        
+        # Special requests
+        requests_frame = self._create_form_field(customer_section, "Special Requests:", "📝")
+        fields['Special Requests'] = ctk.CTkTextbox(
+            requests_frame, 
+            width=300, 
+            height=80, 
+            corner_radius=10
+        )
+        fields['Special Requests'].pack(side="right", padx=10, pady=5)
+        if reservation:
+            fields['Special Requests'].insert("1.0", str(reservation.get('Special Requests', '')))
+        
+        # Status section
+        status_section = ctk.CTkFrame(form_frame, fg_color="transparent")
+        status_section.pack(fill="x", padx=25, pady=20)
+        
+        status_title = ctk.CTkLabel(
+            status_section,
+            text="📊 Status",
+            font=("SF Pro Display", 18, "bold")
+        )
+        status_title.pack(anchor="w", pady=(0, 15))
+        
+        status_frame = self._create_form_field(status_section, "Status:", "🔄")
+        fields['Status'] = ctk.CTkComboBox(
+            status_frame,
+            values=["Confirmed", "Pending", "Cancelled", "Completed"],
+            width=200,
+            height=35,
+            corner_radius=10
+        )
+        fields['Status'].pack(side="right", padx=10)
+        if reservation:
+            fields['Status'].set(reservation.get('Status', 'Pending'))
+        else:
+            fields['Status'].set('Confirmed')
+        
+          # Action buttons
+        button_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        button_frame.pack(pady=30)
+     
+        def save_reservation():
+            # Collect data
+            data = {}
+            for key, widget in fields.items():
+                if key == 'Special Requests':
+                    data[key] = widget.get("1.0", "end-1c")
+                else:
+                    data[key] = widget.get()
+            
+            # Validate required fields
+            required = ['Date', 'Time', 'Lane', 'Party Name', 'Party Size']
+            missing = [field for field in required if not data[field]]
+            
+            if missing:
+                messagebox.showerror("❌ Missing Information", 
+                                   f"Please fill in the following fields:\n• {chr(10).join(missing)}")
+                return
+            
+            # Validate party size is a number
+            try:
+                int(data['Party Size'])
+            except ValueError:
+                messagebox.showerror("❌ Invalid Data", "Party Size must be a number")
+                return
+            
+            # Save to Google Sheets
+            if self.save_reservation_to_sheets(data, reservation):
+                dialog.destroy()
+                self.load_reservations_data()  # Refresh data
+        
+        # Save button
+        save_btn = ctk.CTkButton(
+            button_frame,
+            text="💾 Save Reservation",
+            command=save_reservation,
+            width=180,
+            height=45,
+            corner_radius=25,
+            font=("SF Pro Display", 16, "bold"),
+            fg_color=("#38a169", "#68d391"),
+            hover_color=("#2f855a", "#38a169")
+        )
+        save_btn.pack(side="left", padx=10)
+        
+        # Cancel button
+        cancel_btn = ctk.CTkButton(
+            button_frame,
+            text="❌ Cancel",
+            command=dialog.destroy,
+            width=120,
+            height=45,
+            corner_radius=25,
+            font=("SF Pro Display", 14)
+        )
+        cancel_btn.pack(side="left", padx=10)
+        
+        # Delete button for existing reservations
+        if reservation:
+            delete_btn = ctk.CTkButton(
+                button_frame,
+                text="🗑️ Delete",
+                command=lambda: self.delete_reservation(reservation, dialog),
+                width=120,
+                height=45,
+                corner_radius=25,
+                font=("SF Pro Display", 14),
+                fg_color=("#e53e3e", "#fc8181"),
+                hover_color=("#c53030", "#e53e3e")
+            )
+            delete_btn.pack(side="left", padx=10)
+
+    def _create_form_field(self, parent, label_text, icon):
+        """Create a consistent form field layout"""
+        field_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        field_frame.pack(fill="x", pady=8)
+        
+        label = ctk.CTkLabel(
+            field_frame,
+            text=f"{icon} {label_text}",
+            font=("SF Pro Display", 14, "bold"),
+            width=150,
+            anchor="w"
+        )
+        label.pack(side="left", padx=10)
+        
+        return field_frame
+
+    def save_reservation_to_sheets(self, data, existing_reservation=None):
+        """Save data using the actual spreadsheet columns"""
+        try:
+            self._update_status("💾 Saving...", "info")
+            
+            # Get current headers to maintain column order
+            sheet_headers = self.worksheet.row_values(1)
+            row_data = [''] * len(sheet_headers)  # Empty row with correct columns
+            
+            # Map our data to sheet columns
+            for our_col, sheet_col in self.column_mapping.items():
+                if sheet_col in sheet_headers:
+                    col_index = sheet_headers.index(sheet_col)
+                    value = str(data.get(our_col, ''))
+                    
+                    # Special handling for Lane (convert "Lane X" to number)
+                    # if our_col == 'Lane' and value.startswith('Lane '):
+                    #     value = value.replace('Lane ', '')
+                    
+                    row_data[col_index] = value
+            
+            # Set automatic fields
+            auto_fields = {
+                'Create Date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'Made by': 'App',
+                'Gaming Center': 'Bowling',  # Default value
+                'Group Type': 'Public',      # Default value
+                'Socks': 'No'                # Default value
+            }
+            
+            for field, value in auto_fields.items():
+                if field in sheet_headers:
+                    row_data[sheet_headers.index(field)] = value
+            
+              # Save to sheet
+            if existing_reservation:
+                # Update existing
+                all_data = self.worksheet.get_all_values()
+                for i, row in enumerate(all_data[1:], start=2):
+                    if (str(row[0]) == str(existing_reservation.get('Date', '')) and \
+                        str(row[1]) == str(existing_reservation.get('Time', ''))):
+                        self.worksheet.update(
+                            range_name=f"A{i}:{chr(65 + len(row_data) - 1)}{i}",
+                            values=[row_data]
+                        )
+                        break
+            else:
+              # Append new
+                self.worksheet.append_row(row_data)
+            
+            # Refresh data
+            self.load_reservations_data()
+            self._update_status("✅ Saved successfully", "success")
+            return True
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Save error: {error_msg}")
+            self._update_status("❌ Save failed", "error")
+            messagebox.showerror("Error", f"Failed to save reservation:\n{error_msg}")
+            return False
+            
+    def edit_reservation(self, reservation):
+        """Edit an existing reservation"""
+        self.show_reservation_dialog(reservation=reservation)
+
+    def delete_reservation(self, reservation, dialog):
+        """Delete a reservation with confirmation"""
+        party_name = reservation.get('Party Name', 'Unknown')
+        date_time = f"{reservation.get('Date')} at {reservation.get('Time')}"
+        
+        confirm_msg = f"""Are you sure you want to delete this reservation?
+        
+👤 Party: {party_name}
+📅 Date/Time: {date_time}
+🎳 Lane: {reservation.get('Lane', 'Unknown')}
+
+This action cannot be undone."""
+        
+        if messagebox.askyesno("🗑️ Confirm Delete", confirm_msg):
+            try:
+                self._update_status("🗑️ Deleting...", "info")
+                
+                # Find and delete the row
+                all_data = self.worksheet.get_all_records()
+                for i, row in enumerate(all_data, start=2):
+                    if (str(row.get('Date')) == str(reservation.get('Date')) and
+                        row.get('Time') == reservation.get('Time') and
+                        row.get('Lane') == reservation.get('Lane')):
+                        
+                        self.worksheet.delete_rows(i)
+                        break
+                
+                dialog.destroy()
+                self.load_reservations_data()
+                self._update_status("✅ Deleted successfully", "success")
+                messagebox.showinfo("✅ Success", "Reservation deleted successfully!")
+                
+            except Exception as e:
+                print(f"Delete error: {e}")
+                self._update_status("❌ Delete failed", "error")
+                messagebox.showerror("❌ Delete Error", f"Failed to delete reservation:\n{str(e)}")
+
+    def refresh_reservations_data(self):
+        """Refresh reservations data from Google Sheets"""
+        self.load_reservations_data()
+
+    def _get_reservations_for_time_slot(self, date_reservations, time_slot):
+        """Get reservations for a specific time slot with improved time matching"""
+        if date_reservations.empty:
+            return pd.DataFrame()
+        
+        normalized_time = self._normalize_time(time_slot)
+        print(f"Looking for time slot: {time_slot} -> normalized: {normalized_time}")
+        print(f"Available times in data: {date_reservations['Time'].tolist()}")
+        
+        # Convert normalized time to hour for flexible matching
+        try:
+            hour_24 = int(normalized_time.split(':')[0])
+            hour_12 = hour_24 if hour_24 <= 12 else hour_24 - 12
+            if hour_12 == 0:
+                hour_12 = 12
+            
+            # Create multiple possible time patterns to match
+            time_patterns = [
+                normalized_time,  # 14:00
+                time_slot,        # 2:00 PM
+                f"{hour_12}pm",   # 2pm
+                f"{hour_12}:00pm" if hour_24 >= 12 else f"{hour_12}:00am",  # 2:00pm
+                f"{hour_12}-",    # 2- (start of range like "2-3pm")
+                f"{hour_12}pm to", # 2pm to (start of range like "2pm to 3pm")
+            ]
+            
+            print(f"Searching for patterns: {time_patterns}")
+            
+            # Try multiple matching strategies
+            matching_reservations = date_reservations[
+                date_reservations['Time'].apply(lambda x: any(
+                    pattern.lower() in str(x).lower().replace(' ', '') 
+                    for pattern in [p.replace(' ', '') for p in time_patterns]
+                ))
+            ]
+        except Exception as e:
+            print(f"Error in pattern matching: {e}")
+            # Fallback to original logic
+            matching_reservations = date_reservations[
+                (date_reservations['Time'].apply(self._normalize_time) == normalized_time) |
+                (date_reservations['Time'].str.contains(time_slot, case=False, na=False)) |
+                (date_reservations['Time'].str.contains(normalized_time, case=False, na=False))
+            ]
+        
+        print(f"Found {len(matching_reservations)} matching reservations")
+        return matching_reservations
+
+    def _count_reserved_lanes(self, date_reservations, time_slot):
+    
+        """Count how many lanes are reserved for a specific time slot"""
+        if date_reservations.empty:
+            return 0
+        
+        normalized_slot_time = self._normalize_time(time_slot)
+        print(f"Counting lanes for {time_slot} -> {normalized_slot_time}")
+        print(f"Times in data: {date_reservations['Time'].apply(self._normalize_time).tolist()}")
+        
+        # Normalize all reservation times and compare
+        reservations_at_time = date_reservations[
+            date_reservations['Time'].apply(self._normalize_time) == normalized_slot_time
+        ]
+        
+        print(f"Found {len(reservations_at_time)} reservations at {time_slot}")
+        return len(reservations_at_time)
+
+
+    def _create_reservation_card(self, parent, reservation, index):
+
+        card = ctk.CTkFrame(
+            parent,
+            fg_color=("#2d2d2d", "#2d2d2d"),  # Darker background for cards
+            corner_radius=15,
+            border_width=1,
+            border_color=("#444444", "#444444")  # Subtle border color
+        )
+        card.pack(fill="x", pady=(0, 10), padx=10)
+
+
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=15)
+
+        header_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 10))
+
+
+        lane_label = ctk.CTkLabel(
+            header_frame,
+            text=f"🎳 {reservation.get('Lane', 'Unknown Lane')}",
+            font=("SF Pro Display", 18, "bold"),
+            text_color=("#38a169", "#68d391")  # Green accent color
+        )
+        lane_label.pack(side="left")
+
+        edit_btn = ctk.CTkButton(
+            header_frame,
+            text="✏️ Edit",
+            command=lambda: self.edit_reservation(reservation.to_dict() if isinstance(reservation, pd.Series) else reservation),
+            width=80,
+            height=30,
+            corner_radius=15,
+            font=("SF Pro Display", 12),
+            fg_color=("#3182ce", "#4299e1"),  # Blue accent color
+            hover_color=("#2c5aa0", "#3182ce")  # Darker blue on hover
+        )
+        edit_btn.pack(side="right")
+
+        details_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        details_frame.pack(fill="x", pady=(0, 10))
+
+        left_column = ctk.CTkFrame(details_frame, fg_color="transparent")
+        left_column.pack(side="left", fill="both", expand=True)
+
+
+        details = [
+            ("📅 Date:", reservation.get('Date', 'N/A')),
+            ("⏰ Time:", reservation.get('Time', 'N/A')),
+            ("👤 Party Name:", reservation.get('Party Name', 'N/A')),
+            ("👨‍👩‍👧‍👦 Party Size:", reservation.get('Party Size', '0')),
+            ("📞 Phone:", reservation.get('Phone Number', 'N/A')),
+            ("📧 Email:", reservation.get('Email', 'N/A')),
+            ("📝 Special Requests:", reservation.get('Special Requests', 'None')),
+            ("🔄 Status:", reservation.get('Status', 'Pending'))
+        ]
+
+        for label, value in details:
+            detail_frame = ctk.CTkFrame(left_column, fg_color="transparent")
+            detail_frame.pack(fill="x", pady=2)
+
+            ctk.CTkLabel(
+                detail_frame,
+                text=label,
+                font=("SF Pro Display", 12, "bold"),
+                text_color=("#ffffff", "#ffffff"),
+                anchor="w",
+                width=120
+            ).pack(side="left")
+            
+            ctk.CTkLabel(
+                detail_frame,
+                text=value,
+                font=("SF Pro Display", 12),
+                text_color=("#a0aec0", "#a0aec0"),
+                anchor="w"
+            ).pack(side="left", padx=(10, 0))
+
+
+                    # Right column
+        right_column = ctk.CTkFrame(details_frame, fg_color="transparent")
+        right_column.pack(side="right", fill="both", expand=True, padx=(20, 0))
+        
+        additional_details = [
+            ("📧 Email:", reservation.get('Email', 'N/A')),
+            ("📝 Special Requests:", reservation.get('Special Requests', 'None')),
+            ("📊 Status:", reservation.get('Status', 'Unknown')),
+        ]
+        
+        for label, value in additional_details:
+            detail_frame = ctk.CTkFrame(right_column, fg_color="transparent")
+            detail_frame.pack(fill="x", pady=2)
+            
+            ctk.CTkLabel(
+                detail_frame,
+                text=label,
+                font=("SF Pro Display", 12, "bold"),
+                text_color=("#ffffff", "#ffffff"),
+                anchor="w",
+                width=140
+            ).pack(side="left")
+            
+            # Wrap long text
+            display_value = value if len(str(value)) <= 30 else str(value)[:27] + "..."
+            
+            ctk.CTkLabel(
+                detail_frame,
+                text=display_value,
+                font=("SF Pro Display", 12),
+                text_color=("#a0aec0", "#a0aec0"),
+                anchor="w"
+            ).pack(side="left", padx=(10, 0))
+
+
+    def show_time_slot_reservations(self, time_slot, date_reservations):
+        """Show all reservations for a specific time slot"""
+        time_reservations = self._get_reservations_for_time_slot(date_reservations, time_slot)
+        
+        if time_reservations.empty:
+            messagebox.showinfo("No Reservations", f"No reservations found for {time_slot} on {self.selected_date}")
+            return
+        
+        # Create dialog window
+        dialog = ctk.CTkToplevel(self.parent_app)
+        dialog.title(f"Reservations for {time_slot}")
+        dialog.geometry("800x600")
+        dialog.grab_set()
+        dialog.transient(self.parent_app)
+        
+        # Fix: Remove the extra comma and quotes in fg_color
+        main_container = ctk.CTkFrame(dialog, fg_color="#171717", corner_radius=15)
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        header_frame = ctk.CTkFrame(main_container, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 20))
+
+        title_label = ctk.CTkLabel(
+            header_frame,
+            text=f"🎳 Reservations for {time_slot}",
+            font=("SF Pro Display", 24, "bold"),
+            text_color=("#00843d", "#00843d")
+        )
+        title_label.pack(pady=(0, 10))
+        
+        date_label = ctk.CTkLabel(
+            header_frame,
+            text=f"📅 {self.selected_date.strftime('%A, %B %d, %Y')}",
+            font=("SF Pro Display", 16),
+            text_color=("#ffffff", "#ffffff")
+        )
+        date_label.pack()
+        
+        # Scrollable frame for reservations
+        scroll_frame = ctk.CTkScrollableFrame(main_container, fg_color="transparent")
+        scroll_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Display each reservation
+        for idx, (_, reservation) in enumerate(time_reservations.iterrows()):
+            self._create_reservation_card(scroll_frame, reservation, idx)
+        
+        # Close button
+        close_btn = ctk.CTkButton(
+            main_container,
+            text="✕ Close",
+            command=dialog.destroy,
+            width=120,
+            height=35,
+            corner_radius=20
+        )
+        close_btn.pack(pady=(0, 10))
+
+
+    
+
+    def show_all_reservations_for_date(self, date):
+        """Show all reservations for a specific date in a dialog"""
+        date_reservations = self.get_reservations_for_date(date)
+
+        if date_reservations.empty:
+            messagebox.showinfo("No Reservations", f"No reservations found for {date}")
+            return
+        
+        dialog = ctk.CTkToplevel(self.parent_app)
+        dialog.title(f"Reservations for {date}")
+        dialog.geometry("800x600")
+        dialog.grab_set()
+        dialog.transient(self.parent_app)
+
+        main_container = ctk.CTkFrame(dialog, fg_color=("#171717", "#171717"), corner_radius=15)
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        header_frame = ctk.CTkFrame(main_container, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 20))
+
+        title_label = ctk.CTkLabel(
+            header_frame,
+            text=f"🎳 Reservations for {date}",
+            font=("SF Pro Display", 24, "bold"),
+            text_color=("#00843d", "#00843d")
+        )
+        title_label.pack(pady=(0, 10))
+        
+        # Scrollable frame for reservations
+        scroll_frame = ctk.CTkScrollableFrame(main_container, fg_color="transparent")
+        scroll_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Display each reservation
+        for idx, (_, reservation) in enumerate(date_reservations.iterrows()):
+            self._create_reservation_card(scroll_frame, reservation, idx)
+        
+        # Close button
+        close_btn = ctk.CTkButton(
+            main_container,
+            text="✕ Close",
+            command=dialog.destroy,
+            width=120,
+            height=35,
+            corner_radius=20
+        )
+        close_btn.pack(pady=(0, 10))
+
+
 class GamingCenterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Gaming Center App")
         self.geometry("1500x1100")
+        self._font_family = None
         self.load_orbitron_font()
         self.stations = []
         self.waitlist = []
@@ -1659,6 +3466,8 @@ class GamingCenterApp(ctk.CTk):
         self.waitlist_tree = None
         self.pages = {}  # Add this to hold your pages
         self.active_sidebar_btn = None  # Track active sidebar button
+
+        self.reservation_system = ReservationSystem(self)
 
         # Set the base application background color
         self.configure(fg_color="#090A09")
@@ -1705,6 +3514,8 @@ class GamingCenterApp(ctk.CTk):
         self.show_page("home")  # Show home by default
         self.create_arch_overlay()
 
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
     def setup_pages(self):
         # Create all pages as frames, but only pack/grid the active one
         self.pages["home"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
@@ -1731,8 +3542,12 @@ class GamingCenterApp(ctk.CTk):
 
         self.pages[page_name].pack(fill="both", expand=True)
         self.set_active_sidebar(page_name)
-        if hasattr(self, "arch_overlay"):
-            self.arch_overlay.lift()
+        if hasattr(self, "arch_overlay") and self.arch_overlay.winfo_exists():
+            try:
+                self.arch_overlay.lift()
+            except tk.TclError:
+                # If lifting fails, recreate the overlay
+                self.create_arch_overlay()
 
     def set_active_sidebar(self, page_name):
         # Reset all sidebar buttons to default
@@ -1812,27 +3627,51 @@ class GamingCenterApp(ctk.CTk):
 
 
     def setup_reservations_page(self, frame):
-        import pandas as pd
-
-        url = "https://uvu365-my.sharepoint.com/:x:/g/personal/10699677_uvu_edu/EfDDWIdsIgpEsoV6krvPkIgBJPVtMi1Kbqz0F0-lbURXDw?e=zaL1aK&nav=MTVfezEzQTdENUIwLThGNjMtNDI4Ni1CMjg2LTE2Q0NGQTNDOEU5M30"
-        loading_label = ctk.CTkLabel(frame, text="Loading reservations...", font=("Helvetica", 16))
-        loading_label.pack(pady=20)
-
-        def load_data():
-            try:
-                df = pd.read_excel(url)
-                loading_label.destroy()
-                # Display the first 10 rows as a simple table
-                text = df.head(10).to_string(index=False)
-                reservations_text = ctk.CTkTextbox(frame, width=900, height=400, font=("Consolas", 12))
-                reservations_text.insert("1.0", text)
-                reservations_text.configure(state="disabled")
-                reservations_text.pack(padx=20, pady=20)
-            except Exception as e:
-                loading_label.configure(text=f"Failed to load reservations:\n{e}")
-
-        import threading
-        threading.Thread(target=load_data, daemon=True).start()
+        """Setup the reservations page using the new ReservationSystem"""
+        self.reservation_system.setup_reservations_page(frame)
+    
+    # Add all the reservation system methods to your main class
+    def setup_google_sheets(self):
+        return self.reservation_system.setup_google_sheets()
+    
+    def load_reservations_data(self):
+        return self.reservation_system.load_reservations_data()
+    
+    def on_date_selected(self, event=None):
+        return self.reservation_system.on_date_selected(event)
+    
+    def update_calendar_view(self):
+        return self.reservation_system.update_calendar_view()
+    
+    def update_time_slots(self):
+        return self.reservation_system.update_time_slots()
+    
+    def get_reservations_for_date(self, date):
+        return self.reservation_system.get_reservations_for_date(date)
+    
+    def is_lane_reserved(self, date_reservations, time_slot, lane):
+        return self.reservation_system.is_lane_reserved(date_reservations, time_slot, lane)
+    
+    def quick_add_reservation(self, time_slot, lane):
+        return self.reservation_system.quick_add_reservation(time_slot, lane)
+    
+    def add_new_reservation_for_date(self):
+        return self.reservation_system.add_new_reservation_for_date()
+    
+    def show_reservation_dialog(self, reservation=None, preset_date=None, preset_time=None, preset_lane=None):
+        return self.reservation_system.show_reservation_dialog(reservation, preset_date, preset_time, preset_lane)
+    
+    def save_reservation_to_sheets(self, data, existing_reservation=None):
+        return self.reservation_system.save_reservation_to_sheets(data, existing_reservation)
+    
+    def edit_reservation(self, reservation):
+        return self.reservation_system.edit_reservation(reservation)
+    
+    def delete_reservation(self, reservation, dialog):
+        return self.reservation_system.delete_reservation(reservation, dialog)
+    
+    def refresh_reservations_data(self):
+        return self.reservation_system.refresh_reservations_data()
 
     def setup_waitlist_page(self, frame):
         # Initialize bowling waitlist if it doesn't exist
@@ -2809,18 +4648,21 @@ class GamingCenterApp(ctk.CTk):
             return False
             
     def get_font_family(self):
-        """Get the appropriate font family with fallback"""
-        try:
-            available_fonts = tkFont.families()
-            if "Orbitron" in available_fonts:
-                print("Using Orbitron font")
-                return "Orbitron"
-            else:
-                print("Orbitron font not found, using Helvetica")
-                return "Helvetica"
-        except Exception as e:
-            print(f"Error in get_font_family: {e}")
-            return "Helvetica"
+        """Get the appropriate font family with fallback (cached)"""
+        if self._font_family is None:
+            try:
+                available_fonts = tkFont.families()
+                if "Orbitron" in available_fonts:
+                    print("Using Orbitron font")
+                    self._font_family = "Orbitron"
+                else:
+                    print("Orbitron font not found, using Helvetica")
+                    self._font_family = "Helvetica"
+            except Exception as e:
+                print(f"Error in get_font_family: {e}")
+                self._font_family = "Helvetica"
+        
+        return self._font_family
 
 
     def load_station_states(self):
@@ -3193,14 +5035,28 @@ class GamingCenterApp(ctk.CTk):
         # Stop all timers and cancel after jobs
         for timer in self.timers:
             if hasattr(timer, '_update_loop_id') and timer._update_loop_id:
-                timer.after_cancel(timer._update_loop_id)
+                try:
+                    timer.after_cancel(timer._update_loop_id)
+                except:
+                    pass
                 timer._update_loop_id = None
             if hasattr(timer, '_blink_loop_id') and timer._blink_loop_id:
-                timer.after_cancel(timer._blink_loop_id)
+                try:
+                    timer.after_cancel(timer._blink_loop_id)
+                except:
+                    pass
                 timer._blink_loop_id = None
             timer.is_blinking = False
+        
+        # Cancel any pending after calls
+        try:
+            self.after_cancel("all")
+        except:
+            pass
+        
         self.save_station_states()
         self.destroy()
+
 
     # Add placeholder methods for the new buttons
     def show_menu(self):
