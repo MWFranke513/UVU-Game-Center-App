@@ -21,7 +21,7 @@ from email.mime.text import MIMEText
 from email.utils import formatdate
 import threading
 import cProfile
-from datetime import datetime, timedelta
+from datetime import datetime, time as datetime_time, timedelta
 from StatsCompiler import StatsManager
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -29,7 +29,6 @@ import numpy as np
 import textwrap  # <-- Add this import
 from functools import partial
 import pandas as pd
-from datetime import datetime, time, timedelta
 from tkinter import messagebox
 from tkcalendar import Calendar
 import gspread
@@ -284,7 +283,8 @@ class CombinedTimer(ctk.CTkCanvas):
             return
         if not self.is_running:
             self.is_running = True
-            self.start_time = time.time() - self.elapsed_time
+            import time as time_module
+            self.start_time = time_module.time() - self.elapsed_time
             self.update_timer()
 
         if hasattr(self, 'parent_station'):
@@ -292,7 +292,8 @@ class CombinedTimer(ctk.CTkCanvas):
 
     def stop(self):
         if self.is_running:
-            self.elapsed_time = time.time() - self.start_time
+            import time as time_module
+            self.elapsed_time = time_module.time() - self.start_time
             self.is_running = False
         if self._update_loop_id:
             self.after_cancel(self._update_loop_id)
@@ -325,7 +326,8 @@ class CombinedTimer(ctk.CTkCanvas):
 
     def get_time(self):
         if self.is_running:
-            return time.time() - self.start_time
+            import time as time_module
+            return time_module.time() - self.start_time
         return self.elapsed_time
 
     def check_time_limit(self):
@@ -1660,8 +1662,8 @@ class ReservationSystem:
     def __init__(self, parent_app):
         # Operating hours configuration - easily editable
         self.operating_hours = {
-            'open_time': time(12, 0),    # 9:00 AM
-            'close_time': time(22, 0),  # 10:00 PM
+            'open_time': datetime_time(12, 0),    # 9:00 AM
+            'close_time': datetime_time(22, 0),  # 10:00 PM
             'slot_duration': 30,        # 30 minutes per slot
             'lanes_count': 6
         }
@@ -2062,11 +2064,11 @@ class ReservationSystem:
                     hover_color=("#00662c", "#2f855a"),
                     text_color="white",
                     command=lambda t=time_slot, l=lane: self.quick_add_reservation(t, l)
-                )
+        )
         
         lane_btn.grid(row=0, column=lane-1, padx=3, pady=5, sticky="ew")
 
-        
+
     def setup_google_sheets(self):
         """Initialize Google Sheets connection with better error handling"""
         try:
@@ -3552,13 +3554,127 @@ class GamingCenterApp(ctk.CTk):
                 self.create_arch_overlay()
 
     def set_active_sidebar(self, page_name):
-        # Reset all sidebar buttons to default
+        # Reset all sidebar buttons to default state
         for name, btn in self.sidebar_buttons.items():
-            btn.configure(fg_color="transparent")
-        # Highlight the active one
+            btn.configure(
+                fg_color="transparent",
+                border_width=0,
+                border_color="#171717"
+            )
+        
+        # Remove any existing active indicators and glow effects
+        for child in self.sidebar.winfo_children():
+            if hasattr(child, '_active_indicator') and child._active_indicator:
+                child.destroy()
+            if hasattr(child, '_glow_effect') and child._glow_effect:
+                child.destroy()
+        
+        # Highlight the active button
         if page_name in self.sidebar_buttons:
-            self.sidebar_buttons[page_name].configure(fg_color="#00843d")  # Example active color
+            active_btn = self.sidebar_buttons[page_name]
+            
+            # Set the button to hover-like gray color
+            active_btn.configure(
+                fg_color="#3a3a3a",  # Similar to hover color
+                border_width=0
+            )
+            
+            # Calculate position for glow and indicator
+            def position_effects():
+                try:
+                    # Get all sidebar buttons in order
+                    button_names = ["home", "games", "reservations", "waitlist", "stats"]
+                    button_index = button_names.index(page_name) if page_name in button_names else 0
+                    
+                    logo_space = 98
+                    button_spacing = 68
+                    button_center_offset = 26
+                    
+                    calculated_y = logo_space + (button_index * button_spacing) + button_center_offset - 20
+                    
+                    # Create simple but effective backlit glow effect
+                    self._create_simple_backlit_glow(42, calculated_y + 20)  # Center on button
+                    
+                    # Create indicator line on top
+                    indicator_line = ctk.CTkFrame(
+                        self.sidebar,
+                        width=4,
+                        height=40,
+                        corner_radius=2,
+                        fg_color="#00843d",
+                        border_width=0
+                    )
+                    indicator_line._active_indicator = True
+                    indicator_line.place(x=2, y=calculated_y)
+                    
+                except Exception as e:
+                    print(f"Error positioning effects: {e}")
+            
+            # Delay to ensure layout is complete
+            self.after(100, position_effects)
 
+    def _create_simple_backlit_glow(self, center_x, center_y):
+        """Create a simple but effective backlit glow using overlapping CTkFrames"""
+        # Create multiple layers of glow with decreasing opacity and increasing size
+        glow_layers = [
+            {"size": 80, "color": "#1a4a2a", "alpha": 0.8},   # Inner glow - darkest
+            {"size": 95, "color": "#2a5a3a", "alpha": 0.6},   # Mid glow
+            {"size": 110, "color": "#3a6a4a", "alpha": 0.4},  # Outer glow
+            {"size": 125, "color": "#4a7a5a", "alpha": 0.25}, # Far glow
+            {"size": 140, "color": "#5a8a6a", "alpha": 0.15}, # Very diffused
+        ]
+        
+        for layer in glow_layers:
+            # Create circular glow frame
+            glow_frame = ctk.CTkFrame(
+                self.sidebar,
+                width=layer["size"],
+                height=layer["size"],
+                corner_radius=layer["size"] // 2,  # Perfect circle
+                fg_color=layer["color"],
+                border_width=0
+            )
+            glow_frame._glow_effect = True
+            
+            # Position the glow frame centered on the button
+            x_pos = center_x - (layer["size"] // 2)
+            y_pos = center_y - (layer["size"] // 2)
+            
+            glow_frame.place(x=x_pos, y=y_pos)
+            
+            # Send to back using tkinter's lower method correctly
+            try:
+                glow_frame.tkraise()  # First raise it
+                glow_frame.lower()    # Then lower it to back
+            except:
+                # If that fails, try alternative method
+                try:
+                    self.sidebar.update_idletasks()
+                    glow_frame._tkinter_lower()
+                except:
+                    pass  # If all fails, just leave it positioned
+
+    def _blend_glow_color(self, glow_color, bg_color, opacity):
+        """Blend glow color with background using opacity"""
+        glow_rgb = self._hex_to_rgb(glow_color)
+        bg_rgb = self._hex_to_rgb(bg_color)
+        
+        # Blend the colors
+        blended = tuple(
+            int(bg_rgb[i] + (glow_rgb[i] - bg_rgb[i]) * opacity)
+            for i in range(3)
+        )
+        
+        return self._rgb_to_hex(blended)
+
+    def _hex_to_rgb(self, hex_color):
+        """Convert hex color to RGB tuple"""
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+    def _rgb_to_hex(self, rgb):
+        """Convert RGB tuple to hex color"""
+        return f"#{int(rgb[0]):02x}{int(rgb[1]):02x}{int(rgb[2]):02x}"
 
     def setup_home_page(self, frame):
         main_frame = ctk.CTkFrame(frame, fg_color="transparent")
@@ -3692,9 +3808,29 @@ class GamingCenterApp(ctk.CTk):
             header_frame,
             values=["Game Center", "Bowling Lanes"],
             variable=self.waitlist_type_var,
-            command=self.switch_waitlist_type
+            command=self.switch_waitlist_type,
+            # Container styling
+            corner_radius=75,                    # Border radius for toggle container
+            border_width=0,                      # Optional: add border to container             # Optional: border color
+            # Active segment styling (the green highlight)
+            selected_color="#00843d",            # Your green color
+            selected_hover_color="#006e33",      # Darker green on hover
+            # Text and padding styling
+            text_color="#ffffff",                # Text color for inactive segments
+            text_color_disabled="#888888",       # Text color when disabled
+            font=("Helvetica", 12, "normal"),    # Font styling
+            height=32,                           # Increase height for more padding around text
+            # Note: CTkSegmentedButton doesn't have direct padding control,
+            # but increasing height gives more vertical padding
         )
         waitlist_toggle.pack(side="left", padx=(0, 20))
+
+        # Additional styling for the selected segment corner radius
+        # This needs to be done after creation
+        # waitlist_toggle.configure(
+        #     unselected_color="#2d2d2d",          # Background for unselected segments
+        #     unselected_hover_color="#3a3a3a",    # Hover color for unselected segments
+        # )
 
         title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         title_frame.pack(side="left")
@@ -3888,7 +4024,8 @@ class GamingCenterApp(ctk.CTk):
         # Configure grid layout
         self.stats_main_frame.grid_columnconfigure(0, weight=1)
         self.stats_main_frame.grid_rowconfigure(0, weight=0)  # Header
-        self.stats_main_frame.grid_rowconfigure(1, weight=1)  # Content
+        self.stats_main_frame.grid_rowconfigure(1, weight=0)  # Toggle
+        self.stats_main_frame.grid_rowconfigure(2, weight=1)  # Content
         
         # Create header with filters and title
         header_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
@@ -3917,7 +4054,7 @@ class GamingCenterApp(ctk.CTk):
         ctk.CTkLabel(
             filter_frame, 
             text="Time Period:", 
-            font=self.stats_fonts["label"]
+            font=("Roboto", 12, "bold")
         ).pack(side="left", padx=(15, 5), pady=10)
         
         period_choices = [
@@ -3942,31 +4079,48 @@ class GamingCenterApp(ctk.CTk):
         self.period_dropdown.pack(side="left", padx=(5, 15), pady=10)
         self.period_dropdown.configure(command=self.update_stats)
         
-        # Create notebook for tabbed interface
-        self.stats_notebook = ctk.CTkTabview(
-            self.stats_main_frame, 
-            corner_radius=10,
-            segmented_button_selected_color=self.stats_colors["primary"],
-            segmented_button_selected_hover_color=self.stats_colors["secondary"],
-            segmented_button_unselected_color="#3a3a3a",
-            segmented_button_unselected_hover_color="#4a4a4a",
-            command=self.on_stats_tab_change
+        # Add toggle for stats view with your waitlist styling
+        toggle_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
+        toggle_frame.grid(row=1, column=0, sticky="ew", pady=(0, 15))
+        
+        self.stats_view_var = ctk.StringVar(value="Summary")
+        stats_toggle = ctk.CTkSegmentedButton(
+            toggle_frame,
+            values=["Summary", "Station Details", "Game Rankings"],
+            variable=self.stats_view_var,
+            command=self.switch_stats_view,
+            # Apply the same styling as your waitlist toggle
+            corner_radius=75,                    # Border radius for toggle container
+            border_width=0,                      # No border
+            selected_color="#00843d",            # Your green color
+            selected_hover_color="#006e33",      # Darker green on hover
+            text_color="#ffffff",                # Text color for inactive segments
+            font=("Helvetica", 12, "normal"),    # Font styling
+            height=32,                           # Height for padding around text
+            unselected_hover_color="#3a3a3a",    # Hover color for unselected segments
         )
-        self.stats_notebook.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        stats_toggle.pack(pady=10)
         
-        # Create tabs
-        summary_tab = self.stats_notebook.add("Summary")
-        station_tab = self.stats_notebook.add("Station Details")
-        games_tab = self.stats_notebook.add("Game Rankings")
+        # Create content frame that will change based on toggle selection
+        self.stats_content_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
+        self.stats_content_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
         
-        # Set up content for each tab
-        self.setup_stats_summary_tab(summary_tab)
-        self.setup_stats_station_tab(station_tab)
-        self.setup_stats_games_tab(games_tab)
+        # Create all tab contents as separate frames
+        self.summary_frame = ctk.CTkFrame(self.stats_content_frame, fg_color="transparent")
+        self.station_frame = ctk.CTkFrame(self.stats_content_frame, fg_color="transparent")
+        self.games_frame = ctk.CTkFrame(self.stats_content_frame, fg_color="transparent")
+        
+        # Set up content for each frame
+        self.setup_stats_summary_tab(self.summary_frame)
+        self.setup_stats_station_tab(self.station_frame)
+        self.setup_stats_games_tab(self.games_frame)
+        
+        # Show default frame
+        self.switch_stats_view("Summary")
         
         # Add export button container at bottom
         footer_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent", height=50)
-        footer_frame.grid(row=2, column=0, sticky="ew", pady=(5, 0))
+        footer_frame.grid(row=3, column=0, sticky="ew", pady=(5, 0))
         footer_frame.grid_columnconfigure(0, weight=1)
         
         # Export button
@@ -3976,7 +4130,7 @@ class GamingCenterApp(ctk.CTk):
             command=self.export_stats_to_excel,
             height=36,
             corner_radius=8,
-            font=self.stats_fonts["label"],
+            font=("Roboto", 12, "bold"),
             hover_color=self.stats_colors["secondary"],
         )
         export_button.pack(side="right", padx=10, pady=5)
@@ -3985,7 +4139,7 @@ class GamingCenterApp(ctk.CTk):
         self.stats_status_label = ctk.CTkLabel(
             footer_frame,
             text="",
-            font=self.stats_fonts["small"],
+            font=("Roboto", 10, "normal"),
             text_color="gray70"
         )
         self.stats_status_label.pack(side="left", padx=10, pady=5)
@@ -4004,6 +4158,26 @@ class GamingCenterApp(ctk.CTk):
         
         # Update statistics
         self.update_stats()
+
+    def switch_stats_view(self, value=None):
+        """Switch between different stats views based on toggle selection"""
+        view_type = self.stats_view_var.get()
+        
+        # Hide all frames
+        self.summary_frame.pack_forget()
+        self.station_frame.pack_forget()
+        self.games_frame.pack_forget()
+        
+        # Show the selected frame
+        if view_type == "Summary":
+            self.summary_frame.pack(fill="both", expand=True)
+            self.update_stats()
+        elif view_type == "Station Details":
+            self.station_frame.pack(fill="both", expand=True)
+            self.update_stats_station_stats()
+        elif view_type == "Game Rankings":
+            self.games_frame.pack(fill="both", expand=True)
+            self.update_stats_game_rankings()
 
     def setup_stats_summary_tab(self, parent):
         """Set up the summary tab with key statistics"""
@@ -4273,7 +4447,7 @@ class GamingCenterApp(ctk.CTk):
     def create_stats_matplotlib_graph(self, parent):
         """Create a Matplotlib graph with dark theme"""
         plt.style.use('dark_background')
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(6, 4))  # Add explicit figure size
         
         fig.patch.set_facecolor(self.stats_colors["card_bg"])
         ax.set_facecolor(self.stats_colors["card_bg"])
@@ -4283,17 +4457,25 @@ class GamingCenterApp(ctk.CTk):
         ax.tick_params(axis='x', colors='white')
         ax.tick_params(axis='y', colors='white')
         
-        fig.tight_layout(pad=3.0)
+        # Use try-except for tight_layout to prevent warnings
+        try:
+            fig.tight_layout(pad=2.0)
+        except:
+            # Fallback to manual adjustment if tight_layout fails
+            fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15)
         
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
         return canvas
-
+    
     def update_stats(self, event=None):
         """Update all statistics based on selected time period"""
         period = self.stats_period_var.get()
-        self.stats_status_label.configure(text=f"Loading {period} statistics...")
-        self.update_idletasks()
+        
+        # Check if stats_status_label exists before using it
+        if hasattr(self, 'stats_status_label') and self.stats_status_label:
+            self.stats_status_label.configure(text=f"Loading {period} statistics...")
+            self.update_idletasks()
         
         stats = self.stats_manager.get_summary_stats(period)
         
@@ -4310,13 +4492,16 @@ class GamingCenterApp(ctk.CTk):
                 type_stats['avg_time']
             ))
 
-        if self.stats_notebook.get() == "Game Rankings":
+        # Check if stats_notebook exists (this appears to be from old code)
+        if hasattr(self, 'stats_notebook') and self.stats_notebook.get() == "Game Rankings":
             self.update_stats_game_rankings()
 
         self.update_stats_summary_graph(stats)
         self.update_stats_station_type_graph(stats['station_types'])
         
-        self.stats_status_label.configure(text=f"Showing statistics for: {period}")
+        # Check if stats_status_label exists before using it
+        if hasattr(self, 'stats_status_label') and self.stats_status_label:
+            self.stats_status_label.configure(text=f"Showing statistics for: {period}")
 
     def animate_stats_label_update(self, label, new_value):
         """Animate label updates"""
@@ -4329,8 +4514,10 @@ class GamingCenterApp(ctk.CTk):
         if not station:
             return
             
-        self.stats_status_label.configure(text=f"Loading statistics for {station}...")
-        self.update_idletasks()
+        # Check if stats_status_label exists before using it
+        if hasattr(self, 'stats_status_label') and self.stats_status_label:
+            self.stats_status_label.configure(text=f"Loading statistics for {station}...")
+            self.update_idletasks()
         
         stats = self.stats_manager.get_station_stats(station)
         self.station_tree.delete(*self.station_tree.get_children())
@@ -4343,7 +4530,10 @@ class GamingCenterApp(ctk.CTk):
                 self.station_tree.tag_configure("highlight", background=self.stats_colors["primary"])
         
         self.update_stats_station_usage_graph(station)
-        self.stats_status_label.configure(text=f"Showing statistics for: {station}")
+        
+        # Check if stats_status_label exists before using it
+        if hasattr(self, 'stats_status_label') and self.stats_status_label:
+            self.stats_status_label.configure(text=f"Showing statistics for: {station}")
 
     def update_stats_game_rankings(self):
         """Update the game rankings display"""
@@ -4594,18 +4784,24 @@ class GamingCenterApp(ctk.CTk):
     def export_stats_to_excel(self):
         """Export statistics to Excel/CSV files"""
         try:
-            self.stats_status_label.configure(text="Exporting data...")
-            self.update_idletasks()
+            # Check if stats_status_label exists before using it
+            if hasattr(self, 'stats_status_label') and self.stats_status_label:
+                self.stats_status_label.configure(text="Exporting data...")
+                self.update_idletasks()
             
             result = self.stats_manager.export_daily_stats()
-            self.stats_status_label.configure(text="✓ Export complete!")
+            
+            if hasattr(self, 'stats_status_label') and self.stats_status_label:
+                self.stats_status_label.configure(text="✓ Export complete!")
             
             messagebox.showinfo("Export Complete", 
                             f"Statistics have been exported to the 'statistics' folder.")
             
-            self.after(3000, lambda: self.stats_status_label.configure(text=""))
+            if hasattr(self, 'stats_status_label') and self.stats_status_label:
+                self.after(3000, lambda: self.stats_status_label.configure(text=""))
         except Exception as e:
-            self.stats_status_label.configure(text="❌ Export failed")
+            if hasattr(self, 'stats_status_label') and self.stats_status_label:
+                self.stats_status_label.configure(text="❌ Export failed")
             messagebox.showerror("Export Error", f"Failed to export data: {str(e)}")
 
     def on_stats_tab_change(self):
@@ -4883,7 +5079,7 @@ class GamingCenterApp(ctk.CTk):
                 hover_color="#3A3A3A",
                 command=self.show_menu
             )
-            menu_button.pack(side="left", padx=10)
+            menu_button.pack(side="left", padx=(25,10))
         except Exception as e:
             print(f"Error loading menu icon: {e}")
             # Fallback text button
@@ -4997,28 +5193,25 @@ class GamingCenterApp(ctk.CTk):
         self.notification_bubble.place_forget()  # Hide the notification bubble initially
 
     def create_sidebar_button(self, icon, tooltip, command=None):
-        # Create button frame
-        btn_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        btn_frame.pack(fill="x", pady=1)
-
-        # Create the actual button
+        # Create button WITHOUT a wrapper frame to avoid layout issues
         btn = ctk.CTkButton(
-            btn_frame,
+            self.sidebar,
             image=icon,
             text="",
             width=52,
             height=52,
             corner_radius=8,
             fg_color="transparent",
-            hover_color="#333333",
+            hover_color="#3a3a3a",
+            border_width=0,
             command=command
         )
-        btn.place(relx=0.5, rely=0.5, anchor="center")
+        btn.pack(pady=8)  # Simple pack with padding
 
         # Create tooltip
         self.create_tooltip(btn, tooltip)
 
-        return btn  # Return the button widget for further customization
+        return btn
 
     def create_tooltip(self, widget, text):
         """Create an enhanced tooltip with arrow pointer"""

@@ -2120,3 +2120,12 @@ Duration: 00:02:59
 Game: 2k: 25
 Controllers: 2
 --------------------------------------------------
+Date: 2025-06-02 19:01:40.40
+Station Type: XBOX
+Station Number: 4
+User Name: Boe Jiden
+ID Number: N/A
+Duration: 00:00:01
+Game: Assassins Creed: Mirage
+Controllers: 2
+--------------------------------------------------
