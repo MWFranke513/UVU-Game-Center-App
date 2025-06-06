@@ -1592,7 +1592,6 @@ class BowlingWaitlistDialog(ctk.CTkToplevel):
         size = self.size_entry.get().strip()
         notes = self.notes_entry.get().strip()
         lanes_needed = int(self.lanes_needed_var.get())
-        station = self.station_var.get()
         email = self.email_entry.get().strip()  # Get email value
         
         # Validate the phone number
@@ -5794,13 +5793,13 @@ class GamingCenterApp(ctk.CTk):
         result = dialog.show()
         if result:
             # Optionally capture email at time of registration
-            email_dialog = ctk.CTkInputDialog(
-                title="Optional Email Address", 
-                text=f"Enter email address for {result['party']} (optional, for notifications):"
-            )
-            email = email_dialog.get_input()
-            if email:
-                result['email'] = email
+            # email_dialog = ctk.CTkInputDialog(
+            #     title="Optional Email Address", 
+            #     text=f"Enter email address for {result['party']} (optional, for notifications):"
+            # )
+            # email = email_dialog.get_input()
+            # if email:
+            #     result['email'] = email
                 
             self.bowling_waitlist.append(result)
             self.update_waitlist_tree()
