@@ -1370,9 +1370,22 @@ class WaitlistDialog(ctk.CTkToplevel):
         self.station_dropdown = ctk.CTkComboBox(
             self.station_frame,
             variable=self.station_var,
-            values=stations
+            values=[]  # Empty the values list
         )
         self.station_dropdown.pack(fill="x", pady=5)
+
+        # Add the scrollable dropdown
+        self.station_scrollable = CTkScrollableDropdown(
+            self.station_dropdown,
+            values=stations,
+            command=lambda v: self.station_var.set(v),
+            width=200,
+            height=150,
+            font=("Helvetica", 12),
+            justify="left",
+            resize=False,
+            button_height=32
+        )
 
         # Buttons
         self.button_frame = ctk.CTkFrame(self)
@@ -1488,10 +1501,24 @@ class BowlingWaitlistDialog(ctk.CTkToplevel):
         self.lanes_needed_dropdown = ctk.CTkComboBox(
             lanes_count_frame,
             variable=self.lanes_needed_var,
-            values=["1", "2", "3", "4", "5", "6"],
+            values=[],  # Empty the values list
             command=self.update_lane_selector
         )
         self.lanes_needed_dropdown.pack(fill="x")
+
+        # Add the scrollable dropdown
+        self.lanes_needed_scrollable = CTkScrollableDropdown(
+            self.lanes_needed_dropdown,
+            values=["1", "2", "3", "4", "5", "6"],
+            command=lambda v: (self.lanes_needed_var.set(v), self.update_lane_selector(v)),
+            width=150,
+            height=120,
+            font=("Helvetica", 12),
+            justify="left",
+            resize=False,
+            button_height=32
+        )
+
 
         # Notes
         self.notes_frame = ctk.CTkFrame(self)
@@ -1570,12 +1597,23 @@ class BowlingWaitlistDialog(ctk.CTkToplevel):
             lane_dropdown = ctk.CTkComboBox(
                 lane_frame,
                 variable=lane_var,
-                values=self.lanes,
+                values=[],  # Empty the values list
                 width=100
             )
             lane_dropdown.pack(side="left", fill="x", expand=True)
-            
-            self.lane_selectors.append(lane_frame)
+
+            # Add scrollable dropdown for each lane selector
+            lane_scrollable = CTkScrollableDropdown(
+                lane_dropdown,
+                values=self.lanes,
+                command=lambda v, var=lane_var: var.set(v),
+                width=100,
+                height=120,
+                font=("Helvetica", 11),
+                justify="left",
+                resize=False,
+                button_height=32
+            )
 
     def validate_phone(self, new_input):
         """Validate the phone number input."""
@@ -2880,12 +2918,25 @@ class ReservationSystem:
         time_slots = self.generate_time_slots()
         fields['Time'] = ctk.CTkComboBox(
             time_frame,
-            values=time_slots,
+            values=[],  # Empty the values list
             width=200,
             height=35,
             corner_radius=10
         )
         fields['Time'].pack(side="right", padx=10)
+
+        # Add scrollable dropdown for time slots
+        time_scrollable = CTkScrollableDropdown(
+            fields['Time'],
+            values=time_slots,
+            command=lambda v: fields['Time'].set(v),
+            width=200,
+            height=200,
+            font=("SF Pro Display", 12),
+            justify="left",
+            resize=False,
+            button_height=35
+        )
         if preset_time:
             fields['Time'].set(preset_time)
         elif reservation:
@@ -2895,12 +2946,26 @@ class ReservationSystem:
         lane_frame = self._create_form_field(datetime_section, "Lane:", "lane")
         fields['Lane'] = ctk.CTkComboBox(
             lane_frame,
-            values=[f"Lane {i}" for i in range(1, self.operating_hours['lanes_count'] + 1)],
+            values=[],  # Empty the values list
             width=200,
             height=35,
             corner_radius=10
         )
         fields['Lane'].pack(side="right", padx=10)
+
+        # Add scrollable dropdown for lanes
+        lane_scrollable = CTkScrollableDropdown(
+            fields['Lane'],
+            values=[f"Lane {i}" for i in range(1, self.operating_hours['lanes_count'] + 1)],
+            command=lambda v: fields['Lane'].set(v),
+            width=200,
+            height=150,
+            font=("SF Pro Display", 12),
+            justify="left",
+            resize=False,
+            button_height=35
+        )
+
         if preset_lane:
             fields['Lane'].set(preset_lane)
         elif reservation:
@@ -2958,12 +3023,25 @@ class ReservationSystem:
         status_frame = self._create_form_field(status_section, "Status:", "🔄")
         fields['Status'] = ctk.CTkComboBox(
             status_frame,
-            values=["Confirmed", "Pending", "Cancelled", "Completed"],
+            values=[],  # Empty the values list
             width=200,
             height=35,
             corner_radius=10
         )
         fields['Status'].pack(side="right", padx=10)
+
+        # Add scrollable dropdown for status
+        status_scrollable = CTkScrollableDropdown(
+            fields['Status'],
+            values=["Confirmed", "Pending", "Cancelled", "Completed"],
+            command=lambda v: fields['Status'].set(v),
+            width=200,
+            height=120,
+            font=("SF Pro Display", 12),
+            justify="left",
+            resize=False,
+            button_height=35
+        )
         if reservation:
             fields['Status'].set(reservation.get('Status', 'Pending'))
         else:
@@ -3568,6 +3646,9 @@ class GamingCenterApp(ctk.CTk):
             if hasattr(child, '_glow_effect') and child._glow_effect:
                 child.destroy()
         
+        # Store the active sidebar button for counter background checking
+        self.active_sidebar_btn = page_name
+        
         # Highlight the active button
         if page_name in self.sidebar_buttons:
             active_btn = self.sidebar_buttons[page_name]
@@ -3577,6 +3658,10 @@ class GamingCenterApp(ctk.CTk):
                 fg_color="#3a3a3a",  # Similar to hover color
                 border_width=0
             )
+            
+            # Update waitlist counter background immediately when this button becomes active
+            if page_name == "waitlist" and hasattr(self, 'counter_canvas') and self.counter_canvas:
+                self.counter_canvas.configure(bg="#3a3a3a")
             
             # Calculate position for glow and indicator
             def position_effects():
@@ -3611,6 +3696,20 @@ class GamingCenterApp(ctk.CTk):
             
             # Delay to ensure layout is complete
             self.after(100, position_effects)
+        else:
+            # No active button, update counter to use default background for ALL buttons
+            if hasattr(self, 'counter_canvas') and self.counter_canvas:
+                self.counter_canvas.configure(bg="#171717")
+        
+        # IMPORTANT: Update counter background for button state changes
+        # This ensures the counter background updates when switching between pages
+        if hasattr(self, 'counter_canvas') and self.counter_canvas:
+            if page_name == "waitlist":
+                # Waitlist is now active - use active background
+                self.counter_canvas.configure(bg="#3a3a3a")
+            else:
+                # Waitlist is no longer active - use default background
+                self.counter_canvas.configure(bg="#171717")
 
     def _create_simple_backlit_glow(self, center_x, center_y):
         """Create a simple but effective backlit glow using overlapping CTkFrames"""
@@ -3808,28 +3907,16 @@ class GamingCenterApp(ctk.CTk):
             values=["Game Center", "Bowling Lanes"],
             variable=self.waitlist_type_var,
             command=self.switch_waitlist_type,
-            # Container styling
-            corner_radius=75,                    # Border radius for toggle container
-            border_width=0,                      # Optional: add border to container             # Optional: border color
-            # Active segment styling (the green highlight)
-            selected_color="#00843d",            # Your green color
-            selected_hover_color="#006e33",      # Darker green on hover
-            # Text and padding styling
-            text_color="#ffffff",                # Text color for inactive segments
-            text_color_disabled="#888888",       # Text color when disabled
-            font=("Helvetica", 12, "normal"),    # Font styling
-            height=32,                           # Increase height for more padding around text
-            # Note: CTkSegmentedButton doesn't have direct padding control,
-            # but increasing height gives more vertical padding
+            corner_radius=75,
+            border_width=0,
+            selected_color="#00843d",
+            selected_hover_color="#006e33",
+            text_color="#ffffff",
+            text_color_disabled="#888888",
+            font=("Helvetica", 12, "normal"),
+            height=32,
         )
         waitlist_toggle.pack(side="left", padx=(0, 20))
-
-        # Additional styling for the selected segment corner radius
-        # This needs to be done after creation
-        # waitlist_toggle.configure(
-        #     unselected_color="#2d2d2d",          # Background for unselected segments
-        #     unselected_hover_color="#3a3a3a",    # Hover color for unselected segments
-        # )
 
         title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         title_frame.pack(side="left")
@@ -3844,7 +3931,7 @@ class GamingCenterApp(ctk.CTk):
         self.count_label = ctk.CTkLabel(
             title_frame,
             text=str(len(self.waitlist)),
-            fg_color="blue",
+            fg_color="#A3483F",
             text_color="white",
             corner_radius=10,
             width=30
@@ -3899,7 +3986,6 @@ class GamingCenterApp(ctk.CTk):
             "size": "SIZE",
             "notes": "NOTES",
             "station": "STATION",
-  # Will be changed to "LANE" for bowling
             "quotedTime": "QUOTED TIME",
             "arrival": "ARRIVAL"
         }
@@ -3907,12 +3993,12 @@ class GamingCenterApp(ctk.CTk):
         for col, heading in self.headings.items():
             self.waitlist_tree.heading(col, text=heading)
             if col == "size":
-                self.waitlist_tree.column(col, width=50, anchor="center")  # Narrow size column
+                self.waitlist_tree.column(col, width=50, anchor="center")
             else:
-                self.waitlist_tree.column(col, width=150, anchor="w")  # Adjust width of other columns
+                self.waitlist_tree.column(col, width=150, anchor="w")
 
         # Create a frame for the buttons column
-        buttons_frame = ctk.CTkFrame(content_frame, width=200)  # Set a fixed width for the actions column
+        buttons_frame = ctk.CTkFrame(content_frame, width=200)
         buttons_frame.pack(side="right", fill="y", padx=(10, 0))
         
         # Add a header for the actions column
@@ -3968,18 +4054,9 @@ class GamingCenterApp(ctk.CTk):
         # Store references for later updates
         self.buttons_frame = buttons_frame
 
-        # Add floating action button
+        # Create canvas-based floating action button
         station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
-        self.add_button = ctk.CTkButton(
-            main_frame,
-            text="+",
-            width=60,
-            height=60,
-            corner_radius=60,
-            font=("Helvetica", 24, "bold"),
-            command=lambda: self.add_to_waitlist(station_names)
-        )
-        self.add_button.place(relx=0.95, rely=0.95, anchor="se")
+        self.create_canvas_add_button(main_frame, station_names)
 
         # Bind search functionality
         def update_tree(event=None):
@@ -3988,6 +4065,178 @@ class GamingCenterApp(ctk.CTk):
 
         self.search_entry.bind('<KeyRelease>', update_tree)
         self.update_waitlist_tree()
+
+    def create_canvas_add_button(self, parent, station_names):
+        """Create a perfect circle add button using Canvas"""
+        button_size = 75
+        
+        # Get parent background color for transparency
+        try:
+            parent_bg = parent.cget("fg_color")
+            if isinstance(parent_bg, tuple):
+                bg_color = parent_bg[1] if ctk.get_appearance_mode() == "Dark" else parent_bg[0]
+            elif parent_bg == "transparent":
+                # Get the actual background from the parent hierarchy
+                bg_color = "#212121"  # Your main app background
+            else:
+                bg_color = parent_bg
+        except:
+            bg_color = "#212121"  # Fallback to your main background
+        
+        # Create canvas with transparent background
+        self.add_button_canvas = tk.Canvas(
+            parent,
+            width=button_size,
+            height=button_size,
+            highlightthickness=0,
+            bd=0,
+            bg=bg_color
+        )
+        
+        # Draw the perfect circle button
+        self.draw_add_button(normal_state=True)
+        
+        # Bind click events
+        def on_click(event):
+            self.handle_add_button_click(station_names)
+        
+        def on_enter(event):
+            self.draw_add_button(normal_state=False)  # Hover state
+            self.add_button_canvas.configure(cursor="hand2")
+        
+        def on_leave(event):
+            self.draw_add_button(normal_state=True)   # Normal state
+            self.add_button_canvas.configure(cursor="")
+        
+        # Bind events
+        self.add_button_canvas.bind("<Button-1>", on_click)
+        self.add_button_canvas.bind("<Enter>", on_enter)
+        self.add_button_canvas.bind("<Leave>", on_leave)
+        
+        # Position the button in the bottom-right corner
+        self.add_button_canvas.place(relx=0.95, rely=0.95, anchor="se")
+
+    def draw_add_button(self, normal_state=True):
+        """Draw the add button circle with + symbol using high-definition rendering"""
+        if not hasattr(self, 'add_button_canvas'):
+            return
+        
+        button_size = 75  # Match the new larger size
+        
+        # Clear the canvas
+        self.add_button_canvas.delete("all")
+        
+        # Choose colors based on state
+        if normal_state:
+            circle_color = "#00843d"      # UVU Green
+            shadow_color = "#006e33"      # Darker green for shadow
+        else:
+            circle_color = "#006e33"      # Hover color
+            shadow_color = "#004d24"      # Even darker for hover shadow
+        
+        # Create subtle shadow effect
+        shadow_offset = 3
+        shadow_margin = 6
+        
+        # Draw shadow circle (slightly offset)
+        self.add_button_canvas.create_oval(
+            shadow_margin + shadow_offset, 
+            shadow_margin + shadow_offset,
+            button_size - shadow_margin + shadow_offset, 
+            button_size - shadow_margin + shadow_offset,
+            fill=shadow_color,
+            outline="",
+            width=0
+        )
+        
+        # Draw main circle with anti-aliasing effect
+        margin = 4
+        
+        # Main circle
+        self.add_button_canvas.create_oval(
+            margin, margin,
+            button_size - margin, button_size - margin,
+            fill=circle_color,
+            outline=circle_color,
+            width=2  # Slight outline for smoother edges
+        )
+        
+        # Draw the + symbol with better proportions
+        center = button_size // 2
+        plus_size = 20  # Increased from 16
+        plus_thickness = 4  # Increased from 3
+        
+        # Horizontal line of + with rounded ends effect
+        self.add_button_canvas.create_rectangle(
+            center - plus_size//2, center - plus_thickness//2,
+            center + plus_size//2, center + plus_thickness//2,
+            fill="white",
+            outline="white",
+            width=0
+        )
+        
+        # Add small circles at the ends for rounded effect
+        end_radius = plus_thickness // 2
+        # Left end
+        self.add_button_canvas.create_oval(
+            center - plus_size//2 - end_radius, center - end_radius,
+            center - plus_size//2 + end_radius, center + end_radius,
+            fill="white",
+            outline="white"
+        )
+        # Right end
+        self.add_button_canvas.create_oval(
+            center + plus_size//2 - end_radius, center - end_radius,
+            center + plus_size//2 + end_radius, center + end_radius,
+            fill="white",
+            outline="white"
+        )
+        
+        # Vertical line of + with rounded ends effect
+        self.add_button_canvas.create_rectangle(
+            center - plus_thickness//2, center - plus_size//2,
+            center + plus_thickness//2, center + plus_size//2,
+            fill="white",
+            outline="white",
+            width=0
+        )
+        
+        # Add small circles at the ends for rounded effect
+        # Top end
+        self.add_button_canvas.create_oval(
+            center - end_radius, center - plus_size//2 - end_radius,
+            center + end_radius, center - plus_size//2 + end_radius,
+            fill="white",
+            outline="white"
+        )
+        # Bottom end
+        self.add_button_canvas.create_oval(
+            center - end_radius, center + plus_size//2 - end_radius,
+            center + end_radius, center + plus_size//2 + end_radius,
+            fill="white",
+            outline="white"
+        )
+        
+        # Optional: Add a subtle inner glow effect
+        if not normal_state:  # Only on hover
+            glow_margin = margin + 2
+            self.add_button_canvas.create_oval(
+                glow_margin, glow_margin,
+                button_size - glow_margin, button_size - glow_margin,
+                fill="",
+                outline="#38a169",  # Lighter green
+                width=2
+            )
+
+    def handle_add_button_click(self, station_names):
+        """Handle click events for the canvas add button"""
+        waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+        
+        if waitlist_type == "Game Center":
+            self.add_to_waitlist(station_names)
+        else:  # Bowling Lanes
+            lane_names = [f"Lane {i}" for i in range(1, 7)]
+            self.add_to_bowling_waitlist(lane_names)
 
     def setup_stats_page(self, frame):
         """Set up the complete statistics page in the main app window"""
@@ -4065,7 +4314,7 @@ class GamingCenterApp(ctk.CTk):
         self.period_dropdown = ctk.CTkComboBox(
             filter_frame, 
             variable=self.stats_period_var, 
-            values=period_choices,
+            values=[],  # Empty the values list
             state='readonly',
             width=180, 
             height=32,
@@ -4076,7 +4325,19 @@ class GamingCenterApp(ctk.CTk):
             dropdown_fg_color=self.stats_colors["card_bg"],
         )
         self.period_dropdown.pack(side="left", padx=(5, 15), pady=10)
-        self.period_dropdown.configure(command=self.update_stats)
+
+        # Add the scrollable dropdown
+        self.period_scrollable = CTkScrollableDropdown(
+            self.period_dropdown,
+            values=period_choices,
+            command=lambda v: (self.stats_period_var.set(v), self.update_stats()),
+            width=180,
+            height=200,
+            font=("Roboto", 12),
+            justify="left",
+            resize=False,
+            button_height=32
+        )
         
         # Add toggle for stats view with your waitlist styling
         toggle_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
@@ -4269,6 +4530,7 @@ class GamingCenterApp(ctk.CTk):
         self.station_dropdown = ctk.CTkComboBox(
             selector_content,
             variable=self.station_var,
+            values=[],  # Empty the values list
             state='readonly',
             width=250,
             height=32,
@@ -4279,11 +4541,20 @@ class GamingCenterApp(ctk.CTk):
             dropdown_fg_color=self.stats_colors["card_bg"]
         )
         self.station_dropdown.pack(side="left", padx=10, pady=10)
-        self.station_dropdown.configure(command=self.update_stats_station_stats)
-        
-        # Populate the dropdown
+
+        # Populate the dropdown values and add scrollable dropdown
         stations = self.stats_manager.get_all_stations()
-        self.station_dropdown.configure(values=stations)
+        self.station_scrollable = CTkScrollableDropdown(
+            self.station_dropdown,
+            values=stations,
+            command=lambda v: (self.station_var.set(v), self.update_stats_station_stats()),
+            width=250,
+            height=200,
+            font=("Roboto", 12),
+            justify="left",
+            resize=False,
+            button_height=32
+        )
         
         # Station details area
         details_content, _ = self.create_stats_card(parent, "Station Statistics", row=1, column=0)
@@ -5169,16 +5440,30 @@ class GamingCenterApp(ctk.CTk):
         self.sidebar_buttons["stats"] = self.create_sidebar_button(stats, "Stats", command=lambda: self.show_page("stats"))
 
 
-        # Add a count label to the Waitlist button
-        self.waitlist_count_label = ctk.CTkLabel(
-            self.sidebar_buttons["waitlist"],
-            text="0",
-            fg_color="red",
-            text_color="white",
-            corner_radius=10,
+
+        # Add this in setup_sidebar after creating the waitlist button:
+        self.waitlist_counter_canvas = self.create_perfect_circle_counter(
+            self.sidebar_buttons["waitlist"], 
+            44,  # x position (right side of button)
+            13   # y position (top of button)
         )
-        self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Position in the top-right corner
         self.update_waitlist_count()  # Initialize the counter
+        # Add a count label to the Waitlist button - FIXED VERSION
+        # counter_size = 24
+        # self.waitlist_count_label = ctk.CTkLabel(
+        #     self.sidebar_buttons["waitlist"],
+        #     text="0",
+        #     fg_color="#e53e3e",        # Consistent red color
+        #     text_color="white",
+        #     corner_radius=counter_size // 2,  # Perfect circle
+        #     width=counter_size,
+        #     height=counter_size,
+        #     font=ctk.CTkFont(family=self.get_font_family(), size=10, weight="bold"),
+        #     justify="center",          # Center text horizontally
+        #     anchor="center"            # Center text within label
+        # )
+        # self.waitlist_count_label.place(relx=0.85, rely=0.15, anchor="center")
+        # self.update_waitlist_count()  # Initialize the counter
 
         # Initialize the notification bubble in the sidebar
         self.notification_bubble = ctk.CTkLabel(
@@ -5380,18 +5665,151 @@ class GamingCenterApp(ctk.CTk):
         if hasattr(self, 'count_label'):  # Check if the count label exists
             self.count_label.configure(text=str(len(self.waitlist)))
 
+    def create_perfect_circle_counter(self, parent, x, y):
+        """Create a perfect circle counter using Canvas for true transparency"""
+        # Create a small canvas that will overlay the button
+        canvas_size = 24
+        
+        # Get the actual background color instead of "transparent"
+        try:
+            parent_fg = parent.cget("fg_color")
+            if isinstance(parent_fg, tuple):
+                bg_color = parent_fg[1] if ctk.get_appearance_mode() == "Dark" else parent_fg[0]
+            elif parent_fg == "transparent":
+                bg_color = "#171717"  # Default sidebar color
+            else:
+                bg_color = parent_fg
+        except:
+            bg_color = "#171717"  # Fallback color
+        
+        # Create canvas with proper background color
+        counter_canvas = tk.Canvas(
+            parent,
+            width=canvas_size,
+            height=canvas_size,
+            highlightthickness=0,
+            bd=0,
+            bg=bg_color
+        )
+        
+        # Store references
+        self.counter_canvas = counter_canvas
+        self.counter_parent = parent
+        
+        # IMPORTANT: Bind to parent button's hover events to update canvas background
+        def on_button_enter(event):
+            """Update canvas background when button is hovered"""
+            if hasattr(self, 'counter_canvas') and self.counter_canvas:
+                hover_color = "#3a3a3a"  # Button's hover color
+                self.counter_canvas.configure(bg=hover_color)
+        
+        def on_button_leave(event):
+            """Restore canvas background when hover ends"""
+            if hasattr(self, 'counter_canvas') and self.counter_canvas:
+                # Restore to the appropriate background based on button state
+                bg_color = self.get_parent_background_color()
+                self.counter_canvas.configure(bg=bg_color)
+        
+        # Bind hover events to the parent button
+        parent.bind("<Enter>", on_button_enter)
+        parent.bind("<Leave>", on_button_leave)
+        
+        # Position the canvas in the top-right corner
+        counter_canvas.place(x=75, y=8, anchor="ne")
+        
+        return counter_canvas
+    
+    def get_parent_background_color(self):
+        """Get the current background color of the counter's parent button"""
+        if hasattr(self, 'counter_parent') and self.counter_parent:
+            try:
+                # Get the current fg_color of the parent button
+                parent_fg = self.counter_parent.cget("fg_color")
+                
+                # Handle tuple colors (light/dark mode)
+                if isinstance(parent_fg, tuple):
+                    # Use dark mode color (index 1)
+                    return parent_fg[1] if len(parent_fg) > 1 else parent_fg[0]
+                elif parent_fg == "transparent":
+                    # If transparent, check if waitlist page is active
+                    if hasattr(self, 'active_sidebar_btn') and self.active_sidebar_btn == "waitlist":
+                        return "#3a3a3a"  # Active background color
+                    else:
+                        return "#171717"  # Default sidebar color
+                else:
+                    return parent_fg
+            except:
+                # Fallback to checking if waitlist page is active
+                if hasattr(self, 'active_sidebar_btn') and self.active_sidebar_btn == "waitlist":
+                    return "#3a3a3a"  # Active background color
+                else:
+                    return "#171717"  # Default sidebar color
+        
+        # Fallback
+        return "#171717"
+
     def update_waitlist_count(self):
-        """Update the count label on the Waitlist button."""
-        # Count both regular waitlist and bowling waitlist entries if bowling waitlist exists
+        """Update the canvas-based waitlist counter"""
         regular_count = len(self.waitlist)
         bowling_count = len(self.bowling_waitlist) if hasattr(self, 'bowling_waitlist') else 0
         total_count = regular_count + bowling_count
         
-        if total_count > 0:
-            self.waitlist_count_label.configure(text=str(total_count), fg_color="red")  # Show and highlight if there are parties
-            self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Ensure the label is visible
-        else:
-            self.waitlist_count_label.place_forget()  # Hide the label when there are no parties     
+        if hasattr(self, 'counter_canvas') and self.counter_canvas:
+            # Clear the canvas
+            self.counter_canvas.delete("all")
+            
+            if total_count > 0:
+                # Determine size based on count - MAKE THESE BIGGER
+                if total_count >= 100:
+                    radius = 16        # Increased from 14
+                    font_size = 8
+                elif total_count >= 10:
+                    radius = 14        # Increased from 12
+                    font_size = 8
+                else:
+                    radius = 12        # Increased from 10
+                    font_size = 8
+                
+                canvas_size = radius * 2 + 4
+                
+                # Update canvas size and background to match parent's CURRENT state
+                bg_color = self.get_parent_background_color()
+                
+                self.counter_canvas.configure(
+                    width=canvas_size, 
+                    height=canvas_size,
+                    bg=bg_color
+                )
+                
+                # Draw the red circle
+                margin = 2
+                self.counter_canvas.create_oval(
+                    margin, margin,
+                    canvas_size - margin, canvas_size - margin,
+                    fill="#A3483F",
+                    outline="#A3483F",
+                    width=0
+                )
+                
+                # Add the text
+                self.counter_canvas.create_text(
+                    canvas_size // 2, canvas_size // 2,
+                    text=str(total_count),
+                    fill="white",
+                    font=(self.get_font_family(), font_size, "bold"),
+                    anchor="center"
+                )
+                
+                # IMPORTANT: Add this positioning line
+                self.counter_canvas.place(x=75, y=8, anchor="ne")
+            else:
+                # Hide the canvas when count is 0
+                self.counter_canvas.place_forget()
+
+    def update_canvas_counter(self, count):
+        """Update the canvas-based counter"""
+        if hasattr(self, 'counter_canvas'):
+            self.counter_canvas.itemconfig(self.counter_text_id, text=str(count))
 
     # def show_waitlist_window(self):
     #     """Method for GamingCenterApp class"""
