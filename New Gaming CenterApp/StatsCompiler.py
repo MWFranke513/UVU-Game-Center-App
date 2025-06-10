@@ -208,6 +208,42 @@ class StatsManager:
             'avg_session': str(total_time / len(data) if data else timedelta(0)).split('.')[0],
             'station_types': dict(station_types)
         }
+    
+    def get_usage_by_time_of_day(self, period='Today'):
+        """Return a dict of {time_of_day: session_count}."""
+        data = self.parse_log_file(period)
+        buckets = {'Morning': 0, 'Afternoon': 0, 'Evening': 0, 'Night': 0}
+        for entry in data:
+            hour = entry['timestamp'].hour
+            if 6 <= hour < 12:
+                buckets['Morning'] += 1
+            elif 12 <= hour < 17:
+                buckets['Afternoon'] += 1
+            elif 17 <= hour < 22:
+                buckets['Evening'] += 1
+            else:
+                buckets['Night'] += 1
+        return buckets
+    
+    def get_usage_by_hour(self, period='Today'):
+        """Return a dict of {hour: session_count}."""
+        data = self.parse_log_file(period)
+        usage = {h: 0 for h in range(24)}
+        for entry in data:
+            hour = entry['timestamp'].hour
+            usage[hour] += 1
+        return usage
+    
+    def get_usage_by_weekday(self, period='Today'):
+        """Return a dict of {weekday: session_count}."""
+        data = self.parse_log_file(period)
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        usage = {d: 0 for d in days}
+        for entry in data:
+            weekday = entry['timestamp'].strftime('%a')
+            if weekday in usage:
+                usage[weekday] += 1
+        return usage
 
     def get_station_stats(self, station):
         data = self.parse_log_file('All Time')

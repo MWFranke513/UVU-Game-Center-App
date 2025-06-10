@@ -4272,38 +4272,63 @@ class GamingCenterApp(ctk.CTk):
         # Configure grid layout
         self.stats_main_frame.grid_columnconfigure(0, weight=1)
         self.stats_main_frame.grid_rowconfigure(0, weight=0)  # Header
-        self.stats_main_frame.grid_rowconfigure(1, weight=0)  # Toggle
-        self.stats_main_frame.grid_rowconfigure(2, weight=1)  # Content
+        self.stats_main_frame.grid_rowconfigure(1, weight=1)  # Content
+
+        # Create unified header with filters, title, and toggle
+        header_frame = ctk.CTkFrame(
+            self.stats_main_frame, 
+            fg_color=self.stats_colors["card_bg"],
+            corner_radius=15,
+            height=80
+        )
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        header_frame.grid_propagate(False)
+        header_frame.grid_columnconfigure(0, weight=0)  # Title
+        header_frame.grid_columnconfigure(1, weight=1)  # Spacer
+        header_frame.grid_columnconfigure(2, weight=0)  # Toggle
+        header_frame.grid_columnconfigure(3, weight=0)  # Filter
         
-        # Create header with filters and title
-        header_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
-        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
-        header_frame.grid_columnconfigure(0, weight=1)
-        header_frame.grid_columnconfigure(1, weight=0)
+        # Title with enhanced styling
+        title_container = ctk.CTkFrame(header_frame, fg_color="transparent")
+        title_container.grid(row=0, column=0, sticky="w", padx=25, pady=20)
         
-        # Title 
         title_label = ctk.CTkLabel(
-            header_frame, 
-            text="Gaming Center Statistics", 
+            title_container, 
+            text="📊 Gaming Center Statistics", 
             font=("Roboto", 24, "bold"),
             text_color=self.stats_colors["text_light"]
         )
-        title_label.grid(row=0, column=0, sticky="w", padx=10, pady=10)
+        title_label.pack()
         
-        # Filter container
-        filter_frame = ctk.CTkFrame(
-            header_frame, 
-            fg_color=self.stats_colors["card_bg"],
-            corner_radius=10
+        # Stats view toggle in center-right position
+        self.stats_view_var = ctk.StringVar(value="Summary")
+        stats_toggle = ctk.CTkSegmentedButton(
+            header_frame,
+            values=["Summary", "Station Details", "Game Rankings"],
+            variable=self.stats_view_var,
+            command=self.switch_stats_view,
+            corner_radius=25,
+            border_width=0,
+            selected_color="#00843d",
+            selected_hover_color="#006e33",
+            text_color="#ffffff",
+            font=("Roboto", 12, "bold"),
+            height=40,
+            unselected_hover_color="#3a3a3a",
+            width=450
         )
-        filter_frame.grid(row=0, column=1, sticky="e", padx=10, pady=10)
+        stats_toggle.grid(row=0, column=2, sticky="e", padx=20, pady=20)
         
-        # Time period selector
+        # Time period filter container
+        filter_container = ctk.CTkFrame(header_frame, fg_color="transparent")
+        filter_container.grid(row=0, column=3, sticky="e", padx=25, pady=20)
+        
         ctk.CTkLabel(
-            filter_frame, 
-            text="Time Period:", 
-            font=("Roboto", 12, "bold")
-        ).pack(side="left", padx=(15, 5), pady=10)
+            filter_container, 
+            text="📅 Period:", 
+            font=("Roboto", 12, "bold"),
+            text_color=self.stats_colors["text_light"]
+        ).pack(side="left", padx=(0, 8))
         
         period_choices = [
             'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 
@@ -4312,58 +4337,37 @@ class GamingCenterApp(ctk.CTk):
         ]
         self.stats_period_var = tk.StringVar(value='Today')
         self.period_dropdown = ctk.CTkComboBox(
-            filter_frame, 
+            filter_container, 
             variable=self.stats_period_var, 
-            values=[],  # Empty the values list
+            values=[],
             state='readonly',
-            width=180, 
-            height=32,
-            corner_radius=6,
+            width=160, 
+            height=36,
+            corner_radius=10,
             dropdown_hover_color=self.stats_colors["hover"],
             button_color=self.stats_colors["primary"],
             button_hover_color=self.stats_colors["secondary"],
             dropdown_fg_color=self.stats_colors["card_bg"],
+            font=("Roboto", 12)
         )
-        self.period_dropdown.pack(side="left", padx=(5, 15), pady=10)
+        self.period_dropdown.pack(side="left")
 
-        # Add the scrollable dropdown
+        # Add scrollable dropdown
         self.period_scrollable = CTkScrollableDropdown(
             self.period_dropdown,
             values=period_choices,
             command=lambda v: (self.stats_period_var.set(v), self.update_stats()),
-            width=180,
-            height=200,
+            width=160,
+            height=220,
             font=("Roboto", 12),
             justify="left",
             resize=False,
-            button_height=32
+            button_height=36
         )
-        
-        # Add toggle for stats view with your waitlist styling
-        toggle_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
-        toggle_frame.grid(row=1, column=0, sticky="ew", pady=(0, 15))
-        
-        self.stats_view_var = ctk.StringVar(value="Summary")
-        stats_toggle = ctk.CTkSegmentedButton(
-            toggle_frame,
-            values=["Summary", "Station Details", "Game Rankings"],
-            variable=self.stats_view_var,
-            command=self.switch_stats_view,
-            # Apply the same styling as your waitlist toggle
-            corner_radius=75,                    # Border radius for toggle container
-            border_width=0,                      # No border
-            selected_color="#00843d",            # Your green color
-            selected_hover_color="#006e33",      # Darker green on hover
-            text_color="#ffffff",                # Text color for inactive segments
-            font=("Helvetica", 12, "normal"),    # Font styling
-            height=32,                           # Height for padding around text
-            unselected_hover_color="#3a3a3a",    # Hover color for unselected segments
-        )
-        stats_toggle.pack(pady=10)
         
         # Create content frame that will change based on toggle selection
         self.stats_content_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
-        self.stats_content_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.stats_content_frame.grid(row=1, column=0, sticky="nsew")
         
         # Create all tab contents as separate frames
         self.summary_frame = ctk.CTkFrame(self.stats_content_frame, fg_color="transparent")
@@ -4378,35 +4382,8 @@ class GamingCenterApp(ctk.CTk):
         # Show default frame
         self.switch_stats_view("Summary")
         
-        # Add export button container at bottom
-        footer_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent", height=50)
-        footer_frame.grid(row=3, column=0, sticky="ew", pady=(5, 0))
-        footer_frame.grid_columnconfigure(0, weight=1)
-        
-        # Export button
-        export_button = ctk.CTkButton(
-            footer_frame, 
-            text="Export Data", 
-            command=self.export_stats_to_excel,
-            height=36,
-            corner_radius=8,
-            font=("Roboto", 12, "bold"),
-            hover_color=self.stats_colors["secondary"],
-        )
-        export_button.pack(side="right", padx=10, pady=5)
-        
-        # Status indicator
-        self.stats_status_label = ctk.CTkLabel(
-            footer_frame,
-            text="",
-            font=("Roboto", 10, "normal"),
-            text_color="gray70"
-        )
-        self.stats_status_label.pack(side="left", padx=10, pady=5)
-        
         # Initialize tooltip manager
         self.stats_tooltip_texts = {
-            "export_button": "Export current statistics to CSV files",
             "period_dropdown": "Select the time period for statistics",
             "station_dropdown": "Select a specific station to view detailed statistics",
             "total_time": "Total usage time across all stations",
@@ -4422,16 +4399,17 @@ class GamingCenterApp(ctk.CTk):
     def switch_stats_view(self, value=None):
         """Switch between different stats views based on toggle selection"""
         view_type = self.stats_view_var.get()
-        
+
         # Hide all frames
         self.summary_frame.pack_forget()
         self.station_frame.pack_forget()
         self.games_frame.pack_forget()
-        
+
         # Show the selected frame
         if view_type == "Summary":
             self.summary_frame.pack(fill="both", expand=True)
             self.update_stats()
+            self.start_activity_monitor_loop()  # <-- Add this line
         elif view_type == "Station Details":
             self.station_frame.pack(fill="both", expand=True)
             self.update_stats_station_stats()
@@ -4440,236 +4418,238 @@ class GamingCenterApp(ctk.CTk):
             self.update_stats_game_rankings()
 
     def setup_stats_summary_tab(self, parent):
-        """Set up the summary tab with key statistics"""
+        """Set up the summary tab with enhanced visual statistics"""
+        # Configure parent grid with better proportions
         parent.grid_columnconfigure(0, weight=1)
-        parent.grid_columnconfigure(1, weight=1)
-        parent.grid_rowconfigure(0, weight=0)
-        parent.grid_rowconfigure(1, weight=1)
+        parent.grid_rowconfigure(0, weight=0)  # Top metrics row - fixed height
+        parent.grid_rowconfigure(1, weight=1)  # Main charts row - larger
+        parent.grid_rowconfigure(2, weight=1, minsize=300)  # Bottom charts row - minimum height increased
         
-        # Top Row - Key Metrics cards
-        usage_content, _ = self.create_stats_card(
-            parent, "Usage Statistics", row=0, column=0, padx=(0, 5), pady=(0, 10)
+        # Enhanced color palette for charts
+        self.chart_colors = [
+            "#00843d", "#4CAF50", "#2196F3", "#FF9800", "#9C27B0",
+            "#F44336", "#00BCD4", "#795548", "#607D8B", "#E91E63"
+        ]
+        
+        # Top Row - Key Metrics Cards with better spacing
+        metrics_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        metrics_frame.grid(row=0, column=0, sticky="ew", pady=(0, 30))
+        
+        # Configure metrics frame columns
+        for i in range(4):
+            metrics_frame.grid_columnconfigure(i, weight=1)
+        
+        # Create enhanced metric cards
+        self.total_time_card = self.create_enhanced_metric_card(
+            metrics_frame, "⏱️", "Total Usage", "0h 0m", "#00843d", 0, 0)
+        self.total_time_label = self.total_time_card.value_label
+        
+        self.total_sessions_card = self.create_enhanced_metric_card(
+            metrics_frame, "🎮", "Total Sessions", "0", "#2196F3", 0, 1)
+        self.total_sessions_label = self.total_sessions_card.value_label
+        
+        self.avg_session_card = self.create_enhanced_metric_card(
+            metrics_frame, "📊", "Avg Session", "0m", "#FF9800", 0, 2)
+        self.avg_session_label = self.avg_session_card.value_label
+        
+        self.active_stations_card = self.create_enhanced_metric_card(
+            metrics_frame, "🔥", "Active Now", "0", "#E91E63", 0, 3)
+        
+        # Main Charts Row - Two large charts side by side
+        main_charts_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        main_charts_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 25))
+        main_charts_frame.grid_columnconfigure(0, weight=1)
+        main_charts_frame.grid_columnconfigure(1, weight=1)
+        main_charts_frame.grid_rowconfigure(0, weight=1)
+        
+        # Left: Station Usage Distribution
+        station_chart_content, _ = self.create_enhanced_stats_card(
+            main_charts_frame, "🎯 Station Usage Distribution", row=0, column=0, padx=(0, 15))
+        self.station_ring_chart = self.create_enhanced_station_chart(station_chart_content)
+
+        # Right: Usage by Time of Day (NEW donut chart)
+        usage_time_content, _ = self.create_enhanced_stats_card(
+            main_charts_frame, "⏰ Usage by Time of Day", row=0, column=1, padx=(15, 0))
+        self.usage_time_ring_chart = self.create_usage_time_donut_chart(usage_time_content)
+        # Right: Peak Hours Analysis
+        peak_hours_content, _ = self.create_enhanced_stats_card(
+            main_charts_frame, "📈 Peak Operating Hours", row=0, column=1, padx=(15, 0))
+        self.peak_hours_chart = self.create_enhanced_peak_hours_chart(peak_hours_content)
+        
+        # Bottom Row - Three smaller charts
+        bottom_charts_frame = ctk.CTkFrame(parent, fg_color="transparent", height=350)  # Set minimum height
+        bottom_charts_frame.grid(row=2, column=0, sticky="nsew")
+        bottom_charts_frame.grid_columnconfigure(0, weight=1)
+        bottom_charts_frame.grid_columnconfigure(1, weight=1)
+        bottom_charts_frame.grid_columnconfigure(2, weight=1)
+        bottom_charts_frame.grid_rowconfigure(0, weight=1, minsize=350)  # Ensure minimum height
+        bottom_charts_frame.grid_propagate(False)  # Prevent shrinking
+        
+        # Weekly Trends
+        trends_content, _ = self.create_enhanced_stats_card(
+            bottom_charts_frame, "📊 Weekly Trends", row=0, column=0, padx=(0, 12))
+        self.weekly_trends_chart = self.create_enhanced_weekly_trends_chart(trends_content)
+        
+        # Popular Games
+        games_content, _ = self.create_enhanced_stats_card(
+            bottom_charts_frame, "🏆 Popular Games", row=0, column=1, padx=(12, 12))
+        self.popular_games_chart = self.create_enhanced_popular_games_chart(games_content)
+        
+        # Live Activity Monitor
+        activity_content, _ = self.create_enhanced_stats_card(
+            bottom_charts_frame, "⚡ Live Activity", row=0, column=2, padx=(12, 0))
+        self.activity_monitor = self.create_enhanced_activity_monitor(activity_content)
+        
+        # Create hidden elements for compatibility
+        self._create_hidden_compatibility_elements(parent)
+
+
+    def create_usage_time_donut_chart(self, parent):
+        """Donut chart showing usage by time of day (example data)"""
+        fig, ax = plt.subplots(figsize=(6, 5))
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+
+        # Example: Usage by time of day
+        time_labels = ['Morning', 'Afternoon', 'Evening', 'Night']
+        usage = [20, 50, 70, 10]
+        colors = ['#4CAF50', '#2196F3', '#FF9800', '#607D8B']
+
+        wedges, texts = ax.pie(
+            usage,
+            labels=None,
+            colors=colors,
+            startangle=90,
+            wedgeprops=dict(width=0.65, edgecolor='white', linewidth=3),
+            labeldistance=1.2
         )
 
-        usage_content.grid_columnconfigure(0, weight=2)
-        usage_content.grid_columnconfigure(1, weight=3)
-        
-        self.total_time_label = self.create_stats_metric_display(
-            usage_content, "Total Usage Time:", 0)
-        self.total_sessions_label = self.create_stats_metric_display(
-            usage_content, "Total Sessions:", 1)
-        self.avg_session_label = self.create_stats_metric_display(
-            usage_content, "Average Session:", 2)
-        
-        # Right card - Usage Chart
-        chart_content, _ = self.create_stats_card(
-            parent, "Usage Trends", row=0, column=1, padx=(5, 0), pady=(0, 10))
-        
-        self.summary_chart_frame = chart_content
-        self.summary_chart_canvas = self.create_stats_matplotlib_graph(chart_content)
-        self.summary_chart_canvas.get_tk_widget().pack(fill="both", expand=True, padx=5, pady=5)
-        
-        # Bottom row - Station Type Breakdown
-        station_type_content, _ = self.create_stats_card(
-            parent, "Station Type Breakdown", row=1, column=0, colspan=2)
-        
-        station_type_content.grid_columnconfigure(0, weight=3)
-        station_type_content.grid_columnconfigure(1, weight=2)
-        station_type_content.grid_rowconfigure(0, weight=1)
-        
-        # Table frame
-        tree_frame = ctk.CTkFrame(station_type_content, fg_color="transparent")
-        tree_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=5)
-        
-        self.type_tree = ttk.Treeview(
-            tree_frame, 
-            columns=('Station Type', 'Sessions', 'Total Time', 'Avg Time'), 
-            show='headings', 
-            height=6, 
-            style="Custom.Treeview"
-        )
-        self.type_tree.heading('Station Type', text='Station Type')
-        self.type_tree.heading('Sessions', text='Sessions')
-        self.type_tree.heading('Total Time', text='Total Time')
-        self.type_tree.heading('Avg Time', text='Avg Time')
-        
-        self.type_tree.column('Station Type', width=150, anchor='w')
-        self.type_tree.column('Sessions', width=80, anchor='center')
-        self.type_tree.column('Total Time', width=100, anchor='center')
-        self.type_tree.column('Avg Time', width=100, anchor='center')
-        
-        tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.type_tree.yview)
-        self.type_tree.configure(yscrollcommand=tree_scrollbar.set)
-        tree_scrollbar.pack(side="right", fill="y")
-        self.type_tree.pack(fill="both", expand=True)
-        
-        # Chart frame
-        chart_frame = ctk.CTkFrame(station_type_content, fg_color="transparent")
-        chart_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
-        
-        self.station_type_graph = self.create_stats_matplotlib_graph(chart_frame)
-        self.station_type_graph.get_tk_widget().pack(fill="both", expand=True)
+        ax.legend(wedges, time_labels, title="Time of Day", loc="center left", bbox_to_anchor=(1, 0.5), fontsize=11)
+        # ax.text(0, 0, f'{sum(usage)}\nSessions', ha='center', va='center', fontsize=18, fontweight='bold', color='white')
 
-    def setup_stats_station_tab(self, parent):
-        """Set up the station details tab"""
-        parent.grid_columnconfigure(0, weight=1)
-        parent.grid_rowconfigure(0, weight=0)
-        parent.grid_rowconfigure(1, weight=1)
-        
-        # Station selector card
-        selector_content, _ = self.create_stats_card(
-            parent, "Station Selection", row=0, column=0, pady=(0, 10))
-        
-        ctk.CTkLabel(
-            selector_content,
-            text="Select Station:",
-            font=self.stats_fonts["body"]
-        ).pack(side="left", padx=(5, 10), pady=10)
-        
-        self.station_var = tk.StringVar()
-        self.station_dropdown = ctk.CTkComboBox(
-            selector_content,
-            variable=self.station_var,
-            values=[],  # Empty the values list
-            state='readonly',
-            width=250,
-            height=32,
-            corner_radius=6,
-            dropdown_hover_color=self.stats_colors["hover"],
-            button_color=self.stats_colors["primary"],
-            button_hover_color=self.stats_colors["secondary"],
-            dropdown_fg_color=self.stats_colors["card_bg"]
-        )
-        self.station_dropdown.pack(side="left", padx=10, pady=10)
+        plt.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+        return canvas
 
-        # Populate the dropdown values and add scrollable dropdown
-        stations = self.stats_manager.get_all_stations()
-        self.station_scrollable = CTkScrollableDropdown(
-            self.station_dropdown,
-            values=stations,
-            command=lambda v: (self.station_var.set(v), self.update_stats_station_stats()),
-            width=250,
-            height=200,
-            font=("Roboto", 12),
-            justify="left",
-            resize=False,
-            button_height=32
+    def create_enhanced_metric_card(self, parent, icon, title, value, color, row, col):
+        """Create an enhanced metric card with modern styling"""
+        card_container = ctk.CTkFrame(parent, fg_color="transparent")
+        card_container.grid(row=row, column=col, sticky="nsew", padx=12, pady=8)
+        
+        # Main card with gradient-like effect
+        card = ctk.CTkFrame(
+            card_container,
+            fg_color=color,
+            corner_radius=15,
+            border_width=0,
+            height=110
         )
+        card.pack(fill="both", expand=True)
+        card.pack_propagate(False)
         
-        # Station details area
-        details_content, _ = self.create_stats_card(parent, "Station Statistics", row=1, column=0)
-        details_content.grid_columnconfigure(0, weight=1)
-        details_content.grid_columnconfigure(1, weight=1)
-        details_content.grid_rowconfigure(0, weight=1)
-        
-        # Left side - Station metrics
-        left_frame = ctk.CTkFrame(details_content, fg_color="transparent")
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=5)
-        
-        self.station_tree = ttk.Treeview(
-            left_frame,
-            columns=('Metric', 'Value'),
-            show='headings',
-            height=10,
-            style="Custom.Treeview"
+        # Overlay for depth effect
+        overlay = ctk.CTkFrame(
+            card,
+            fg_color=("white", "white"),
+            corner_radius=12,
+            height=8
         )
-        self.station_tree.heading('Metric', text='Metric')
-        self.station_tree.heading('Value', text='Value')
-        self.station_tree.column('Metric', width=150, anchor='w')
-        self.station_tree.column('Value', width=200, anchor='e')
+        overlay.place(relx=0.05, rely=0.05, relwidth=0.9, relheight=0.08)
+        overlay.configure(fg_color=(color, color))
         
-        tree_scrollbar = ttk.Scrollbar(left_frame, orient="vertical", command=self.station_tree.yview)
-        self.station_tree.configure(yscrollcommand=tree_scrollbar.set)
-        tree_scrollbar.pack(side="right", fill="y")
-        self.station_tree.pack(fill="both", expand=True)
+        # Content layout
+        content = ctk.CTkFrame(card, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=20, pady=15)
         
-        # Right side - Station usage chart
-        right_frame = ctk.CTkFrame(details_content, fg_color="transparent")
-        right_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=5)
+        # Header with icon and value
+        header = ctk.CTkFrame(content, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 10))
         
-        self.station_chart_frame = right_frame
-        self.station_type_usage_graph = self.create_stats_matplotlib_graph(right_frame)
-        self.station_type_usage_graph.get_tk_widget().pack(fill="both", expand=True)
+        icon_label = ctk.CTkLabel(
+            header,
+            text=icon,
+            font=("Segoe UI Emoji", 28),
+            text_color="white"
+        )
+        icon_label.pack(side="left")
+        
+        value_label = ctk.CTkLabel(
+            header,
+            text=value,
+            font=("Roboto", 24, "bold"),
+            text_color="white"
+        )
+        value_label.pack(side="right")
+        
+        # Title with better styling
+        title_label = ctk.CTkLabel(
+            content,
+            text=title,
+            font=("Roboto", 13, "bold"),
+            text_color="#E0E0E0"
+        )
+        title_label.pack(anchor="w")
+        
+        card.value_label = value_label
+        card.title_label = title_label
+        
+        return card
 
-    def setup_stats_games_tab(self, parent):
-        """Set up the game rankings tab"""
-        parent.grid_columnconfigure(0, weight=4)
-        parent.grid_columnconfigure(1, weight=3)
-        parent.grid_rowconfigure(0, weight=1)
-        
-        # Game rankings card - left side
-        games_content, _ = self.create_stats_card(
-            parent, "Game Rankings", row=0, column=0, padx=(0, 5))
-        
-        self.games_tree = ttk.Treeview(
-            games_content,
-            columns=('Rank', 'Game', 'Sessions', 'Total Time'),
-            show='headings',
-            height=15,
-            style="Custom.Treeview"
+    def create_enhanced_stats_card(self, parent, title, row=0, column=0, rowspan=1, colspan=1, padx=10, pady=10):
+        """Create an enhanced card with modern styling and shadow"""
+        # Shadow layer
+        shadow = ctk.CTkFrame(
+            parent,
+            fg_color="#1a1a1a",
+            corner_radius=15,
+            border_width=0
         )
-        self.games_tree.heading('Rank', text='Rank')
-        self.games_tree.heading('Game', text='Game')
-        self.games_tree.heading('Sessions', text='Sessions')
-        self.games_tree.heading('Total Time', text='Total Time')
+        shadow.grid(row=row, column=column, rowspan=rowspan, columnspan=colspan, 
+                  sticky="nsew", padx=(padx[0]+3 if isinstance(padx, tuple) else padx+3, 
+                                      padx[1]+3 if isinstance(padx, tuple) else padx+3), 
+                  pady=(pady[0]+3 if isinstance(pady, tuple) else pady+3,
+                        pady[1]+3 if isinstance(pady, tuple) else pady+3))
         
-        self.games_tree.column('Rank', width=50, anchor='center')
-        self.games_tree.column('Game', width=220, anchor='w')
-        self.games_tree.column('Sessions', width=80, anchor='center')
-        self.games_tree.column('Total Time', width=120, anchor='center')
-        
-        game_scrollbar = ttk.Scrollbar(games_content, orient="vertical", command=self.games_tree.yview)
-        self.games_tree.configure(yscrollcommand=game_scrollbar.set)
-        game_scrollbar.pack(side="right", fill="y")
-        self.games_tree.pack(fill="both", expand=True)
-        
-        # Game chart card - right side
-        chart_content, _ = self.create_stats_card(
-            parent, "Game Popularity", row=0, column=1, padx=(5, 0))
-        
-        self.game_rankings_frame = chart_content
-        self.game_rankings_graph = self.create_stats_matplotlib_graph(chart_content)
-        self.game_rankings_graph.get_tk_widget().pack(fill="both", expand=True)
-
-    def create_stats_card(self, parent, title, row=0, column=0, rowspan=1, colspan=1, padx=10, pady=10):
-        """Create a consistent card-style container for statistics"""
+        # Main card
         card = ctk.CTkFrame(
             parent, 
             fg_color=self.stats_colors["card_bg"],
-            corner_radius=10, 
-            border_width=0
+            corner_radius=15, 
+            border_width=1,
+            border_color="#3a3a3a"
         )
         card.grid(row=row, column=column, rowspan=rowspan, columnspan=colspan, 
                 sticky="nsew", padx=padx, pady=pady)
-        
-        # Add shadow effect
-        shadow = ctk.CTkFrame(
-            parent,
-            fg_color="gray20",
-            corner_radius=10,
-            border_width=0
-        )
-        
-        shadow_padx = self._stats_add_padding_offset(padx, 2)
-        shadow_pady = self._stats_add_padding_offset(pady, 2)
-        
-        shadow.grid(row=row, column=column, rowspan=rowspan, columnspan=colspan, 
-                sticky="nsew", padx=shadow_padx, pady=shadow_pady)
         card.lift()
         
-        # Card title
+        # Enhanced header
+        header_frame = ctk.CTkFrame(
+            card,
+            fg_color="#333333",
+            corner_radius=15,
+            height=50
+        )
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        
         title_label = ctk.CTkLabel(
-            card, 
+            header_frame, 
             text=title, 
-            font=self.stats_fonts["subheading"],
-            anchor="w", 
+            font=("Roboto", 16, "bold"),
             text_color=self.stats_colors["text_light"]
         )
-        title_label.pack(anchor="w", padx=15, pady=(15, 5))
+        title_label.pack(side="left", padx=20, pady=15)
         
-        # Separator
-        separator = ctk.CTkFrame(card, height=1, fg_color="gray40")
-        separator.pack(fill="x", padx=15, pady=(5, 10))
+        # Status indicator
+        status_indicator = ctk.CTkLabel(
+            header_frame,
+            text="●",
+            font=("Arial", 12),
+            text_color="#00FF00"
+        )
+        status_indicator.pack(side="right", padx=20, pady=15)
         
         # Container for content
         content_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -4677,42 +4657,680 @@ class GamingCenterApp(ctk.CTk):
         
         return content_frame, card
 
-    def _stats_add_padding_offset(self, padding, offset):
-        """Helper method for card shadows"""
-        if isinstance(padding, tuple):
-            return (padding[0] + offset, padding[1] + offset)
-        else:
-            return padding + offset
+    def create_enhanced_station_chart(self, parent):
+        """Create a cleaner, less crowded station usage donut chart"""
+        fig, ax = plt.subplots(figsize=(6, 5))
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
 
-    def create_stats_metric_display(self, parent, label_text, row, icon_name=None):
-        """Create a metric display with label and value"""
-        if icon_name:
-            icon_label = ctk.CTkLabel(
-                parent, 
-                text="●",
-                font=("Roboto", 16),
-                width=20,
-                text_color=self.stats_colors["accent"]
+        # Sample data
+        station_types = ['Xbox', 'Pool', 'Air Hockey', 'Ping-Pong', 'Foosball', 'Other']
+        usage_counts = [45, 32, 28, 25, 18, 12]
+        colors = ['#00843d', '#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#607D8B']
+
+        # Donut chart with larger hole, no percentage labels
+        wedges, texts = ax.pie(
+            usage_counts,
+            labels=None,  # No labels on the chart itself
+            colors=colors,
+            startangle=90,
+            wedgeprops=dict(width=0.65, edgecolor='white', linewidth=3),
+            labeldistance=1.2
+        )
+
+        # Add legend outside the chart
+        ax.legend(wedges, station_types, title="Station Type", loc="center left", bbox_to_anchor=(1, 0.5), fontsize=11)
+
+        # (No center text!)
+
+        plt.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+        return canvas
+
+    def create_enhanced_peak_hours_chart(self, parent):
+        """Create a cleaner peak hours line chart with better text positioning"""
+        fig, ax = plt.subplots(figsize=(6, 4))  # Reduced figure size
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        # Enhanced hourly data
+        hours = list(range(24))
+        usage_data = [2, 1, 1, 0, 0, 1, 3, 8, 12, 15, 18, 22, 25, 28, 32, 35, 30, 25, 20, 15, 12, 8, 5, 3]
+        
+        # Create gradient fill
+        ax.plot(hours, usage_data, 'o-', color='#00843d', linewidth=3, 
+                markersize=6, markerfacecolor='#00843d', markeredgecolor='white', 
+                markeredgewidth=1, alpha=0.9, zorder=3)
+        
+        # Gradient fill
+        ax.fill_between(hours, usage_data, alpha=0.3, color='#00843d')
+        
+        # Simplified styling - remove problematic annotations
+        ax.set_xticks(range(0, 24, 4))  # Show fewer x-axis labels
+        ax.set_xticklabels([f"{h:02d}h" for h in range(0, 24, 4)], 
+                        color='white', fontsize=9)  # Smaller font
+        ax.set_ylabel('Sessions', color='white', fontsize=10)
+        
+        # Minimal grid
+        ax.grid(True, alpha=0.2, color='white', linestyle='-', linewidth=0.5)
+        ax.set_axisbelow(True)
+        
+        # Remove spines
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=9)
+        
+        # Remove the legend and annotation to prevent overflow
+        # Instead, just show a simple title
+        ax.set_title("Peak Hours", color='white', fontsize=11, pad=10)
+        
+        # Tight layout with extra padding
+        plt.tight_layout(pad=1.5)
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
+        
+        return canvas
+
+    def create_enhanced_weekly_trends_chart(self, parent):
+        """Create weekly trends chart with LARGER figure size"""
+        fig, ax = plt.subplots(figsize=(5, 4))  # Increased from (4, 3.5)
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        days = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+        sessions = [12, 18, 25, 32, 28, 35, 22]
+        
+        x_pos = range(len(days))
+        
+        # Create bars with value labels (now that we have more space)
+        bars = ax.bar(x_pos, sessions, color='#00843d', width=0.6, 
+                    edgecolor='white', linewidth=1, alpha=0.8)
+        
+        # Add value labels on top of bars
+        for bar, value in zip(bars, sessions):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                    str(value), ha='center', va='bottom', color='white', 
+                    fontweight='bold', fontsize=10)
+        
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(days, color='white', fontsize=10)
+        ax.set_ylabel('Sessions', color='white', fontsize=10)
+        
+        # Minimal grid
+        ax.grid(True, alpha=0.2, color='white', linestyle='-', axis='y')
+        ax.set_axisbelow(True)
+        
+        # Remove spines
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=9)
+        ax.set_ylim(0, max(sessions) + 5)  # More space for labels
+        
+        plt.tight_layout(pad=1.2)
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
+        
+        return canvas
+
+    def create_enhanced_popular_games_chart(self, parent):
+        """Create popular games chart with LARGER figure size"""
+        fig, ax = plt.subplots(figsize=(5, 4))  # Increased from (4, 3.5)
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        # Use shorter but still readable names
+        games = ['Fortnite', 'Call of Duty', 'FIFA 24', 'Minecraft', 'Apex Legends']
+        hours = [45, 38, 32, 28, 22]
+        colors = ['#00843d', '#4CAF50', '#2196F3', '#FF9800', '#9C27B0']
+        
+        y_pos = range(len(games))
+        bars = ax.barh(y_pos, hours, color=colors, height=0.6,
+                    edgecolor='white', linewidth=1, alpha=0.9)
+        
+        # Add value labels INSIDE the bars (they should fit now)
+        for bar, value in zip(bars, hours):
+            if value > 15:  # Only show if bar is wide enough
+                ax.text(value/2, bar.get_y() + bar.get_height()/2,
+                    f'{value}h', ha='center', va='center',
+                    color='white', fontweight='bold', fontsize=10)
+        
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(games, color='white', fontsize=10)
+        ax.set_xlabel('Hours Played', color='white', fontsize=10)
+        
+        # Minimal grid
+        ax.grid(axis='x', alpha=0.2, color='white', linestyle='-')
+        ax.set_axisbelow(True)
+        
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=9)
+        ax.set_xlim(0, max(hours) + 5)
+        
+        plt.tight_layout(pad=1.2)
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
+        
+        return canvas
+
+    def create_enhanced_activity_monitor(self, parent):
+        container = ctk.CTkFrame(parent, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        scroll_frame = ctk.CTkScrollableFrame(
+            container,
+            fg_color="transparent",
+            corner_radius=8,
+            height=280
+        )
+        scroll_frame.pack(fill="both", expand=True)
+
+        self.activity_status_frame = scroll_frame
+        self.activity_status_widgets = {}  # Store widgets for each station
+
+        for station in self.stations:
+            status_item = ctk.CTkFrame(
+                self.activity_status_frame,
+                fg_color="#333333",
+                corner_radius=10,
+                border_width=2,
+                border_color="#444444",
+                height=55
             )
-            icon_label.grid(row=row, column=0, sticky="w", padx=(0, 5), pady=(10, 10))
+            status_item.pack(fill="x", pady=4, padx=8)
+            status_item.pack_propagate(False)
+
+            content = ctk.CTkFrame(status_item, fg_color="transparent")
+            content.pack(fill="both", expand=True, padx=15, pady=8)
+            content.grid_columnconfigure(1, weight=1)
+
+            # Status dot
+            status_frame = ctk.CTkFrame(content, fg_color="transparent", width=30)
+            status_frame.grid(row=0, column=0, sticky="w")
+            status_dot = ctk.CTkLabel(
+                status_frame,
+                text="●",
+                font=("Arial", 20),
+                text_color="#666666",
+                width=25
+            )
+            status_dot.pack()
+
+            # Info frame
+            info_frame = ctk.CTkFrame(content, fg_color="transparent")
+            info_frame.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+            info_frame.grid_columnconfigure(0, weight=1)
+            name_label = ctk.CTkLabel(
+                info_frame,
+                text=f"{station.station_type} {station.station_num}",
+                font=("Roboto", 13, "bold"),
+                text_color="white",
+                anchor="w"
+            )
+            name_label.grid(row=0, column=0, sticky="ew")
+            status_label = ctk.CTkLabel(
+                info_frame,
+                text="🟢 Available for use",
+                font=("Roboto", 10),
+                text_color="#aaaaaa",
+                anchor="w"
+            )
+            status_label.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+
+            # Time label
+            time_label = ctk.CTkLabel(
+                content,
+                text="💤 Free",
+                font=("Roboto", 11, "bold"),
+                text_color="#666666",
+                width=70
+            )
+            time_label.grid(row=0, column=2, sticky="e")
+
+            # Store references for fast update
+            self.activity_status_widgets[station] = {
+                "status_item": status_item,
+                "status_dot": status_dot,
+                "name_label": name_label,
+                "status_label": status_label,
+                "time_label": time_label
+            }
+
+        return container
+
+    def update_enhanced_activity_monitor(self):
+        """Efficiently update the activity monitor in-place."""
+        active_count = 0
+        for station in self.stations:
+            widgets = self.activity_status_widgets.get(station)
+            if not widgets:
+                continue
+
+            is_active = station.timer.is_running
+            # Update dot color
+            widgets["status_dot"].configure(text_color="#00FF00" if is_active else "#666666")
+            # Update name label (optional, if name can change)
+            widgets["name_label"].configure(text=f"{station.station_type} {station.station_num}")
+
+            # Update status label and time label
+            if is_active:
+                active_count += 1
+                elapsed = station.timer.get_time()
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                user_name = station.name_entry.get() if station.name_entry.get() else "Anonymous"
+                status_text = f"👤 {user_name} • ⏱️ {minutes:02d}:{seconds:02d}"
+                progress = min(elapsed / station.timer.time_limit, 1.0)
+                if progress >= 1.0:
+                    time_color = "#FF4444"
+                    time_text = "⚠️ OVER"
+                    widgets["status_item"].configure(border_color="#FF4444")
+                elif progress >= 0.8:
+                    time_color = "#FF8800"
+                    remaining_min = int((station.timer.time_limit - elapsed) / 60)
+                    time_text = f"⏰ {remaining_min}m"
+                    widgets["status_item"].configure(border_color="#FF8800")
+                else:
+                    time_color = "#00FF00"
+                    remaining_min = int((station.timer.time_limit - elapsed) / 60)
+                    time_text = f"✅ {remaining_min}m"
+                    widgets["status_item"].configure(border_color="#00FF00")
+            else:
+                status_text = "🟢 Available for use"
+                time_color = "#666666"
+                time_text = "💤 Free"
+                widgets["status_item"].configure(border_color="#444444")
+
+            widgets["status_label"].configure(text=status_text)
+            widgets["time_label"].configure(text=time_text, text_color=time_color)
+
+        # Update the active stations card
+        if hasattr(self, 'active_stations_card'):
+            self.active_stations_card.value_label.configure(text=str(active_count))
+
+    def create_enhanced_station_status_item(self, station):
+        """Create an enhanced status item for each station"""
+        status_item = ctk.CTkFrame(
+            self.activity_status_frame,
+            fg_color="#333333",
+            corner_radius=10,
+            border_width=2,
+            border_color="#444444",
+            height=55
+        )
+        status_item._is_station_status = True
+        status_item.pack(fill="x", pady=4, padx=8)
+        status_item.pack_propagate(False)
+        
+        content = ctk.CTkFrame(status_item, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=15, pady=8)
+        content.grid_columnconfigure(1, weight=1)
+        
+        # Enhanced status indicator
+        is_active = station.timer.is_running
+        status_colors = {
+            True: "#00FF00",
+            False: "#666666"
+        }
+        
+        status_frame = ctk.CTkFrame(content, fg_color="transparent", width=30)
+        status_frame.grid(row=0, column=0, sticky="w")
+        
+        status_dot = ctk.CTkLabel(
+            status_frame,
+            text="●",
+            font=("Arial", 20),
+            text_color=status_colors[is_active],
+            width=25
+        )
+        status_dot.pack()
+        
+        # Station information
+        info_frame = ctk.CTkFrame(content, fg_color="transparent")
+        info_frame.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+        info_frame.grid_columnconfigure(0, weight=1)
+        
+        # Station name
+        name_label = ctk.CTkLabel(
+            info_frame,
+            text=f"{station.station_type} {station.station_num}",
+            font=("Roboto", 13, "bold"),
+            text_color="white",
+            anchor="w"
+        )
+        name_label.grid(row=0, column=0, sticky="ew")
+        
+        # Status details
+        if is_active:
+            elapsed = station.timer.get_time()
+            minutes = int(elapsed // 60)
+            seconds = int(elapsed % 60)
+            user_name = station.name_entry.get() if station.name_entry.get() else "Anonymous"
+            status_text = f"👤 {user_name} • ⏱️ {minutes:02d}:{seconds:02d}"
+        else:
+            status_text = "🟢 Available for use"
+        
+        status_label = ctk.CTkLabel(
+            info_frame,
+            text=status_text,
+            font=("Roboto", 10),
+            text_color="#aaaaaa",
+            anchor="w"
+        )
+        status_label.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        
+        # Enhanced time indicator
+        if is_active:
+            progress = min(elapsed / station.timer.time_limit, 1.0)
+            if progress >= 1.0:
+                time_color = "#FF4444"
+                time_text = "⚠️ OVER"
+                status_item.configure(border_color="#FF4444")
+            elif progress >= 0.8:
+                time_color = "#FF8800"
+                remaining_min = int((station.timer.time_limit - elapsed) / 60)
+                time_text = f"⏰ {remaining_min}m"
+                status_item.configure(border_color="#FF8800")
+            else:
+                time_color = "#00FF00"
+                remaining_min = int((station.timer.time_limit - elapsed) / 60)
+                time_text = f"✅ {remaining_min}m"
+        else:
+            time_color = "#666666"
+            time_text = "💤 Free"
+        
+        time_label = ctk.CTkLabel(
+            content,
+            text=time_text,
+            font=("Roboto", 11, "bold"),
+            text_color=time_color,
+            width=70
+        )
+        time_label.grid(row=0, column=2, sticky="e")
+
+    def setup_stats_station_tab(self, parent):
+        """Set up an enhanced station details tab"""
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(0, weight=0)  # Selector
+        parent.grid_rowconfigure(1, weight=1)  # Content
+        
+        # Enhanced station selector
+        selector_content, _ = self.create_enhanced_stats_card(
+            parent, "🎯 Station Analysis", row=0, column=0, pady=(0, 20))
+        
+        selector_frame = ctk.CTkFrame(selector_content, fg_color="transparent")
+        selector_frame.pack(fill="x", pady=10)
         
         ctk.CTkLabel(
-            parent,
-            text=label_text,
-            font=self.stats_fonts["body"],
-            anchor="w"
-        ).grid(row=row, column=0, sticky="w", padx=(30, 10), pady=(10, 10))
+            selector_frame,
+            text="📍 Select Station:",
+            font=("Roboto", 14, "bold"),
+            text_color="white"
+        ).pack(side="left", padx=(5, 15))
         
-        value_label = ctk.CTkLabel(
-            parent,
-            text="Loading...",
-            font=self.stats_fonts["heading"],
-            anchor="e",
-            text_color=self.stats_colors["accent"]
+        self.station_var = tk.StringVar()
+        self.station_dropdown = ctk.CTkComboBox(
+            selector_frame,
+            variable=self.station_var,
+            values=[],
+            state='readonly',
+            width=300,
+            height=36,
+            corner_radius=10,
+            dropdown_hover_color=self.stats_colors["hover"],
+            button_color=self.stats_colors["primary"],
+            button_hover_color=self.stats_colors["secondary"],
+            dropdown_fg_color=self.stats_colors["card_bg"],
+            font=("Roboto", 12, "bold")
         )
-        value_label.grid(row=row, column=1, sticky="e", padx=(10, 0), pady=(10, 10))
+        self.station_dropdown.pack(side="left", padx=10)
+
+        # Populate dropdown and add scrollable functionality
+        stations = self.stats_manager.get_all_stations()
+        self.station_scrollable = CTkScrollableDropdown(
+            self.station_dropdown,
+            values=stations,
+            command=lambda v: (self.station_var.set(v), self.update_stats_station_stats()),
+            width=300,
+            height=220,
+            font=("Roboto", 12),
+            justify="left",
+            resize=False,
+            button_height=36
+        )
         
-        return value_label
+        # Enhanced details area
+        details_content, _ = self.create_enhanced_stats_card(
+            parent, "📊 Detailed Station Statistics", row=1, column=0)
+        details_content.grid_columnconfigure(0, weight=1)
+        details_content.grid_columnconfigure(1, weight=1)
+        details_content.grid_rowconfigure(0, weight=1)
+        
+        # Left side - Enhanced metrics table
+        left_frame = ctk.CTkFrame(details_content, fg_color="#333333", corner_radius=10)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 15), pady=10)
+        
+        # Custom styled treeview
+        style = ttk.Style()
+        style.configure("Enhanced.Treeview", 
+                       background="#333333", foreground="white", 
+                       fieldbackground="#333333", rowheight=30,
+                       font=("Roboto", 11))
+        style.configure("Enhanced.Treeview.Heading",
+                       background="#00843d", foreground="white",
+                       font=("Roboto", 12, "bold"))
+        
+        self.station_tree = ttk.Treeview(
+            left_frame,
+            columns=('Metric', 'Value'),
+            show='headings',
+            height=12,
+            style="Enhanced.Treeview"
+        )
+        self.station_tree.heading('Metric', text='📋 Metric')
+        self.station_tree.heading('Value', text='📈 Value')
+        self.station_tree.column('Metric', width=180, anchor='w')
+        self.station_tree.column('Value', width=150, anchor='e')
+        
+        tree_scrollbar = ctk.CTkScrollbar(left_frame, orientation="vertical", 
+                                         command=self.station_tree.yview)
+        self.station_tree.configure(yscrollcommand=tree_scrollbar.set)
+        tree_scrollbar.pack(side="right", fill="y", padx=(5, 10), pady=10)
+        self.station_tree.pack(fill="both", expand=True, padx=(10, 0), pady=10)
+        
+        # Right side - Enhanced usage chart
+        right_frame = ctk.CTkFrame(details_content, fg_color="#333333", corner_radius=10)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=(15, 0), pady=10)
+        
+        self.station_chart_frame = right_frame
+        self.station_type_usage_graph = self.create_stats_matplotlib_graph(right_frame)
+        self.station_type_usage_graph.get_tk_widget().pack(fill="both", expand=True, 
+                                                           padx=10, pady=10)
+        
+    def update_station_usage_donut(self, station_types):
+        """Update the station usage donut chart with new data."""
+        fig = self.station_ring_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        labels = list(station_types.keys())
+        usage_counts = [type_stats['sessions'] for type_stats in station_types.values()]
+        colors = [self.get_stats_station_color(label) for label in labels]
+        wedges, texts = ax.pie(
+            usage_counts,
+            labels=None,
+            colors=colors,
+            startangle=90,
+            wedgeprops=dict(width=0.65, edgecolor='white', linewidth=3),
+            labeldistance=1.2
+        )
+        ax.legend(wedges, labels, title="Station Type", loc="center left", bbox_to_anchor=(1, 0.5), fontsize=11)
+        fig.tight_layout()
+        self.station_ring_chart.draw()
+
+    def update_usage_time_donut(self, period):
+        """Update the usage by time of day donut chart with new data."""
+        usage_by_time = self.stats_manager.get_usage_by_time_of_day(period)
+        labels = list(usage_by_time.keys())
+        usage = list(usage_by_time.values())
+        colors = ['#4CAF50', '#2196F3', '#FF9800', '#607D8B'][:len(labels)]
+
+        fig = self.usage_time_ring_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+
+        if not usage or sum(usage) == 0:
+            ax.text(0.5, 0.5, "No data available", ha='center', va='center', fontsize=14, color='white')
+            ax.axis('off')
+        else:
+            wedges, texts = ax.pie(
+                usage,
+                labels=None,
+                colors=colors,
+                startangle=90,
+                wedgeprops=dict(width=0.65, edgecolor='white', linewidth=3),
+                labeldistance=1.2
+            )
+            ax.legend(wedges, labels, title="Time of Day", loc="center left", bbox_to_anchor=(1, 0.5), fontsize=11)
+        fig.tight_layout()
+        self.usage_time_ring_chart.draw()
+
+    def update_peak_hours_chart(self, period):
+        """Update the peak hours line chart with new data."""
+        usage_by_hour = self.stats_manager.get_usage_by_hour(period)
+        hours = list(range(24))
+        usage = [usage_by_hour.get(h, 0) for h in hours]
+
+        fig = self.peak_hours_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        ax.plot(hours, usage, 'o-', color='#00843d', linewidth=4,
+                markersize=8, markerfacecolor='#00843d', markeredgecolor='white',
+                markeredgewidth=2, alpha=0.9, zorder=3)
+        ax.fill_between(hours, usage, alpha=0.4, color='#00843d')
+        ax.set_xticks(range(0, 24, 3))
+        ax.set_xticklabels([f"{h:02d}:00" for h in range(0, 24, 3)],
+                        color='white', fontweight='bold', fontsize=11)
+        ax.set_ylabel('Active Sessions', color='white', fontweight='bold', fontsize=12)
+        ax.set_xlabel('Hour of Day', color='white', fontweight='bold', fontsize=12)
+        ax.grid(True, alpha=0.2, color='white', linestyle='-', linewidth=0.5)
+        ax.set_axisbelow(True)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=10)
+        ax.set_title("Peak Operating Hours", color='white', fontsize=12)
+        fig.tight_layout()
+        self.peak_hours_chart.draw()
+
+    def update_weekly_trends_chart(self, period):
+        """Update the weekly trends chart with new data."""
+        usage_by_day = self.stats_manager.get_usage_by_weekday(period)
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        sessions = [usage_by_day.get(d, 0) for d in days]
+
+        fig = self.weekly_trends_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        x_pos = range(len(days))
+        bars = ax.bar(x_pos, sessions, color='#00843d', width=0.7,
+                    edgecolor='white', linewidth=2, alpha=0.8)
+        for i, (bar, v) in enumerate(zip(bars, sessions)):
+            ax.text(bar.get_x() + bar.get_width()/2, v + 1, str(v),
+                    ha='center', va='bottom', color='white', fontweight='bold', fontsize=11)
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(days, color='white', fontweight='bold', fontsize=11)
+        ax.set_ylabel('Sessions', color='white', fontweight='bold', fontsize=11)
+        ax.grid(True, alpha=0.2, color='white', linestyle='-', axis='y')
+        ax.set_axisbelow(True)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=10)
+        ax.set_ylim(0, max(sessions) + 6 if sessions else 10)
+        ax.set_title("Weekly Trends", color='white', fontsize=12)
+        fig.tight_layout()
+        self.weekly_trends_chart.draw()
+
+    def update_popular_games_chart(self, game_rankings):
+        """Update the popular games chart with new data."""
+        games = list(game_rankings.keys())[:5]
+        hours = [game_rankings[g]['sessions'] for g in games]
+        colors = ['#00843d', '#4CAF50', '#2196F3', '#FF9800', '#9C27B0'][:len(games)]
+
+        fig = self.popular_games_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        y_pos = range(len(games))
+        bars = ax.barh(y_pos, hours, color=colors, height=0.7,
+                    edgecolor='white', linewidth=2, alpha=0.9)
+        for i, (bar, value) in enumerate(zip(bars, hours)):
+            ax.text(value + 1.5, bar.get_y() + bar.get_height()/2,
+                    f'{value} sessions', ha='left', va='center',
+                    color='white', fontweight='bold', fontsize=11)
+            rank_colors = ['#FFD700', '#C0C0C0', '#CD7F32', '#4CAF50', '#2196F3']
+            ax.text(-2, bar.get_y() + bar.get_height()/2, f'#{i+1}',
+                    ha='center', va='center', color=rank_colors[i],
+                    fontweight='bold', fontsize=12)
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(games, color='white', fontweight='bold', fontsize=11)
+        ax.set_xlabel('Sessions', color='white', fontweight='bold', fontsize=11)
+        ax.grid(axis='x', alpha=0.2, color='white', linestyle='-')
+        ax.set_axisbelow(True)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=10)
+        ax.set_xlim(-5, max(hours) + 8 if hours else 10)
+        ax.set_title("Popular Games", color='white', fontsize=12)
+        fig.tight_layout()
+        self.popular_games_chart.draw()
+
+
+    def update_stats(self, event=None):
+        """Update all statistics based on selected time period"""
+        period = self.stats_period_var.get()
+        
+        # Update status label if it exists
+        if hasattr(self, 'stats_status_label') and self.stats_status_label:
+            self.stats_status_label.configure(text=f"Loading {period} statistics...")
+            self.update_idletasks()
+        
+        stats = self.stats_manager.get_summary_stats(period)
+        game_rankings = self.stats_manager.get_game_rankings(period)
+        # You may want to add more stats fetches here as needed
+
+        self.animate_stats_label_update(self.total_time_label, stats['total_time'])
+        self.animate_stats_label_update(self.total_sessions_label, str(stats['total_sessions']))
+        self.animate_stats_label_update(self.avg_session_label, stats['avg_session'])
+
+        self.type_tree.delete(*self.type_tree.get_children())
+        for station_type, type_stats in stats['station_types'].items():
+            self.type_tree.insert('', 'end', values=(
+                station_type,
+                type_stats['sessions'],
+                type_stats['total_time'],
+                type_stats['avg_time']
+            ))
+
+        # Update all summary charts with new data
+        self.update_stats_summary_graph(stats)
+        self.update_stats_station_type_graph(stats['station_types'])
+        self.update_station_usage_donut(stats['station_types'])
+        self.update_usage_time_donut(period)
+        self.update_peak_hours_chart(period)
+        self.update_weekly_trends_chart(period)
+        self.update_popular_games_chart(game_rankings)
+
+        if hasattr(self, 'stats_status_label') and self.stats_status_label:
+            self.stats_status_label.configure(text=f"Showing statistics for: {period}")
 
     def create_stats_matplotlib_graph(self, parent):
         """Create a Matplotlib graph with dark theme"""
@@ -4738,92 +5356,11 @@ class GamingCenterApp(ctk.CTk):
         canvas.draw()
         return canvas
     
-    def update_stats(self, event=None):
-        """Update all statistics based on selected time period"""
-        period = self.stats_period_var.get()
-        
-        # Check if stats_status_label exists before using it
-        if hasattr(self, 'stats_status_label') and self.stats_status_label:
-            self.stats_status_label.configure(text=f"Loading {period} statistics...")
-            self.update_idletasks()
-        
-        stats = self.stats_manager.get_summary_stats(period)
-        
-        self.animate_stats_label_update(self.total_time_label, stats['total_time'])
-        self.animate_stats_label_update(self.total_sessions_label, str(stats['total_sessions']))
-        self.animate_stats_label_update(self.avg_session_label, stats['avg_session'])
-
-        self.type_tree.delete(*self.type_tree.get_children())
-        for station_type, type_stats in stats['station_types'].items():
-            self.type_tree.insert('', 'end', values=(
-                station_type,
-                type_stats['sessions'],
-                type_stats['total_time'],
-                type_stats['avg_time']
-            ))
-
-        # Check if stats_notebook exists (this appears to be from old code)
-        if hasattr(self, 'stats_notebook') and self.stats_notebook.get() == "Game Rankings":
-            self.update_stats_game_rankings()
-
-        self.update_stats_summary_graph(stats)
-        self.update_stats_station_type_graph(stats['station_types'])
-        
-        # Check if stats_status_label exists before using it
-        if hasattr(self, 'stats_status_label') and self.stats_status_label:
-            self.stats_status_label.configure(text=f"Showing statistics for: {period}")
-
     def animate_stats_label_update(self, label, new_value):
         """Animate label updates"""
         label.configure(text=new_value)
         self.update_idletasks()
 
-    def update_stats_station_stats(self, event=None):
-        """Update station statistics display"""
-        station = self.station_var.get()
-        if not station:
-            return
-            
-        # Check if stats_status_label exists before using it
-        if hasattr(self, 'stats_status_label') and self.stats_status_label:
-            self.stats_status_label.configure(text=f"Loading statistics for {station}...")
-            self.update_idletasks()
-        
-        stats = self.stats_manager.get_station_stats(station)
-        self.station_tree.delete(*self.station_tree.get_children())
-        
-        highlight_keys = ['Total Sessions', 'Total Time', 'Average Session']
-        for metric, value in stats.items():
-            tag = "highlight" if metric in highlight_keys else ""
-            item_id = self.station_tree.insert('', 'end', values=(metric, value), tags=(tag,))
-            if tag:
-                self.station_tree.tag_configure("highlight", background=self.stats_colors["primary"])
-        
-        self.update_stats_station_usage_graph(station)
-        
-        # Check if stats_status_label exists before using it
-        if hasattr(self, 'stats_status_label') and self.stats_status_label:
-            self.stats_status_label.configure(text=f"Showing statistics for: {station}")
-
-    def update_stats_game_rankings(self):
-        """Update the game rankings display"""
-        rankings = self.stats_manager.get_game_rankings(self.stats_period_var.get())
-        self.games_tree.delete(*self.games_tree.get_children())
-        
-        for rank, (game, stats) in enumerate(rankings.items(), 1):
-            tag = f"rank{rank}" if rank <= 3 else ""
-            self.games_tree.insert('', 'end', values=(
-                rank,
-                game,
-                stats['sessions'],
-                stats['total_time']
-            ), tags=(tag,))
-        
-        self.games_tree.tag_configure("rank1", background="#ffd700", foreground="#1a1a1a")
-        self.games_tree.tag_configure("rank2", background="#c0c0c0", foreground="#1a1a1a")
-        self.games_tree.tag_configure("rank3", background="#cd7f32", foreground="#1a1a1a")
-        
-        self.update_stats_game_rankings_graph(rankings)
 
     def update_stats_summary_graph(self, stats):
         """Update the summary graph"""
@@ -4858,6 +5395,29 @@ class GamingCenterApp(ctk.CTk):
         ax.set_title(f"Usage Summary: {self.stats_period_var.get()}", color='white', fontsize=12, pad=10)
         fig.tight_layout()
         self.summary_chart_canvas.draw()
+
+
+    def _stats_convert_time_to_minutes(self, time_str):
+        """Convert time string to minutes"""
+        try:
+            if 'day' in time_str:
+                days_part, time_part = time_str.split(', ')
+                days = int(days_part.split()[0])
+                hours, minutes, seconds = map(int, time_part.split(':'))
+                return days * 24 * 60 + hours * 60 + minutes
+            else:
+                parts = time_str.split(':')
+                if len(parts) == 3:
+                    hours, minutes, seconds = map(int, parts)
+                    return hours * 60 + minutes
+                elif len(parts) == 2:
+                    minutes, seconds = map(int, parts)
+                    return minutes
+        except Exception as e:
+            print(f"Error parsing time: {time_str}")
+            print(f"Error details: {e}")
+        return 0
+
 
     def update_stats_station_type_graph(self, station_types):
         """Update station type breakdown pie chart"""
@@ -4900,156 +5460,75 @@ class GamingCenterApp(ctk.CTk):
         fig.tight_layout()
         self.station_type_graph.draw()
 
-    def update_stats_station_usage_graph(self, station):
-        """Update station usage pattern graph"""
-        fig = self.station_type_usage_graph.figure
-        fig.clear()
-        
-        if not station:
-            return
-            
-        ax = fig.add_subplot(111)
-        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        
-        # Generate usage patterns (placeholder - would use real data)
-        import hashlib
-        seed = int(hashlib.md5(station.encode()).hexdigest(), 16) % 1000
-        np.random.seed(seed)
-        morning = np.random.randint(0, 5, 7)
-        afternoon = np.random.randint(1, 8, 7)
-        evening = np.random.randint(2, 10, 7)
-        
-        width = 0.6
-        ax.bar(days, morning, width, label='Morning', color=self.stats_colors["primary"])
-        ax.bar(days, afternoon, width, bottom=morning, label='Afternoon', color=self.stats_colors["secondary"])
-        ax.bar(days, evening, width, bottom=morning+afternoon, label='Evening', color=self.stats_colors["accent"])
-        
-        ax.set_title(f"Weekly Usage Pattern: {station}", color='white', fontsize=12)
-        ax.set_ylabel("Hours Used", color='white')
-        ax.legend(loc='upper right', facecolor=self.stats_colors["card_bg"], edgecolor='gray')
-        
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_color('gray')
-        ax.spines['bottom'].set_color('gray')
-        
-        fig.tight_layout()
-        self.station_type_usage_graph.draw()
+    
 
-    def update_stats_game_rankings_graph(self, rankings):
-        """Update game rankings graph"""
-        fig = self.game_rankings_graph.figure
-        fig.clear()
+    def setup_stats_games_tab(self, parent):
+        """Set up an enhanced game rankings tab"""
+        parent.grid_columnconfigure(0, weight=3)
+        parent.grid_columnconfigure(1, weight=2)
+        parent.grid_rowconfigure(0, weight=1)
         
-        if not rankings:
-            ax = fig.add_subplot(111)
-            ax.text(0.5, 0.5, "No game data available", 
-                    ha='center', va='center', fontsize=12, color='white')
-            fig.tight_layout()
-            self.game_rankings_graph.draw()
-            return
+        # Enhanced game rankings table
+        games_content, _ = self.create_enhanced_stats_card(
+            parent, "🏆 Game Popularity Rankings", row=0, column=0, padx=(0, 15))
         
-        games = list(rankings.keys())[:8]
-        sessions = [stats['sessions'] for game, stats in rankings.items()][:8]
+        # Custom styled treeview for games
+        style = ttk.Style()
+        style.configure("Games.Treeview",
+                       background="#333333", foreground="white",
+                       fieldbackground="#333333", rowheight=35,
+                       font=("Roboto", 11))
+        style.configure("Games.Treeview.Heading",
+                       background="#00843d", foreground="white",
+                       font=("Roboto", 12, "bold"))
         
-        ax = fig.add_subplot(111)
-        colors = self._stats_generate_color_gradient(
-            self.stats_colors["primary"], 
-            self.stats_colors["accent"], 
-            len(games)
+        self.games_tree = ttk.Treeview(
+            games_content,
+            columns=('Rank', 'Game', 'Sessions', 'Total Time'),
+            show='headings',
+            height=15,
+            style="Games.Treeview"
+        )
+        self.games_tree.heading('Rank', text='🥇 Rank')
+        self.games_tree.heading('Game', text='🎮 Game')
+        self.games_tree.heading('Sessions', text='🎯 Sessions')
+        self.games_tree.heading('Total Time', text='⏱️ Total Time')
+        
+        self.games_tree.column('Rank', width=60, anchor='center')
+        self.games_tree.column('Game', width=250, anchor='w')
+        self.games_tree.column('Sessions', width=100, anchor='center')
+        self.games_tree.column('Total Time', width=120, anchor='center')
+        
+        game_scrollbar = ctk.CTkScrollbar(games_content, orientation="vertical", 
+                                         command=self.games_tree.yview)
+        self.games_tree.configure(yscrollcommand=game_scrollbar.set)
+        game_scrollbar.pack(side="right", fill="y", padx=(5, 10), pady=10)
+        self.games_tree.pack(fill="both", expand=True, padx=(10, 0), pady=10)
+        
+        # Enhanced game visualization
+        chart_content, _ = self.create_enhanced_stats_card(
+            parent, "📊 Game Performance Chart", row=0, column=1, padx=(15, 0))
+        
+        self.game_rankings_frame = chart_content
+        self.game_rankings_graph = self.create_stats_matplotlib_graph(chart_content)
+        self.game_rankings_graph.get_tk_widget().pack(fill="both", expand=True, 
+                                                      padx=10, pady=10)
+
+    def _create_hidden_compatibility_elements(self, parent):
+        """Create hidden elements for backward compatibility"""
+        hidden_frame = ctk.CTkFrame(parent, fg_color="transparent", height=1)
+        hidden_frame.grid(row=10, column=0, columnspan=2, sticky="ew")
+        hidden_frame.grid_remove()
+        
+        self.type_tree = ttk.Treeview(
+            hidden_frame,
+            columns=('Type', 'Sessions', 'Total Time', 'Avg Time'),
+            show='headings',
+            height=0
         )
         
-        bars = ax.barh(
-            games, 
-            sessions, 
-            color=colors,
-            height=0.5, 
-            edgecolor='white',
-            linewidth=0.5
-        )
-        
-        for i, bar in enumerate(bars):
-            width = bar.get_width()
-            ax.text(
-                width - (max(sessions) * 0.05),
-                bar.get_y() + bar.get_height()/2,
-                f"{sessions[i]}",
-                va='center',
-                color='white',
-                fontweight='bold'
-            )
-        
-        ax.set_title("Most Popular Games", color='white', fontsize=12)
-        ax.set_xlabel("Number of Sessions", color='white')
-        labels = [textwrap.fill(game, 20) for game in games]
-        ax.set_yticks(range(len(games)))
-        ax.set_yticklabels(labels)
-        
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_color('gray')
-        ax.spines['bottom'].set_color('gray')
-        
-        fig.tight_layout()
-        self.game_rankings_graph.draw()
-
-    def _stats_convert_time_to_minutes(self, time_str):
-        """Convert time string to minutes"""
-        try:
-            if 'day' in time_str:
-                days_part, time_part = time_str.split(', ')
-                days = int(days_part.split()[0])
-                hours, minutes, seconds = map(int, time_part.split(':'))
-                return days * 24 * 60 + hours * 60 + minutes
-            else:
-                parts = time_str.split(':')
-                if len(parts) == 3:
-                    hours, minutes, seconds = map(int, parts)
-                    return hours * 60 + minutes
-                elif len(parts) == 2:
-                    minutes, seconds = map(int, parts)
-                    return minutes
-        except Exception as e:
-            print(f"Error parsing time: {time_str}")
-            print(f"Error details: {e}")
-        return 0
-
-    def _stats_generate_color_gradient(self, start_color, end_color, steps):
-        """Generate color gradient"""
-        def hex_to_rgb(hex_color):
-            hex_color = hex_color.lstrip('#')
-            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-        
-        def rgb_to_hex(rgb):
-            return '#{:02x}{:02x}{:02x}'.format(int(rgb[0]), int(rgb[1]), int(rgb[2]))
-        
-        start_rgb = hex_to_rgb(start_color)
-        end_rgb = hex_to_rgb(end_color)
-        
-        colors = []
-        for i in range(steps):
-            r = start_rgb[0] + (end_rgb[0] - start_rgb[0]) * i / (steps-1)
-            g = start_rgb[1] + (end_rgb[1] - start_rgb[1]) * i / (steps-1)
-            b = start_rgb[2] + (end_rgb[2] - start_rgb[2]) * i / (steps-1)
-            colors.append(rgb_to_hex((r, g, b)))
-        
-        return colors
-
-    def get_stats_station_color(self, station_type):
-        """Return color for station type"""
-        color_map = {
-            'XBOX': '#107C10',         # Xbox green
-            'Playstation': '#006FCD',  # PlayStation blue
-            'Switch': '#E60012',       # Nintendo red
-            'PC': '#00ADEF',           # Windows blue
-            'Ping-Pong': '#FF69B4',    # Hot pink
-            'PoolTable': '#008080',    # Teal
-            'Air Hockey': '#1E90FF',   # Dodger blue
-            'Foosball': '#FF8C00',     # Dark orange
-            'VR': '#9370DB',           # Medium purple
-            'Board Games': '#2E8B57'   # Sea green
-        }
-        return color_map.get(station_type, self.stats_colors["primary"])
+        self.summary_chart_canvas = self.create_stats_matplotlib_graph(hidden_frame)
+        self.station_type_graph = self.create_stats_matplotlib_graph(hidden_frame)
 
     def export_stats_to_excel(self):
         """Export statistics to Excel/CSV files"""
@@ -5131,6 +5610,30 @@ class GamingCenterApp(ctk.CTk):
                 self._font_family = "Helvetica"
         
         return self._font_family
+    
+    def get_stats_station_color(self, label):
+        """Return a color for each station type label (case-insensitive, covers all types)."""
+        color_map = {
+            'xbox': '#00843d',
+            'xbox one': '#00843d',
+            'switch': '#4CAF50',
+            'pool': '#4CAF50',
+            'pooltable': '#4CAF50',
+            'air hockey': '#2196F3',
+            'airhockey': '#2196F3',
+            'ping-pong': '#FF9800',
+            'pingpong': '#FF9800',
+            'foosball': '#9C27B0',
+            'other': '#607D8B'
+        }
+        key = str(label).replace(" ", "").replace("-", "").lower()
+        return color_map.get(key, '#00843d')  # Default to green if not found
+    
+    def start_activity_monitor_loop(self):
+        """Periodically update the active stations card and live activity monitor."""
+        self.update_enhanced_activity_monitor()
+        # Schedule the next update in 2 seconds (2000 ms)
+        self.after(2000, self.start_activity_monitor_loop)
 
 
     def load_station_states(self):
@@ -5202,6 +5705,7 @@ class GamingCenterApp(ctk.CTk):
                 station.update_button_states(is_active=was_running)
         except Exception as e:
             import traceback
+            import numpy as np
             print(f"Error loading station states: {e}")
             print(traceback.format_exc())
 
