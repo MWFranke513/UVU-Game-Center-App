@@ -4781,42 +4781,96 @@ class GamingCenterApp(ctk.CTk):
         return canvas
 
     def create_enhanced_popular_games_chart(self, parent):
-        """Create popular games chart with LARGER figure size"""
-        fig, ax = plt.subplots(figsize=(5, 4))  # Increased from (4, 3.5)
+        """Create a true podium-style chart for the top games"""
+        fig, ax = plt.subplots(figsize=(5, 4))
         fig.patch.set_facecolor(self.stats_colors["card_bg"])
         ax.set_facecolor(self.stats_colors["card_bg"])
         
-        # Use shorter but still readable names
-        games = ['Fortnite', 'Call of Duty', 'FIFA 24', 'Minecraft', 'Apex Legends']
-        hours = [45, 38, 32, 28, 22]
-        colors = ['#00843d', '#4CAF50', '#2196F3', '#FF9800', '#9C27B0']
+        # Sample data - top 4 games
+        games = ['Fortnite', 'Call of Duty', 'FIFA 24', 'Minecraft']
+        sessions = [45, 38, 32, 28]
         
-        y_pos = range(len(games))
-        bars = ax.barh(y_pos, hours, color=colors, height=0.6,
-                    edgecolor='white', linewidth=1, alpha=0.9)
+        # Create podium arrangement: 2nd, 1st, 3rd, 4th
+        # Rearrange data for podium effect (1st in center-left, 2nd on left, 3rd on center-right, 4th on right)
+        podium_order = [1, 0, 2, 3]  # indices: 2nd, 1st, 3rd, 4th
+        podium_games = [games[i] for i in podium_order]
+        podium_sessions = [sessions[i] for i in podium_order]
         
-        # Add value labels INSIDE the bars (they should fit now)
-        for bar, value in zip(bars, hours):
-            if value > 15:  # Only show if bar is wide enough
-                ax.text(value/2, bar.get_y() + bar.get_height()/2,
-                    f'{value}h', ha='center', va='center',
-                    color='white', fontweight='bold', fontsize=10)
+        # Define podium heights (2nd, 1st, 3rd, 4th)
+        podium_heights = [0.7, 1.0, 0.5, 0.3]  # 1st place tallest in position 1
         
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(games, color='white', fontsize=10)
-        ax.set_xlabel('Hours Played', color='white', fontsize=10)
+        # Podium colors for visual ranking
+        rank_colors = ['#C0C0C0', '#FFD700', '#CD7F32', '#4CAF50']  # Silver, Gold, Bronze, Green
         
-        # Minimal grid
-        ax.grid(axis='x', alpha=0.2, color='white', linestyle='-')
-        ax.set_axisbelow(True)
+        # Position bars with specific spacing for podium effect
+        x_positions = [0, 1, 2, 3]
         
+        # Create the podium bars with varying widths for more podium feel
+        bar_widths = [0.8, 1.0, 0.7, 0.6]  # 1st place gets widest bar
+        
+        bars = []
+        for i, (x, height, width, color) in enumerate(zip(x_positions, podium_heights, bar_widths, rank_colors)):
+            bar = ax.bar(x, height, width=width, color=color, 
+                        edgecolor='white', linewidth=3, alpha=0.9,
+                        zorder=3)
+            bars.append(bar)
+        
+        # Add podium base/platform effect
+        base_width = 4.5
+        base_height = 0.05
+        base_rect = ax.barh(0, base_width, height=base_height, 
+                        left=-0.5, color='#444444', alpha=0.8, zorder=1)
+        
+        # Add ranking medals/numbers at the top
+        rank_symbols = ['🥈', '🥇', '🥉', '4️⃣']
+        rank_numbers = ['2nd', '1st', '3rd', '4th']
+        
+        for i, (x, height, symbol, rank_num, game, session_count) in enumerate(
+            zip(x_positions, podium_heights, rank_symbols, rank_numbers, podium_games, podium_sessions)):
+            
+            # Add medal/symbol at the top
+            ax.text(x, height + 0.15, symbol, ha='center', va='bottom', 
+                fontsize=20, zorder=4)
+            
+            # Add rank number below medal
+            ax.text(x, height + 0.05, rank_num, ha='center', va='bottom',
+                color='white', fontweight='bold', fontsize=12, zorder=4)
+            
+            # Add game name in the middle of the bar
+            ax.text(x, height/2, game, ha='center', va='center',
+                color='white', fontweight='bold', fontsize=10,
+                rotation=0, zorder=4)
+            
+            # Add session count at the bottom
+            ax.text(x, 0.1, f'{session_count}', ha='center', va='center',
+                color='white', fontweight='bold', fontsize=14, zorder=4)
+        
+        # Add podium steps/separators for more 3D effect
+        for i, x in enumerate(x_positions[:-1]):
+            ax.axvline(x + 0.5, color='#666666', linewidth=1, alpha=0.5, zorder=2)
+        
+        # Customize the chart to look like a true podium
+        ax.set_xlim(-0.7, 3.7)
+        ax.set_ylim(0, 1.3)
+        ax.set_xticks([])  # Remove x-axis ticks
+        ax.set_yticks([])  # Remove y-axis ticks
+        
+        # Remove all spines to clean up the appearance
         for spine in ax.spines.values():
             spine.set_visible(False)
         
-        ax.tick_params(axis='both', colors='white', length=0, labelsize=9)
-        ax.set_xlim(0, max(hours) + 5)
+        # Add title with podium theme
+        ax.set_title("🏆 Game Champions Podium", color='white', fontsize=16, 
+                    fontweight='bold', pad=25)
         
-        plt.tight_layout(pad=1.2)
+        # Add subtle background gradient effect
+        ax.axhspan(0, 1.2, alpha=0.1, color='gold', zorder=0)
+        
+        # Add victory text
+        ax.text(1, -0.15, "🎮 Most Popular Games 🎮", ha='center', va='top',
+            color='#FFD700', fontsize=12, fontweight='bold')
+        
+        plt.tight_layout(pad=2.0)
         
         canvas = FigureCanvasTkAgg(fig, master=parent)
         canvas.draw()
@@ -5261,36 +5315,123 @@ class GamingCenterApp(ctk.CTk):
         self.weekly_trends_chart.draw()
 
     def update_popular_games_chart(self, game_rankings):
-        """Update the popular games chart with new data."""
-        games = list(game_rankings.keys())[:5]
-        hours = [game_rankings[g]['sessions'] for g in games]
-        colors = ['#00843d', '#4CAF50', '#2196F3', '#FF9800', '#9C27B0'][:len(games)]
-
+        """Update the podium-style popular games chart with new data."""
         fig = self.popular_games_chart.figure
         fig.clear()
         ax = fig.add_subplot(111)
-        y_pos = range(len(games))
-        bars = ax.barh(y_pos, hours, color=colors, height=0.7,
-                    edgecolor='white', linewidth=2, alpha=0.9)
-        for i, (bar, value) in enumerate(zip(bars, hours)):
-            ax.text(value + 1.5, bar.get_y() + bar.get_height()/2,
-                    f'{value} sessions', ha='left', va='center',
-                    color='white', fontweight='bold', fontsize=11)
-            rank_colors = ['#FFD700', '#C0C0C0', '#CD7F32', '#4CAF50', '#2196F3']
-            ax.text(-2, bar.get_y() + bar.get_height()/2, f'#{i+1}',
-                    ha='center', va='center', color=rank_colors[i],
-                    fontweight='bold', fontsize=12)
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(games, color='white', fontweight='bold', fontsize=11)
-        ax.set_xlabel('Sessions', color='white', fontweight='bold', fontsize=11)
-        ax.grid(axis='x', alpha=0.2, color='white', linestyle='-')
-        ax.set_axisbelow(True)
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        # Get top 4 games from the actual data
+        if not game_rankings:
+            # No data available - show placeholder
+            ax.text(0.5, 0.5, "No game data available", ha='center', va='center', 
+                    fontsize=14, color='white', transform=ax.transAxes)
+            ax.axis('off')
+            fig.tight_layout()
+            self.popular_games_chart.draw()
+            return
+        
+        # Get top 4 games and their session counts
+        top_games = list(game_rankings.keys())[:4]
+        sessions = [game_rankings[game]['sessions'] for game in top_games]
+        
+        # If we have fewer than 4 games, pad with empty slots
+        while len(top_games) < 4:
+            top_games.append("No Data")
+            sessions.append(0)
+        
+        # Create podium arrangement: 2nd, 1st, 3rd, 4th
+        podium_order = [1, 0, 2, 3]  # indices: 2nd, 1st, 3rd, 4th
+        podium_games = [top_games[i] if i < len(top_games) else "No Data" for i in podium_order]
+        podium_sessions = [sessions[i] if i < len(sessions) else 0 for i in podium_order]
+        
+        # Normalize heights for podium effect (tallest = 1.0)
+        max_sessions = max(sessions) if max(sessions) > 0 else 1
+        normalized_heights = [s / max_sessions for s in podium_sessions]
+        
+        # Define podium heights (2nd, 1st, 3rd, 4th) - scaled by actual data
+        base_heights = [0.7, 1.0, 0.5, 0.3]
+        podium_heights = [base_heights[i] * (0.3 + 0.7 * normalized_heights[i]) for i in range(4)]
+        
+        # Podium colors for visual ranking
+        rank_colors = ['#C0C0C0', '#FFD700', '#CD7F32', '#4CAF50']  # Silver, Gold, Bronze, Green
+        
+        # Position bars with specific spacing for podium effect
+        x_positions = [0, 1, 2, 3]
+        
+        # Create the podium bars with varying widths
+        bar_widths = [0.8, 1.0, 0.7, 0.6]  # 1st place gets widest bar
+        
+        bars = []
+        for i, (x, height, width, color) in enumerate(zip(x_positions, podium_heights, bar_widths, rank_colors)):
+            bar = ax.bar(x, height, width=width, color=color, 
+                        edgecolor='white', linewidth=3, alpha=0.9,
+                        zorder=3)
+            bars.append(bar)
+        
+        # Add podium base/platform effect
+        base_width = 4.5
+        base_height = 0.05
+        base_rect = ax.barh(0, base_width, height=base_height, 
+                        left=-0.5, color='#444444', alpha=0.8, zorder=1)
+        
+        # Add ranking medals/numbers at the top
+        rank_symbols = ['🥈', '🥇', '🥉', '4️⃣']
+        rank_numbers = ['2nd', '1st', '3rd', '4th']
+        
+        for i, (x, height, symbol, rank_num, game, session_count) in enumerate(
+            zip(x_positions, podium_heights, rank_symbols, rank_numbers, podium_games, podium_sessions)):
+            
+            # Skip empty slots
+            if game == "No Data" or session_count == 0:
+                continue
+                
+            # Add medal/symbol at the top
+            ax.text(x, height + 0.15, symbol, ha='center', va='bottom', 
+                fontsize=20, zorder=4)
+            
+            # Add rank number below medal
+            ax.text(x, height + 0.05, rank_num, ha='center', va='bottom',
+                color='white', fontweight='bold', fontsize=12, zorder=4)
+            
+            # Add game name in the middle of the bar (truncate if too long)
+            display_name = game[:10] + "..." if len(game) > 10 else game
+            ax.text(x, height/2, display_name, ha='center', va='center',
+                color='white', fontweight='bold', fontsize=9,
+                rotation=0, zorder=4)
+            
+            # Add session count at the bottom
+            ax.text(x, 0.1, str(session_count), ha='center', va='center',
+                color='white', fontweight='bold', fontsize=12, zorder=4)
+        
+        # Add podium steps/separators for more 3D effect
+        for i, x in enumerate(x_positions[:-1]):
+            ax.axvline(x + 0.5, color='#666666', linewidth=1, alpha=0.5, zorder=2)
+        
+        # Customize the chart to look like a true podium
+        ax.set_xlim(-0.7, 3.7)
+        ax.set_ylim(0, 1.3)
+        ax.set_xticks([])  # Remove x-axis ticks
+        ax.set_yticks([])  # Remove y-axis ticks
+        
+        # Remove all spines to clean up the appearance
         for spine in ax.spines.values():
             spine.set_visible(False)
-        ax.tick_params(axis='both', colors='white', length=0, labelsize=10)
-        ax.set_xlim(-5, max(hours) + 8 if hours else 10)
-        ax.set_title("Popular Games", color='white', fontsize=12)
-        fig.tight_layout()
+        
+        # Add title with podium theme
+        ax.set_title("🏆 Game Champions Podium", color='white', fontsize=16, 
+                    fontweight='bold', pad=25)
+        
+        # Add subtle background gradient effect
+        ax.axhspan(0, 1.2, alpha=0.1, color='gold', zorder=0)
+        
+        # Add victory text
+        total_games = len([g for g in top_games if g != "No Data"])
+        ax.text(1, -0.15, f"🎮 Top {total_games} Most Popular Games 🎮", ha='center', va='top',
+            color='#FFD700', fontsize=12, fontweight='bold')
+        
+        plt.tight_layout(pad=2.0)
         self.popular_games_chart.draw()
 
 
