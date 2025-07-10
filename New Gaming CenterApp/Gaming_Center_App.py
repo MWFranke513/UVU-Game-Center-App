@@ -35,6 +35,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 import json
 import os
+import ctypes
+from ctypes import wintypes
 
 # Configure customtkinter
 ctk.set_appearance_mode("dark")  # Default to light mode
@@ -211,23 +213,38 @@ class TimerManager:
 
 
 class CombinedTimer(ctk.CTkCanvas):
-    def __init__(self, parent, width=160, height=160):
+    def __init__(self, parent, width=160, height=160, app=None):
+        # Get responsive dimensions but keep scaling minimal
+        if hasattr(parent, 'responsive'):
+            self.responsive = parent.responsive
+        elif hasattr(parent, 'app') and hasattr(parent.app, 'responsive'):
+            self.responsive = parent.app.responsive
+        elif app and hasattr(app, 'responsive'):
+            self.responsive = app.responsive
+        else:
+            self.responsive = {'scale_factor': 1.0, 'font_scale': 1.0}
+        
+        # Keep timer size more consistent - less aggressive scaling
+        scale_factor = min(self.responsive['scale_factor'], 1.15)  # Cap scaling even more
+        
+        # Use original size as base but with minimal scaling
+        self.width = max(160, int(width * scale_factor))
+        self.height = max(160, int(height * scale_factor))
+        
         # Get parent background color
         parent_fg = parent.cget("fg_color")
         if isinstance(parent_fg, str) and parent_fg != "transparent":
             parent_bg = parent_fg
         else:
             appearance_mode = ctk.get_appearance_mode()
-            parent_bg = "#171717" if appearance_mode == "Dark" else "#e6f2ec"  # fallback color
+            parent_bg = "#171717" if appearance_mode == "Dark" else "#e6f2ec"
 
-        super().__init__(parent, width=width, height=height, 
+        super().__init__(parent, width=self.width, height=self.height, 
                          highlightthickness=0, bg=parent_bg)
         
         # Configure rendering quality
         self._configure_antialiasing()
         
-        self.width = width
-        self.height = height
         self.time_limit = 1 * 60
         self.warning_threshold = 0.8 * self.time_limit
         self.warning_threshold2 = 0.9 * self.time_limit
@@ -253,15 +270,21 @@ class CombinedTimer(ctk.CTkCanvas):
         self.station_type = None
         self.station_num = None
         
-        # Timer display
+        # Timer display with responsive sizing
         self.label_frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
         self.label_frame.place(relx=0.5, rely=0.5, anchor="center")
         
-        font_family = self.parent_station.app.get_font_family() if hasattr(self, 'parent_station') else "Helvetica"
+        # Get font family and apply CAPPED responsive scaling
+        font_family = "Helvetica"  # Default fallback
+        if hasattr(parent, 'app') and hasattr(parent.app, 'get_font_family'):
+            font_family = parent.app.get_font_family()
+        
+        # CAP the font scaling to prevent it from being too large
+        timer_font_size = max(12, int(14 * min(self.responsive['font_scale'], 1.1)))  # Minimum 12px, target 14px
         self.timer_label = ctk.CTkLabel(
             self.label_frame, 
             text="00:00:00", 
-            font=ctk.CTkFont(family=font_family, size=12, weight="normal"),
+            font=ctk.CTkFont(family=font_family, size=timer_font_size, weight="bold"),
             fg_color="transparent"
         )
         self.timer_label.pack(expand=True)
@@ -352,21 +375,24 @@ class CombinedTimer(ctk.CTkCanvas):
         return True
 
     def draw_ring(self, progress, color_override=None):
+        """Draw progress ring with better centering"""
         import PIL.Image, PIL.ImageDraw, PIL.ImageTk
         
-        scale = 8
+        # Use consistent scaling
+        scale = 3  # Fixed scale for quality
         width, height = int(self.width * scale), int(self.height * scale)
-        ring_width = int(min(width, height) * 0.07)
+        ring_width = max(8, int(min(width, height) * 0.08))  # Proportional ring width
         center = (width // 2, height // 2)
-        radius = int(min(center) * 0.97)
+        radius = int(min(center) * 0.85)  # Slightly smaller for better fit
         
         img = PIL.Image.new("RGBA", (width, height), (0, 0, 0, 0))
         draw = PIL.ImageDraw.Draw(img)
 
         # Background ring
+        bg_color = "#333333" if ctk.get_appearance_mode() == "Dark" else "#CCCCCC"
         draw.ellipse(
             [center[0]-radius, center[1]-radius, center[0]+radius, center[1]+radius],
-            outline="#333333" if ctk.get_appearance_mode() == "Dark" else "#CCCCCC",
+            outline=bg_color,
             width=ring_width
         )
 
@@ -388,10 +414,12 @@ class CombinedTimer(ctk.CTkCanvas):
                     width=1
                 )
 
+        # Resize back to canvas size
         img = img.resize((self.width, self.height), PIL.Image.LANCZOS)
         self._ring_img = PIL.ImageTk.PhotoImage(img)
         self.delete("all")
         self.create_image(self.width//2, self.height//2, image=self._ring_img)
+
 
     def update_timer(self):
         if self.is_running:
@@ -458,11 +486,12 @@ class CombinedTimer(ctk.CTkCanvas):
             self.parent_station.highlight_time_exceeded()
 
     def update_font(self):
-        """Update the timer font after parent_station is set"""
+        """Update the timer font after parent_station is set with responsive sizing"""
         if hasattr(self, 'parent_station') and hasattr(self.parent_station, 'app'):
             font_family = self.parent_station.app.get_font_family()
+            font_size = int(12 * self.responsive['font_scale'])
             self.timer_label.configure(
-                font=ctk.CTkFont(family=font_family, size=12, weight="normal")
+                font=ctk.CTkFont(family=font_family, size=font_size, weight="normal")
             )
 
 
@@ -506,16 +535,21 @@ class ShadowFrame(ctk.CTkFrame):
 
 class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
-        # Match the main app background color for better contrast
+        self.app = app
+        self.responsive = app.responsive  # Get responsive dimensions from app
+        
+        # Use responsive corner radius
+        corner_radius = int(15 * self.responsive['scale_factor'])
+        
         super().__init__(
             parent, 
             border_width=0,
             border_color="#333333", 
-            corner_radius=15,
-            fg_color="#171717"  # Keep only standard CTkFrame parameters
+            corner_radius=corner_radius,
+            fg_color="#171717"
         )
+        
         self.parent = parent
-        self.app = app
         self.station_type = station_type
         self.station_num = station_num
         
@@ -526,7 +560,6 @@ class Station(ctk.CTkFrame):
         self.grid_rowconfigure(1, weight=1)     # Middle row
         
         self.setup_ui()
-        # self.update_timer()
         
         # Ensure placeholders are shown after UI setup
         self.after(100, self.ensure_placeholders)
@@ -545,38 +578,46 @@ class Station(ctk.CTkFrame):
 
 
     def setup_ui(self):
-        # Standard styling
-        field_font = ctk.CTkFont(size=12)
-        field_height = 34
-        field_pady = 5
-        field_width = 140
+        # BACK TO ORIGINAL sizing with minimal responsive scaling
+        field_font_size = int(12 * min(self.responsive['font_scale'], 1.1))  # Cap scaling
+        field_height = int(34 * min(self.responsive['scale_factor'], 1.1))   # Cap scaling
+        field_width = int(140 * min(self.responsive['scale_factor'], 1.1))   # Cap scaling
+        field_pady = 5  # Back to original
         
-        # Custom placeholder colors - make sure they're visible
-        placeholder_color = "#333333"
+        field_font = ctk.CTkFont(size=field_font_size)
+        corner_radius = 10  # Back to original
         
-        # Header Frame
+        # Header Frame with ORIGINAL padding
         header_frame = ctk.CTkFrame(self, fg_color="transparent")
-        header_frame.grid(row=0, column=0, columnspan=3, sticky="nsew", padx=5, pady=5)
+        header_frame.grid(row=0, column=0, columnspan=3, sticky="nsew", 
+                        padx=5, pady=5)  # Back to original
         
-        # Station number label (always on the right)
+        # Station number label with ORIGINAL font
         font_family = self.app.get_font_family()
+        station_label_size = int(14 * min(self.responsive['font_scale'], 1.1))  # Cap scaling
         station_label = ctk.CTkLabel(
             header_frame, 
             text=f"Station {self.station_num}",
-            font=ctk.CTkFont(family=font_family, size=14, weight="bold")
+            font=ctk.CTkFont(family=font_family, size=station_label_size, weight="bold")
         )
-        station_label.pack(side="right", padx=5)
-        # Create a container frame for station type controls (left side)
+        station_label.pack(side="right", padx=5)  # Back to original
+        
+        # Station type controls with ORIGINAL sizes
         station_type_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         station_type_frame.pack(side="left")
         
-        # Handle different station types
+        # ORIGINAL icon and button sizes
+        icon_size = int(20 * min(self.responsive['icon_scale'], 1.1))  # Cap scaling
+        button_size = 40  # Back to original
+        button_corner_radius = 8  # Back to original
+        button_padding = 2  # Back to original
+        
+        # Console toggle buttons or static icons with ORIGINAL sizes
         if self.station_type in ["XBOX", "Switch"]:
-            # Console toggle buttons
             xbox_image = Image.open("./icon_cache/xbox-logo.png")
             switch_image = Image.open("./icon_cache/switch-logo.png")
-            xbox_icon = ctk.CTkImage(xbox_image, size=(20, 20))
-            switch_icon = ctk.CTkImage(switch_image, size=(20, 20))
+            xbox_icon = ctk.CTkImage(xbox_image, size=(icon_size, icon_size))
+            switch_icon = ctk.CTkImage(switch_image, size=(icon_size, icon_size))
             
             self.console_var = ctk.StringVar(value=self.station_type)
             
@@ -599,35 +640,34 @@ class Station(ctk.CTkFrame):
                 station_type_frame,
                 image=xbox_icon,
                 text="",
-                width=40,
-                height=40,
-                corner_radius=8,
+                width=button_size,
+                height=button_size,
+                corner_radius=button_corner_radius,
                 fg_color="transparent",
                 hover_color=("gray65", "gray35"),
                 command=lambda: select_console("XBOX")
             )
-            xbox_button.pack(side="left", padx=2)
+            xbox_button.pack(side="left", padx=button_padding)
             self.app.create_tooltip(xbox_button, "Xbox Console")
 
             switch_button = ctk.CTkButton(
                 station_type_frame,
                 image=switch_icon,
                 text="",
-                width=40,
-                height=40,
-                corner_radius=8,
+                width=button_size,
+                height=button_size,
+                corner_radius=button_corner_radius,
                 fg_color="transparent",
                 hover_color=("gray65", "gray35"),
                 command=lambda: select_console("Switch")
             )
-            switch_button.pack(side="left", padx=2)
+            switch_button.pack(side="left", padx=button_padding)
             self.app.create_tooltip(switch_button, "Nintendo Switch")
             
             update_button_states()
         else:
-            # Static icons for non-console stations
+            # Static icons with ORIGINAL sizes
             try:
-                # Choose the icon based on station type
                 if self.station_type == "PoolTable":
                     icon_path = "./icon_cache/pool.png"
                     tooltip_text = "Pool Table"
@@ -641,67 +681,66 @@ class Station(ctk.CTkFrame):
                     icon_path = "./icon_cache/ping-pong.png"
                     tooltip_text = "Ping-Pong Table"
                 else:
-                    icon_path = "./icon_cache/gamepad-2.png"  # Default icon
+                    icon_path = "./icon_cache/gamepad-2.png"
                     tooltip_text = self.station_type
                 
-                # Load and display the icon
                 icon_image = Image.open(icon_path)
-                station_icon = ctk.CTkImage(icon_image, size=(30, 30))
+                station_icon_size = int(30 * min(self.responsive['icon_scale'], 1.1))  # Cap scaling
+                station_icon = ctk.CTkImage(icon_image, size=(station_icon_size, station_icon_size))
                 
                 icon_label = ctk.CTkLabel(
                     station_type_frame,
                     image=station_icon,
                     text="",
-                    width=40,
-                    height=40,
+                    width=button_size,
+                    height=button_size,
                     fg_color="gray25",
-                    corner_radius=8
+                    corner_radius=button_corner_radius
                 )
-                icon_label.pack(side="left", padx=2)
+                icon_label.pack(side="left", padx=button_padding)
                 
-                # Add enhanced tooltip for the icon
                 self.app.create_tooltip(icon_label, tooltip_text)
                 
             except Exception as e:
                 print(f"Error loading icon for {self.station_type}: {e}")
         
-        # Left Input Column
+        # Left Input Column with ORIGINAL padding
         left_fields = ctk.CTkFrame(self, fg_color="transparent")
-        left_fields.grid(row=1, column=0, sticky="nsew", padx=(10,5), pady=field_pady)
+        left_fields.grid(row=1, column=0, sticky="nsew", 
+                        padx=(10, 5), pady=field_pady)  # Back to original
         
-        # Name Field with working placeholder
+        # Name Field with ORIGINAL height
+        name_entry_height = int(32 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
         self.name_entry = ctk.CTkEntry(
             left_fields,
             width=field_width,
-            height=32,
+            height=name_entry_height,
             border_width=1,
             border_color="#333333",
-            corner_radius=9,
+            corner_radius=corner_radius,
             fg_color="transparent",
             placeholder_text="Name",
             font=field_font,
-            placeholder_text_color="#565B5E"  # Set explicit placeholder color
+            placeholder_text_color="#565B5E"
         )
         self.name_entry.pack(fill="x", pady=field_pady)
-        self.add_active_glow(self.name_entry, "#00843d", "#333333")  # Add glow effect
+        self.add_active_glow(self.name_entry, "#00843d", "#333333")
         
-        # Game Dropdown (use CTkComboBox as anchor)
+        # Game Dropdown with ORIGINAL dimensions
         if self.station_type in ["XBOX", "Switch"]:
-            self.game_var = ctk.StringVar()
-            games = self.app.get_games_for_console(self.station_type)
-
-
             self.game_var = ctk.StringVar(value="Select Game")
+            games = self.app.get_games_for_console(self.station_type)
+            
             self.game_combobox = ctk.CTkComboBox(
                 left_fields,
                 variable=self.game_var,
-                values=games,  # Do NOT include "Select Game" in this list!
+                values=games,
                 width=field_width,
                 height=field_height,
                 border_width=1,
                 border_color="#333333",
                 fg_color="#171717",
-                corner_radius=9,
+                corner_radius=corner_radius,
                 font=field_font,
                 justify="left",
                 state="readonly"
@@ -711,101 +750,107 @@ class Station(ctk.CTkFrame):
             self.game_var.trace_add("write", self.update_game_combobox_color)
             self.update_game_combobox_color()
 
-            # Attach the scrollable dropdown
+            # Dropdown with ORIGINAL dimensions
+            dropdown_width = int(240 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
+            dropdown_height = int(220 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
+            button_height = int(32 * min(self.responsive['scale_factor'], 1.1))     # Cap scaling
+            
             self.game_dropdown = CTkScrollableDropdown(
                 self.game_combobox,
                 values=games,
                 command=lambda v: self.game_var.set(v),
-                width=240,
-                height=220,
+                width=dropdown_width,
+                height=dropdown_height,
                 font=field_font,
                 justify="left",
                 resize=False,
-                button_height=32  # Makes each option taller
+                button_height=button_height
             )
- 
 
         # Right Input Column
         right_fields = ctk.CTkFrame(self, fg_color="transparent")
-        right_fields.grid(row=1, column=2, sticky="nsew", padx=(5,10), pady=field_pady)
+        right_fields.grid(row=1, column=2, sticky="nsew", 
+                        padx=(5, 10), pady=field_pady)  # Back to original
         
-        # ID Field with working placeholder
+        # ID Field with ORIGINAL height
+        id_entry_height = int(32 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
         self.id_entry = ctk.CTkEntry(
             right_fields,
             width=field_width,
-            height=32,
+            height=id_entry_height,
             border_width=1,
             border_color="#333333",
             fg_color="transparent",
-            corner_radius=9,
+            corner_radius=corner_radius,
             placeholder_text="UVID (If Applicable)",
-            placeholder_text_color="#565B5E",  # Set explicit placeholder color
+            placeholder_text_color="#565B5E",
             font=field_font
         )
-        # Force focus and then remove focus to trigger the placeholder
         self.id_entry.pack(fill="x", pady=field_pady)
-        self.add_active_glow(self.id_entry, "#00843d", "#333333")  # Add glow effect
+        self.add_active_glow(self.id_entry, "#00843d", "#333333")
         
-        # Controller Dropdown (use CTkComboBox as anchor)
+        # Controller Dropdown with ORIGINAL dimensions
         if self.station_type in ["XBOX", "Switch"]:
             self.controller_var = ctk.StringVar(value="Number of Controllers")
             controllers = ["1", "2", "3", "4"]
             self.controller_combobox = ctk.CTkComboBox(
-            right_fields,
-            variable=self.controller_var,
-            values=controllers,
-            width=field_width,
-            height=field_height,
-            border_width=1,
-            border_color="#333333",
-            fg_color="#171717",
-            button_color="#333333",
-            button_hover_color="#888888",
-            corner_radius=9,
-            font=field_font,
-            justify="left",
-            state="readonly"
+                right_fields,
+                variable=self.controller_var,
+                values=controllers,
+                width=field_width,
+                height=field_height,
+                border_width=1,
+                border_color="#333333",
+                fg_color="#171717",
+                button_color="#333333",
+                button_hover_color="#888888",
+                corner_radius=corner_radius,
+                font=field_font,
+                justify="left",
+                state="readonly"
             )
             self.controller_combobox.pack(fill="x", pady=field_pady)
             self.add_active_glow(self.controller_combobox, "#00843d", "#333333")
             self.controller_var.trace_add("write", self.update_controller_combobox_color)
             self.update_controller_combobox_color()
             self.controller_combobox.configure(cursor="hand2")
-            self.controller_combobox.bind("<Enter>", lambda e: self.controller_combobox.configure(cursor="hand2"))
 
+            controller_dropdown_height = int(120 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
             self.controller_dropdown = CTkScrollableDropdown(
-            self.controller_combobox,
-            values=controllers,
-            command=lambda v: self.controller_var.set(v),
-            width=field_width,
-            height=120,
-            font=field_font,
-            justify="left"
+                self.controller_combobox,
+                values=controllers,
+                command=lambda v: self.controller_var.set(v),
+                width=field_width,
+                height=controller_dropdown_height,
+                font=field_font,
+                justify="left"
             )
 
-            # --- Apply same styling to the Game Dropdown ---
+            # Apply styling to game dropdown
             self.game_combobox.configure(
-            fg_color="#171717",
-            button_color="#333333",
-            button_hover_color="#888888",
-            border_width=1,
-            border_color="#333333",
-            corner_radius=9,
-            font=field_font,
-            justify="left",
-            state="readonly"
+                fg_color="#171717",
+                button_color="#333333",
+                button_hover_color="#888888",
+                border_width=1,
+                border_color="#333333",
+                corner_radius=corner_radius,
+                font=field_font,
+                justify="left",
+                state="readonly"
             )
             self.game_combobox.configure(cursor="hand2")
-            self.game_combobox.bind("<Enter>", lambda e: self.game_combobox.configure(cursor="hand2"))
 
-        # Center Timer Column
+        # Center Timer Column with ORIGINAL sizing
         timer_container = ctk.CTkFrame(self, fg_color="transparent")
-        timer_container.grid(row=1, column=1, sticky="ns", padx=10)
+        timer_container.grid(row=1, column=1, sticky="ns", padx=10)  # Back to original
         
-        self.timer = CombinedTimer(timer_container, width=160, height=160)
-        self.timer.pack(pady=10)
+        # ORIGINAL timer size - this is key for visibility
+        timer_size = 160  # Back to original - no scaling!
+        timer_padding = 10  # Back to original
+        self.timer = CombinedTimer(timer_container, width=timer_size, height=timer_size, app=self.app)
+        self.timer.pack(pady=timer_padding)
         
-        # Connect fields to timer
+        # Connect fields to timer (same as before)
         self.timer.name_entry = self.name_entry
         self.timer.id_entry = self.id_entry
         self.timer.parent_station = self
@@ -821,73 +866,82 @@ class Station(ctk.CTkFrame):
             self.timer.controller_var = self.controller_var
             self.timer.controller_dropdown = self.controller_dropdown
 
-        # Control Buttons
+        # Control Buttons with ORIGINAL sizing
         button_frame = ctk.CTkFrame(self, fg_color="transparent")
-        button_frame.grid(row=2, column=0, columnspan=3, sticky="sew", padx=10, pady=(0, 5))
+        button_frame.grid(row=2, column=0, columnspan=3, sticky="sew", 
+                        padx=10, pady=(0, 5))  # Back to original
         
         btn_container = ctk.CTkFrame(button_frame, fg_color="transparent")
         btn_container.pack()
         
-        # Load button icons with white color for inactive state
-        self.start_icon_inactive = self.colorize_icon("./icon_cache/play.png", "#FFFFFF")
-        self.stop_icon_inactive = self.colorize_icon("./icon_cache/square.png", "#FFFFFF")
-        self.reset_icon_inactive = self.colorize_icon("./icon_cache/refresh-ccw.png", "#FFFFFF")
+        # Load button icons with ORIGINAL sizing
+        button_icon_size = int(15 * min(self.responsive['icon_scale'], 1.1))  # Cap scaling
+        self.start_icon_inactive = self.colorize_icon("./icon_cache/play.png", "#FFFFFF", button_icon_size)
+        self.stop_icon_inactive = self.colorize_icon("./icon_cache/square.png", "#FFFFFF", button_icon_size)
+        self.reset_icon_inactive = self.colorize_icon("./icon_cache/refresh-ccw.png", "#FFFFFF", button_icon_size)
         
-        # Load button icons with color for active state
-        self.start_icon_active = self.colorize_icon("./icon_cache/play.png", "#4DA977")
-        self.stop_icon_active = self.colorize_icon("./icon_cache/square.png", "#A3483F")
-        self.reset_icon_active = self.colorize_icon("./icon_cache/refresh-ccw.png", "#00BFB3")
+        self.start_icon_active = self.colorize_icon("./icon_cache/play.png", "#4DA977", button_icon_size)
+        self.stop_icon_active = self.colorize_icon("./icon_cache/square.png", "#A3483F", button_icon_size)
+        self.reset_icon_active = self.colorize_icon("./icon_cache/refresh-ccw.png", "#00BFB3", button_icon_size)
         
-        # Green Start button (initially inactive)
+        # ORIGINAL button sizing
+        button_width = 80  # Back to original
+        button_height = 30  # Back to original
+        button_corner_radius = 20  # Back to original
+        button_padx = 5  # Back to original
+        button_font_size = int(12 * min(self.responsive['font_scale'], 1.1))  # Cap scaling
+        
+        # Create buttons with ORIGINAL sizing
         start_button = ctk.CTkButton(
             btn_container, 
             image=self.start_icon_inactive, 
             text="Start", 
             command=self.timer.start,
-            width=80,
-            height=30,
-            corner_radius=20,
+            width=button_width,
+            height=button_height,
+            corner_radius=button_corner_radius,
             fg_color="transparent",
             border_width=1,
             border_color="#00843d",
             text_color="#FFFFFF",
-            hover_color="#1a2e28"
+            hover_color="#1a2e28",
+            font=ctk.CTkFont(size=button_font_size)
         )
-        start_button.pack(side="left", padx=5)
+        start_button.pack(side="left", padx=button_padx)
         
-        # Red Stop button (initially inactive)
         stop_button = ctk.CTkButton(
             btn_container,
             image=self.stop_icon_inactive,
             text="Stop",
             command=self.timer.stop,
-            width=80,
-            height=30,
-            corner_radius=20,
+            width=button_width,
+            height=button_height,
+            corner_radius=button_corner_radius,
             fg_color="transparent",
             border_width=1,
             border_color="#00843d",
             text_color="#FFFFFF",
-            hover_color="#1a2e28"
+            hover_color="#1a2e28",
+            font=ctk.CTkFont(size=button_font_size)
         )
-        stop_button.pack(side="left", padx=5)
+        stop_button.pack(side="left", padx=button_padx)
         
-        # Blue Reset button (initially inactive)
         reset_button = ctk.CTkButton(
             btn_container,
             image=self.reset_icon_inactive,
             text="Reset",
             command=self.reset_timer,
-            width=80,
-            height=30,
-            corner_radius=20,
+            width=button_width,
+            height=button_height,
+            corner_radius=button_corner_radius,
             fg_color="transparent",
             border_width=1,
             border_color="#00843d",
             text_color="#FFFFFF",
-            hover_color="#1a2e28"
+            hover_color="#1a2e28",
+            font=ctk.CTkFont(size=button_font_size)
         )
-        reset_button.pack(side="left", padx=5)
+        reset_button.pack(side="left", padx=button_padx)
         
         # Store buttons for later state management
         self.start_button = start_button
@@ -896,7 +950,6 @@ class Station(ctk.CTkFrame):
         
         # Initialize button states
         self.update_button_states(is_active=False)
-
 
 
     def add_active_glow(self, widget, glow_color="#00FFD0", normal_color="#333333", steps=8, duration=120):
@@ -917,6 +970,9 @@ class Station(ctk.CTkFrame):
         def interpolate_color(c1, c2, t):
             return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
 
+        # Scale the duration based on responsive scaling
+        scaled_duration = int(duration * self.responsive['scale_factor'])
+        
         def fade_to(target_color, start_color, step=0):
             if step > steps:
                 widget.configure(border_color=target_color)
@@ -924,7 +980,7 @@ class Station(ctk.CTkFrame):
             t = step / steps
             rgb = interpolate_color(hex_to_rgb(start_color), hex_to_rgb(target_color), t)
             widget.configure(border_color=rgb_to_hex(rgb))
-            widget.after(duration // steps, lambda: fade_to(target_color, start_color, step + 1))
+            widget.after(scaled_duration // steps, lambda: fade_to(target_color, start_color, step + 1))
 
         def on_focus_in(event):
             fade_to(glow_color, widget._original_border_color)
@@ -937,8 +993,8 @@ class Station(ctk.CTkFrame):
             widget.bind("<FocusIn>", on_focus_in)
             widget.bind("<FocusOut>", on_focus_out)
 
-    def colorize_icon(self, icon_path, color_hex):
-        """Recolor an icon to match the button text color"""
+    def colorize_icon(self, icon_path, color_hex, size=15):
+        """Recolor an icon to match the button text color with responsive sizing"""
         # Open the icon
         img = Image.open(icon_path).convert("RGBA")
         
@@ -949,7 +1005,7 @@ class Station(ctk.CTkFrame):
         result = Image.new("RGBA", img.size, (0, 0, 0, 0))
         result.paste(colored, (0, 0), img)
         
-        return ctk.CTkImage(result, size=(15, 15))
+        return ctk.CTkImage(result, size=(size, size))
     
 
     def update_button_states(self, is_active):
@@ -3537,16 +3593,44 @@ This action cannot be undone."""
 class GamingCenterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+
+        # IMPORTANT: Make DPI-aware BEFORE creating any UI elements
+        self.make_dpi_aware()
+        
+        # Get responsive dimensions (now DPI-aware)
+        self.responsive = self.get_responsive_dimensions()
+
+        # Calculate DPI-aware window size
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Use effective resolution for window sizing
+        effective_width = screen_width / self.responsive['dpi_scale']
+        effective_height = screen_height / self.responsive['dpi_scale']
+
+        window_width = int(effective_width * 0.85)
+        window_height = int(effective_height * 0.85)
+
+        # Center the window using physical coordinates
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+
         self.title("Gaming Center App")
-        self.geometry("1500x1100")
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.resizable(True, True)      
+        self.minsize(
+            int(1400 * self.responsive['scale_factor']), 
+            int(900 * self.responsive['scale_factor'])
+        )
+        
         self._font_family = None
         self.load_orbitron_font()
         self.stations = []
         self.waitlist = []
         self.timers = []
         self.waitlist_tree = None
-        self.pages = {}  # Add this to hold your pages
-        self.active_sidebar_btn = None  # Track active sidebar button
+        self.pages = {}
+        self.active_sidebar_btn = None
 
         self.reservation_system = ReservationSystem(self)
 
@@ -3557,45 +3641,204 @@ class GamingCenterApp(ctk.CTk):
         self.main_container = ctk.CTkFrame(self, fg_color="#090A09", corner_radius=0)
         self.main_container.pack(fill="both", expand=True, padx=0, pady=0)
         
-        # Create top bar
-        top_bar = ctk.CTkFrame(self.main_container, fg_color="#171717", height=40, corner_radius=0)
+        # Create top bar with responsive height
+        top_bar = ctk.CTkFrame(self.main_container, fg_color="#171717", 
+                            height=self.responsive['topbar_height'], corner_radius=0)
         top_bar.pack(fill="x")
         top_bar.pack_propagate(False)
         self.top_bar = top_bar
         
-        # Create sidebar
-        sidebar = ctk.CTkFrame(self.main_container, fg_color="#171717", width=85, corner_radius=0)
+        # Create sidebar with responsive width
+        sidebar = ctk.CTkFrame(self.main_container, fg_color="#171717", 
+                            width=self.responsive['sidebar_width'], corner_radius=0)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
         self.sidebar = sidebar
         
-        # Create content area
+        # Create content area with responsive corner radius
         content_container = ctk.CTkFrame(self.main_container, fg_color="#090A09", corner_radius=0)
         content_container.pack(side="right", fill="both", expand=True)
         
         content_area = ctk.CTkFrame(
             content_container, 
             fg_color="#090A09",
-            corner_radius=30
+            corner_radius=self.responsive['corner_radius']
         )
-        content_area.pack(fill="both", expand=True, padx=(0, 10), pady=(10, 10))
+        content_area.pack(fill="both", expand=True, 
+                        padx=(0, int(10 * self.responsive['scale_factor'])), 
+                        pady=(int(10 * self.responsive['scale_factor']), 
+                            int(10 * self.responsive['scale_factor'])))
         
         inner_content = ctk.CTkFrame(
             content_area,
             fg_color="#090A09",
-            corner_radius=25
+            corner_radius=int(25 * self.responsive['scale_factor'])
         )
-        inner_content.pack(fill="both", expand=True, padx=15, pady=15)
+        inner_content.pack(fill="both", expand=True, 
+                        padx=int(15 * self.responsive['scale_factor']), 
+                        pady=int(15 * self.responsive['scale_factor']))
         self.content_area = inner_content
         
         # Setup UI components
         self.setup_top_bar(top_bar)
         self.setup_sidebar(sidebar)
-        self.setup_pages()  # New method to create all pages
-        self.show_page("home")  # Show home by default
+        self.setup_pages()
+        self.show_page("home")
         self.create_arch_overlay()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        # Load saved station states
+        self.load_station_states()
+
+    def get_responsive_dimensions(self):
+        """Get responsive dimensions with MINIMAL scaling for better visibility"""
+        # Get actual screen dimensions
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        # Get DPI scaling factor
+        dpi_scale = self.get_dpi_scaling_factor()
+        
+        # Calculate effective resolution (what the user actually sees)
+        effective_width = screen_width / dpi_scale
+        effective_height = screen_height / dpi_scale
+        
+        print(f"Physical resolution: {screen_width}x{screen_height}")
+        print(f"DPI scale factor: {dpi_scale}")
+        print(f"Effective resolution: {effective_width}x{effective_height}")
+        
+        # MUCH more conservative base scaling - barely any scaling
+        if effective_width >= 2560:  # 4K effective
+            base_scale = 1.1  # Reduced from 1.2
+        elif effective_width >= 1920:  # 1080p effective
+            base_scale = 1.0  # No scaling
+        elif effective_width >= 1600:  # 1600x900 effective
+            base_scale = 1.0  # No scaling
+        elif effective_width >= 1366:  # 1366x768 effective
+            base_scale = 1.0  # No scaling
+        else:  # Smaller effective screens
+            base_scale = 0.95  # Very minimal reduction
+        
+        # Only apply DPI scaling if it's very high
+        if dpi_scale > 1.5:
+            # Apply very minimal DPI scaling for high DPI displays
+            final_scale = base_scale * (1 + (dpi_scale - 1) * 0.2)  # Only 20% of DPI scaling
+        else:
+            # For normal DPI, just use base scaling
+            final_scale = base_scale
+        
+        print(f"Base scale: {base_scale}, Final scale: {final_scale}")
+        
+        return {
+            'scale_factor': final_scale,
+            'dpi_scale': dpi_scale,
+            'base_scale': base_scale,
+            'effective_width': effective_width,
+            'effective_height': effective_height,
+            'sidebar_width': 85,  # Keep original size
+            'topbar_height': 40,  # Keep original size
+            'corner_radius': 15,  # Keep original size
+            'station_min_width': 400,  # Keep original size
+            'station_min_height': 300,  # Keep original size
+            'font_scale': final_scale,
+            'icon_scale': final_scale,
+            'chart_scale': final_scale,
+            'padding_scale': final_scale
+        }
+
+    def get_dpi_scaling_factor(self):
+        """Get the Windows DPI scaling factor"""
+        try:
+            # Windows-specific DPI detection
+            if hasattr(ctypes.windll, 'shcore'):
+                # Windows 8.1+ method
+                ctypes.windll.shcore.SetProcessDpiAwareness(1)
+                
+            # Get DPI for the primary monitor
+            hdc = ctypes.windll.user32.GetDC(0)
+            dpi_x = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+            dpi_y = ctypes.windll.gdi32.GetDeviceCaps(hdc, 90)  # LOGPIXELSY
+            ctypes.windll.user32.ReleaseDC(0, hdc)
+            
+            # Standard DPI is 96
+            dpi_scale_x = dpi_x / 96.0
+            dpi_scale_y = dpi_y / 96.0
+            
+            # Use the average (they should be the same)
+            dpi_scale = (dpi_scale_x + dpi_scale_y) / 2.0
+            
+            print(f"System DPI: {dpi_x}x{dpi_y}, Scale factor: {dpi_scale}")
+            return dpi_scale
+            
+        except Exception as e:
+            print(f"Could not detect DPI scaling: {e}")
+            # Fallback: try to detect from tkinter's scaling
+            try:
+                # Get tkinter's scaling factor
+                tk_scale = self.tk.call('tk', 'scaling')
+                return tk_scale
+            except:
+                return 1.0  # No scaling
+
+    def make_dpi_aware(self):
+        """Make the application DPI-aware on Windows"""
+        try:
+            if hasattr(ctypes.windll, 'shcore'):
+                # Tell Windows we handle DPI scaling ourselves
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+            else:
+                # Fallback for older Windows versions
+                ctypes.windll.user32.SetProcessDPIAware()
+            print("Application set to DPI-aware mode")
+            return True
+        except Exception as e:
+            print(f"Could not set DPI awareness: {e}")
+            return False
+
+    def get_responsive_font(self, base_size, weight="normal"):
+        """Get a font with DPI-aware responsive sizing"""
+        # Apply both base scaling and DPI scaling
+        final_size = int(base_size * self.responsive['font_scale'])
+        
+        # Ensure minimum readable size
+        final_size = max(final_size, 8)
+        
+        return ctk.CTkFont(
+            family=self.get_font_family(), 
+            size=final_size, 
+            weight=weight
+        )
+
+    def update_all_fonts_for_dpi(self):
+        """Update all fonts when DPI changes"""
+        # Update station timer fonts
+        for station in self.stations:
+            if hasattr(station.timer, 'timer_label'):
+                new_font = self.get_responsive_font(12)
+                station.timer.timer_label.configure(font=new_font)
+
+    def load_dpi_aware_image(self, image_path, base_size):
+        """Load images with DPI-aware scaling"""
+        scaled_size = (
+            int(base_size[0] * self.responsive['icon_scale']),
+            int(base_size[1] * self.responsive['icon_scale'])
+        )
+        
+        # Ensure minimum size for readability
+        scaled_size = (
+            max(scaled_size[0], 16),
+            max(scaled_size[1], 16)
+        )
+        
+        try:
+            image = Image.open(image_path)
+            return ctk.CTkImage(image, size=scaled_size)
+        except Exception as e:
+            print(f"Error loading image {image_path}: {e}")
+            return None
+
+
 
     def setup_pages(self):
         # Create all pages as frames, but only pack/grid the active one
@@ -3775,46 +4018,37 @@ class GamingCenterApp(ctk.CTk):
         return f"#{int(rgb[0]):02x}{int(rgb[1]):02x}{int(rgb[2]):02x}"
 
     def setup_home_page(self, frame):
+        responsive_padx = 20
+        responsive_pady = 20
+
         main_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        frames_to_focus = [main_frame, frame]
+        main_frame.pack(fill="both", expand=True, padx=responsive_padx, pady=responsive_pady)
 
-        for f in frames_to_focus:
-            f.bind("<Button-1>", lambda event, f=f: f.focus_set())
-
-        for i in range(6):  # 6 rows
+        # Configure grid: 4 rows x 3 columns (using only what we need)
+        for i in range(4):  # Only 4 rows needed
             main_frame.grid_rowconfigure(i, weight=1)
-        for i in range(3):  # 3 columns
-            main_frame.grid_columnconfigure(i, weight=1)
+        for j in range(3):
+            main_frame.grid_columnconfigure(j, weight=1)
 
-        # Create first 4 console stations (left column) in reverse order
-        for i in range(4):
-            shadow = ctk.CTkFrame(
-                main_frame,
-                corner_radius=15,
-                fg_color="#282828",
-                border_width=0
-            )
-            shadow.grid(row=i, column=0, padx=(10, 14), pady=(10, 14), sticky="nsew")
-            station = Station(main_frame, self, "XBOX", 4 - i)
-            station.grid(row=i, column=0, padx=10, pady=10, sticky="nsew")
-            self.stations.append(station)
-            self.timers.append(station.timer)
+        self.stations.clear()
+        self.timers.clear()
 
-        # 5th console station (top center)
-        shadow = ctk.CTkFrame(
-            main_frame,
-            corner_radius=15,
-            fg_color="#282828",
-            border_width=0
-        )
-        shadow.grid(row=0, column=1, columnspan=2, padx=(10, 14), pady=(10, 14), sticky="nsew")
+        # Place 5th XBOX (top center, spanning 2 columns) - ROW 0
         station = Station(main_frame, self, "XBOX", 5)
         station.grid(row=0, column=1, columnspan=2, padx=10, pady=10, sticky="nsew")
         self.stations.append(station)
         self.timers.append(station.timer)
 
-        # Other activity stations
+        # Place XBOX stations 1-4 (left column, rows 0-3) - NO GAPS
+        for i in range(4):
+            row = i  # rows 0,1,2,3 (no gaps!)
+            col = 0
+            station = Station(main_frame, self, "XBOX", i + 1)  # Station numbers 1,2,3,4
+            station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+            self.stations.append(station)
+            self.timers.append(station.timer)
+
+        # Place other activity stations (fill from row 1, col 1 to row 3, col 2)
         activities = [
             ("Ping-Pong", 1),
             ("Ping-Pong", 2),
@@ -3823,15 +4057,8 @@ class GamingCenterApp(ctk.CTk):
             ("PoolTable", 1),
             ("PoolTable", 2),
         ]
-        row, col = 1, 1
+        row, col = 1, 1  # Start at row 1, col 1 (under the spanning XBOX 5)
         for activity, num in activities:
-            shadow = ctk.CTkFrame(
-                main_frame,
-                corner_radius=15,
-                fg_color="#282828",
-                border_width=0
-            )
-            shadow.grid(row=row, column=col, padx=(10, 14), pady=(10, 14), sticky="nsew")
             station = Station(main_frame, self, activity, num)
             station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             self.stations.append(station)
@@ -3894,12 +4121,15 @@ class GamingCenterApp(ctk.CTk):
         if not hasattr(self, 'bowling_waitlist'):
             self.bowling_waitlist = []
 
+        responsive_padx = int(20 * self.responsive['padding_scale'])
+        responsive_pady = int(20 * self.responsive['padding_scale'])
+
         main_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        main_frame.pack(fill="both", expand=True, padx=responsive_padx, pady=responsive_pady)
 
         # Header frame with title, toggle and count
         header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
-        header_frame.pack(fill="x", pady=(0, 20))
+        header_frame.pack(fill="x", pady=(0, responsive_pady))
 
         self.waitlist_type_var = ctk.StringVar(value="Game Center")
         waitlist_toggle = ctk.CTkSegmentedButton(
@@ -3907,16 +4137,17 @@ class GamingCenterApp(ctk.CTk):
             values=["Game Center", "Bowling Lanes"],
             variable=self.waitlist_type_var,
             command=self.switch_waitlist_type,
-            corner_radius=75,
+            corner_radius=int(75 * self.responsive['scale_factor']),
             border_width=0,
             selected_color="#00843d",
             selected_hover_color="#006e33",
             text_color="#ffffff",
             text_color_disabled="#888888",
-            font=("Helvetica", 12, "normal"),
-            height=32,
+            font=("Helvetica", int(12 * self.responsive['font_scale']), "normal"),
+            height=int(32 * self.responsive['scale_factor']),
         )
-        waitlist_toggle.pack(side="left", padx=(0, 20))
+        waitlist_toggle.pack(side="left", padx=(0, responsive_padx))
+
 
         title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
         title_frame.pack(side="left")
@@ -4067,8 +4298,8 @@ class GamingCenterApp(ctk.CTk):
         self.update_waitlist_tree()
 
     def create_canvas_add_button(self, parent, station_names):
-        """Create a perfect circle add button using Canvas"""
-        button_size = 75
+        """Create a perfect circle add button using Canvas with responsive sizing"""
+        button_size = int(75 * self.responsive['scale_factor'])
         
         # Get parent background color for transparency
         try:
@@ -4076,7 +4307,6 @@ class GamingCenterApp(ctk.CTk):
             if isinstance(parent_bg, tuple):
                 bg_color = parent_bg[1] if ctk.get_appearance_mode() == "Dark" else parent_bg[0]
             elif parent_bg == "transparent":
-                # Get the actual background from the parent hierarchy
                 bg_color = "#212121"  # Your main app background
             else:
                 bg_color = parent_bg
@@ -4117,11 +4347,11 @@ class GamingCenterApp(ctk.CTk):
         self.add_button_canvas.place(relx=0.95, rely=0.95, anchor="se")
 
     def draw_add_button(self, normal_state=True):
-        """Draw the add button circle with + symbol using high-definition rendering"""
+        """Draw the add button circle with responsive sizing"""
         if not hasattr(self, 'add_button_canvas'):
             return
         
-        button_size = 75  # Match the new larger size
+        button_size = int(75 * self.responsive['scale_factor'])  # Responsive button size
         
         # Clear the canvas
         self.add_button_canvas.delete("all")
@@ -4134,9 +4364,9 @@ class GamingCenterApp(ctk.CTk):
             circle_color = "#006e33"      # Hover color
             shadow_color = "#004d24"      # Even darker for hover shadow
         
-        # Create subtle shadow effect
-        shadow_offset = 3
-        shadow_margin = 6
+        # Create subtle shadow effect with responsive offset
+        shadow_offset = int(3 * self.responsive['scale_factor'])
+        shadow_margin = int(6 * self.responsive['scale_factor'])
         
         # Draw shadow circle (slightly offset)
         self.add_button_canvas.create_oval(
@@ -4149,8 +4379,8 @@ class GamingCenterApp(ctk.CTk):
             width=0
         )
         
-        # Draw main circle with anti-aliasing effect
-        margin = 4
+        # Draw main circle with responsive margin
+        margin = int(4 * self.responsive['scale_factor'])
         
         # Main circle
         self.add_button_canvas.create_oval(
@@ -4158,13 +4388,13 @@ class GamingCenterApp(ctk.CTk):
             button_size - margin, button_size - margin,
             fill=circle_color,
             outline=circle_color,
-            width=2  # Slight outline for smoother edges
+            width=int(2 * self.responsive['scale_factor'])
         )
         
-        # Draw the + symbol with better proportions
+        # Draw the + symbol with responsive proportions
         center = button_size // 2
-        plus_size = 20  # Increased from 16
-        plus_thickness = 4  # Increased from 3
+        plus_size = int(20 * self.responsive['scale_factor'])
+        plus_thickness = int(4 * self.responsive['scale_factor'])
         
         # Horizontal line of + with rounded ends effect
         self.add_button_canvas.create_rectangle(
@@ -4201,7 +4431,6 @@ class GamingCenterApp(ctk.CTk):
             width=0
         )
         
-        # Add small circles at the ends for rounded effect
         # Top end
         self.add_button_canvas.create_oval(
             center - end_radius, center - plus_size//2 - end_radius,
@@ -4216,17 +4445,6 @@ class GamingCenterApp(ctk.CTk):
             fill="white",
             outline="white"
         )
-        
-        # Optional: Add a subtle inner glow effect
-        if not normal_state:  # Only on hover
-            glow_margin = margin + 2
-            self.add_button_canvas.create_oval(
-                glow_margin, glow_margin,
-                button_size - glow_margin, button_size - glow_margin,
-                fill="",
-                outline="#38a169",  # Lighter green
-                width=2
-            )
 
     def handle_add_button_click(self, station_names):
         """Handle click events for the canvas add button"""
@@ -5880,8 +6098,8 @@ class GamingCenterApp(ctk.CTk):
 
 
     def create_arch_overlay(self):
-        """Create an arch effect using a canvas directly"""
-        arch_radius = 30
+        """Create an arch effect with responsive sizing"""
+        arch_radius = int(30 * self.responsive['scale_factor'])
         
         try:
             # Create a transparent canvas
@@ -5902,11 +6120,12 @@ class GamingCenterApp(ctk.CTk):
                 outline=""  # No outline
             )
             
-            # Position at the inner corner where sidebar and topbar meet
-            self.arch_overlay.place(x=158-arch_radius, y=90-arch_radius)
+            # Position at the inner corner with responsive positioning
+            x_pos = int((158 - arch_radius) * self.responsive['scale_factor'])
+            y_pos = int((90 - arch_radius) * self.responsive['scale_factor'])
+            self.arch_overlay.place(x=x_pos, y=y_pos)
             
             # Force the arch overlay to the top of the stacking order
-            # This is the key fix - using tkraise() with an explicit aboveThis parameter
             self.after(100, lambda: self.main_container.tk.call('raise', self.arch_overlay._w))
         except Exception as e:
             print(f"Error creating arch overlay: {e}")
@@ -6044,16 +6263,22 @@ class GamingCenterApp(ctk.CTk):
             help_button.pack(side="right", padx=10)        
 
     def setup_sidebar(self, sidebar):
-        # Add the main logo at the top
-        logo_frame = ctk.CTkFrame(sidebar, fg_color="transparent", height=60)
-        logo_frame.pack(fill="x", pady=(10, 20))
+        # Use responsive width
+        sidebar.configure(width=self.responsive['sidebar_width'])
+        
+        # Add the main logo at the top with responsive sizing
+        logo_frame = ctk.CTkFrame(sidebar, fg_color="transparent", 
+                                height=int(60 * self.responsive['scale_factor']))
+        logo_frame.pack(fill="x", pady=(int(10 * self.responsive['scale_factor']), 
+                                    int(20 * self.responsive['scale_factor'])))
         logo_frame.pack_propagate(False)
 
-        # Load logo image
+        # Load logo image with DPI-aware sizing
         logo_image_path = "./icon_cache/GamingCenterApp.png"
         try:
+            logo_size = int(60 * self.responsive['icon_scale'])
             logo_image = Image.open(logo_image_path)
-            logo_ctk_image = ctk.CTkImage(logo_image, size=(60, 60))
+            logo_ctk_image = ctk.CTkImage(logo_image, size=(logo_size, logo_size))
         except Exception as e:
             print(f"Error loading logo image: {e}")
             logo_ctk_image = None
@@ -6062,19 +6287,20 @@ class GamingCenterApp(ctk.CTk):
             logo_frame,
             image=logo_ctk_image,
             text="",
-            width=85,
-            height=85
+            width=int(85 * self.responsive['scale_factor']),
+            height=int(85 * self.responsive['scale_factor'])
         )
         logo_label.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Load sidebar icons
-        home = ctk.CTkImage(Image.open("./icon_cache/house.png"), size=(24, 24))
-        games = ctk.CTkImage(Image.open("./icon_cache/gamepad-2.png"), size=(24, 24))
-        reservations_icon = ctk.CTkImage(Image.open("./icon_cache/calendar-clock.png"), size=(24, 24))
-        waitlist = ctk.CTkImage(Image.open("./icon_cache/list-plus.png"), size=(24, 24))
-        stats = ctk.CTkImage(Image.open("./icon_cache/chart-pie.png"), size=(24, 24))
+        # Load sidebar icons with DPI-aware sizing
+        icon_size = int(24 * self.responsive['icon_scale'])
+        home = ctk.CTkImage(Image.open("./icon_cache/house.png"), size=(icon_size, icon_size))
+        games = ctk.CTkImage(Image.open("./icon_cache/gamepad-2.png"), size=(icon_size, icon_size))
+        reservations_icon = ctk.CTkImage(Image.open("./icon_cache/calendar-clock.png"), size=(icon_size, icon_size))
+        waitlist = ctk.CTkImage(Image.open("./icon_cache/list-plus.png"), size=(icon_size, icon_size))
+        stats = ctk.CTkImage(Image.open("./icon_cache/chart-pie.png"), size=(icon_size, icon_size))
 
-        # Create sidebar buttons with hover effects
+        # Create sidebar buttons with responsive sizing
         self.sidebar_buttons = {}
         self.sidebar_buttons["home"] = self.create_sidebar_button(home, "Home", command=lambda: self.show_page("home"))
         self.sidebar_buttons["games"] = self.create_sidebar_button(games, "Games", command=self.open_games_window)
@@ -6084,58 +6310,44 @@ class GamingCenterApp(ctk.CTk):
         self.sidebar_buttons["waitlist"] = self.create_sidebar_button(waitlist, "Waitlist", command=lambda: self.show_page("waitlist"))
         self.sidebar_buttons["stats"] = self.create_sidebar_button(stats, "Stats", command=lambda: self.show_page("stats"))
 
-
-
-        # Add this in setup_sidebar after creating the waitlist button:
+        # Add waitlist counter with responsive positioning
         self.waitlist_counter_canvas = self.create_perfect_circle_counter(
             self.sidebar_buttons["waitlist"], 
-            44,  # x position (right side of button)
-            13   # y position (top of button)
+            int(44 * self.responsive['scale_factor']),  # x position
+            int(13 * self.responsive['scale_factor'])   # y position
         )
-        self.update_waitlist_count()  # Initialize the counter
-        # Add a count label to the Waitlist button - FIXED VERSION
-        # counter_size = 24
-        # self.waitlist_count_label = ctk.CTkLabel(
-        #     self.sidebar_buttons["waitlist"],
-        #     text="0",
-        #     fg_color="#e53e3e",        # Consistent red color
-        #     text_color="white",
-        #     corner_radius=counter_size // 2,  # Perfect circle
-        #     width=counter_size,
-        #     height=counter_size,
-        #     font=ctk.CTkFont(family=self.get_font_family(), size=10, weight="bold"),
-        #     justify="center",          # Center text horizontally
-        #     anchor="center"            # Center text within label
-        # )
-        # self.waitlist_count_label.place(relx=0.85, rely=0.15, anchor="center")
-        # self.update_waitlist_count()  # Initialize the counter
+        self.update_waitlist_count()
 
-        # Initialize the notification bubble in the sidebar
+        # Initialize the notification bubble with responsive sizing
         self.notification_bubble = ctk.CTkLabel(
             self.sidebar,
             text="",
             fg_color="red",
             text_color="white",
-            corner_radius=10
+            corner_radius=int(10 * self.responsive['scale_factor'])
         )
-        self.notification_bubble.place(relx=0.9, rely=0.1, anchor="ne")  # Position in the top-right corner of the sidebar
-        self.notification_bubble.place_forget()  # Hide the notification bubble initially
+        self.notification_bubble.place(relx=0.9, rely=0.1, anchor="ne")
+        self.notification_bubble.place_forget()
 
     def create_sidebar_button(self, icon, tooltip, command=None):
-        # Create button WITHOUT a wrapper frame to avoid layout issues
+        # Create button with responsive sizing
+        button_size = int(52 * self.responsive['scale_factor'])
+        corner_radius = int(8 * self.responsive['scale_factor'])
+        padding = int(8 * self.responsive['scale_factor'])
+        
         btn = ctk.CTkButton(
             self.sidebar,
             image=icon,
             text="",
-            width=52,
-            height=52,
-            corner_radius=8,
+            width=button_size,
+            height=button_size,
+            corner_radius=corner_radius,
             fg_color="transparent",
             hover_color="#3a3a3a",
             border_width=0,
             command=command
         )
-        btn.pack(pady=8)  # Simple pack with padding
+        btn.pack(pady=padding)
 
         # Create tooltip
         self.create_tooltip(btn, tooltip)
@@ -6311,9 +6523,9 @@ class GamingCenterApp(ctk.CTk):
             self.count_label.configure(text=str(len(self.waitlist)))
 
     def create_perfect_circle_counter(self, parent, x, y):
-        """Create a perfect circle counter using Canvas for true transparency"""
-        # Create a small canvas that will overlay the button
-        canvas_size = 24
+        """Create a perfect circle counter with responsive sizing"""
+        # Responsive canvas size
+        canvas_size = int(24 * self.responsive['scale_factor'])
         
         # Get the actual background color instead of "transparent"
         try:
@@ -6340,6 +6552,13 @@ class GamingCenterApp(ctk.CTk):
         # Store references
         self.counter_canvas = counter_canvas
         self.counter_parent = parent
+        
+        # Position with responsive coordinates
+        x_responsive = int(x * self.responsive['scale_factor'])
+        y_responsive = int(y * self.responsive['scale_factor'])
+        counter_canvas.place(x=x_responsive, y=y_responsive, anchor="ne")
+        
+        return counter_canvas
         
         # IMPORTANT: Bind to parent button's hover events to update canvas background
         def on_button_enter(event):
