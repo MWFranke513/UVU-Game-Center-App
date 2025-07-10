@@ -1,241 +1,1088 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import tkinter as tk
-from tkinter import ttk
-from tkinter import simpledialog
-from tkinter import messagebox
+from tkinter import simpledialog, messagebox, ttk, font as tkFont
+import customtkinter as ctk
+from customtkinter import CTkImage
+from CTkScrollableDropdown import CTkScrollableDropdown
+from CTkListbox import *
+from pathlib import Path
+from PIL import Image, ImageTk, ImageDraw
+import PIL.Image, PIL.ImageDraw, PIL.ImageTk
 import time
-from datetime import datetime
+import requests
+from io import BytesIO
 import math
-from StatsCompiler import StatsWindow  # Import the StatsWindow class from StatsCompiler.py
+import json
+import re
+import smtplib
+from email.mime.text import MIMEText
+from email.utils import formatdate
+import threading
+import cProfile
+from datetime import datetime, time as datetime_time, timedelta
+from StatsCompiler import StatsManager
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+import textwrap  # <-- Add this import
+from functools import partial
+import pandas as pd
+from tkinter import messagebox
+from tkcalendar import Calendar
+import gspread
+from google.oauth2.service_account import Credentials
 import json
 import os
-import html5lib
+import ctypes
+from ctypes import wintypes
+
+# Configure customtkinter
+ctk.set_appearance_mode("dark")  # Default to light mode
+ctk.set_default_color_theme("./uvu_green.json")  # You can change this to other themes if desired
 
 
-## Still need to add ----------------------------------------------
-# 1. Add the ability to add and remove stations
-# 2. Add the ability to move stations around in the layout
-# 3. Add the ability to save and load the station layout
-# Finish adding the stats window
-# Polish up the UI and make it look nice, modern, and user-friendly.
-# Performance improvments and optimizations since this is a python application
-
-dark_mode_styles = {
-    "bg": "#2e2e2e",
-    "fg": "#ffffff",
-    "button_bg": "#444444",
-    "button_fg": "#ffffff"
-}
-
-def toggle_dark_mode():
-    if app.cget("bg") == "white":
-        app.config(bg=dark_mode_styles["bg"])
-        for widget in app.winfo_children():
-            try:
-                widget.config(bg=dark_mode_styles["button_bg"], fg=dark_mode_styles["button_fg"])
-            except tk.TclError:
-                pass  # Ignore widgets that do not support bg and fg options
-    else:
-        app.config(bg="white")
-        for widget in app.winfo_children():
-            try:
-                widget.config(bg="SystemButtonFace", fg="black")
-            except tk.TclError:
-                pass  # Ignore widgets that do not support bg and fg options
-
-
-class TimerRing(tk.Canvas):
-    def __init__(self, parent, width=65, height=65):
-        super().__init__(parent, width=width, height=height, highlightthickness=0)
-        self.width = width
-        self.height = height
-        self.time_limit = 40 * 60  # 35 minutes in seconds
-        self.warning_threshold = 0.8 * self.time_limit  # 28 minutes
+class CustomErrorBox(tk.Toplevel):
+    def __init__(self, parent, title, message):
+        super().__init__(parent)
         
-    def draw_ring(self, progress):
-        self.delete("all")  # Clear canvas
+        # Window setup
+        self.title(title)
+        self.configure(bg="#fff")
+        self.resizable(False, False)
         
-        # Calculate coordinates for the ring
-        x0 = 6
-        y0 = 6
-        x1 = self.width - 6
-        y1 = self.height - 6
+        # Make window modal
+        self.transient(parent)
+        self.grab_set()
         
-        # Draw background ring
-        self.create_oval(x0, y0, x1, y1, outline='#fff', width=4)
+        # Calculate position for center of screen
+        window_width = 630
+        window_height = 220
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        center_x = int(screen_width/2 - window_width/2)
+        center_y = int(screen_height/2 - window_height/2)
         
-        if progress > 0:
-            # Calculate color based on progress
-            if progress * self.time_limit >= self.warning_threshold:
-                color = 'red'
-            else:
-                color = '#00843d' # green
+        # Set initial window size and position
+        self.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
+        
+        # Create main frame with grid
+        main_frame = ctk.CTkFrame(self, fg_color="#fff")
+        main_frame.pack(expand=True, fill="both", padx=20, pady=20)
+        
+        # Configure grid columns and rows
+        main_frame.grid_columnconfigure(1, weight=1)  # Text column expands
+        main_frame.grid_rowconfigure(0, weight=1)     # Content row expands
+        
+        # Create left frame for GIF
+        left_frame = ctk.CTkFrame(main_frame, fg_color="#fff")
+        left_frame.grid(row=0, column=0, padx=(0, 20), sticky="n")
+        
+        # Create right frame for text
+        right_frame = ctk.CTkFrame(main_frame, fg_color="#fff")
+        right_frame.grid(row=0, column=1, sticky="nsew")
+        main_frame.grid_rowconfigure(0, weight=1)  # Allow row to expand
+        main_frame.grid_columnconfigure(1, weight=1)  # Allow column to expand
+        
+        # Create bottom frame for button
+        bottom_frame = ctk.CTkFrame(main_frame, fg_color="#edeeed")
+        bottom_frame.grid(row=1, column=0, columnspan=2, sticky="e", pady=(20, 0))
+        
+        # Load and animate GIF
+        try:
+            self.gif_path = "./icon_cache/finger_wag.gif"
+            self.frames = []
+            self.current_frame = 0
             
-            # Calculate the extent of the arc
-            extent = 360 * progress
+            # Load all frames of the GIF and resize them
+            gif = Image.open(self.gif_path)
+            # Set fixed size for the GIF
+            desired_height = 100
+            aspect_ratio = gif.width / gif.height
+            new_width = int(desired_height * aspect_ratio)
             
-            # Draw the progress arc
-            self.create_arc(x0, y0, x1, y1, start=90, extent=-extent, outline=color, width=4, style='arc')
+            for frame in range(gif.n_frames):
+
+                gif.seek(frame)
+                resized_frame = gif.copy().resize((new_width, desired_height), Image.Resampling.LANCZOS)
+                frame_image = ImageTk.PhotoImage(resized_frame)
+                self.frames.append(frame_image)
+            
+            # Create label for GIF
+            self.gif_label = tk.Label(left_frame, image=self.frames[0], bg="#fff")
+            self.gif_label.pack(padx=10)
+            
+            # Start animation
+            self.animate_gif()
+            
+        except Exception as e:
+            print(f"Error loading GIF: {str(e)}")
+        
+        # Title message
+        title_label = ctk.CTkLabel(
+            right_frame,
+            text="Please fill out the following fields:",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#000",
+            justify="left"
+        )
+        title_label.pack(anchor="w")
+        
+        # Message (missing fields)
+        message_label = ctk.CTkLabel(
+            right_frame,
+            text=message,
+            font=ctk.CTkFont(size=14),
+            text_color="#000",
+            wraplength=250,
+            justify="left"
+        )
+        message_label.pack(anchor="w", pady=(10, 0))
+        
+        # Calculate the required height based on the message length
+        lines = message.count('\n') + 1
+        additional_height = lines * 20  # Adjust this value based on your font size and line spacing
+        new_window_height = window_height + additional_height
+        
+        # Set the new window size and position
+        self.geometry(f'{window_width}x{new_window_height}+{center_x}+{center_y}')
+        
+        # OK Button
+        ok_button = ctk.CTkButton(
+            bottom_frame,
+            text="OK",
+            command=self.destroy,
+            fg_color="#FF5252",
+            hover_color="#FF7070",
+            width=100,
+            height=32
+        )
+        ok_button.pack(side="right")
+        
+        # Bind Enter and Escape to close the window
+        self.bind("<Return>", lambda event: self.destroy())
+        self.bind("<Escape>", lambda event: self.destroy())
+        
+        # Position the window and set focus
+        self.focus_set()
+        
+    def animate_gif(self):
+        """Handles GIF animation"""
+        try:
+            self.current_frame = (self.current_frame + 1) % len(self.frames)
+            self.gif_label.configure(image=self.frames[self.current_frame])
+            self.after(12, self.animate_gif)
+        except Exception as e:
+            print(f"Error animating GIF: {str(e)}")
+
+def show_custom_error(parent, title, message):
+    message = message.replace("Please fill out the following fields:\n", "")
+    return CustomErrorBox(parent, title, message)
 
 
-class StationTimer:
+
+class TimerManager:
     def __init__(self):
+        self.timers = []
+        self.is_running = False
+
+    def add_timer(self, timer):
+        self.timers.append(timer)
+        if not self.is_running:
+            self.start()
+
+    def start(self):
+        self.is_running = True
+        self.update_timers()
+
+    def stop(self):
+        self.is_running = False
+        for timer in self.timers:
+            timer.stop()  # Stop each timer
+
+    def update_timers(self):
+        if not self.is_running:
+            return
+
+        for timer in self.timers:
+            timer.update()  # Call an update method on each timer
+
+        # Schedule the next update
+        self.after(1000, self.update_timers)  # Update every 1 second
+
+
+class CombinedTimer(ctk.CTkCanvas):
+    def __init__(self, parent, width=160, height=160, app=None):
+        # Get responsive dimensions but keep scaling minimal
+        if hasattr(parent, 'responsive'):
+            self.responsive = parent.responsive
+        elif hasattr(parent, 'app') and hasattr(parent.app, 'responsive'):
+            self.responsive = parent.app.responsive
+        elif app and hasattr(app, 'responsive'):
+            self.responsive = app.responsive
+        else:
+            self.responsive = {'scale_factor': 1.0, 'font_scale': 1.0}
+        
+        # Keep timer size more consistent - less aggressive scaling
+        scale_factor = min(self.responsive['scale_factor'], 1.15)  # Cap scaling even more
+        
+        # Use original size as base but with minimal scaling
+        self.width = max(160, int(width * scale_factor))
+        self.height = max(160, int(height * scale_factor))
+        
+        # Get parent background color
+        parent_fg = parent.cget("fg_color")
+        if isinstance(parent_fg, str) and parent_fg != "transparent":
+            parent_bg = parent_fg
+        else:
+            appearance_mode = ctk.get_appearance_mode()
+            parent_bg = "#171717" if appearance_mode == "Dark" else "#e6f2ec"
+
+        super().__init__(parent, width=self.width, height=self.height, 
+                         highlightthickness=0, bg=parent_bg)
+        
+        # Configure rendering quality
+        self._configure_antialiasing()
+        
+        self.time_limit = 1 * 60
+        self.warning_threshold = 0.8 * self.time_limit
+        self.warning_threshold2 = 0.9 * self.time_limit
+        
         self.is_running = False
         self.start_time = 0
         self.elapsed_time = 0
         self.alert_shown = False
-        self.TIME_LIMIT = 40 * 60  # 35 minutes in seconds
+        self.last_progress = 0
+        self._update_loop_id = None
+        self._blink_loop_id = None
+        self.is_blinking = False
+        self.blink_state = True
+        self.blink_count = 0
+        
+        # Initialize fields
+        self.name_entry = None
+        self.id_entry = None
+        self.game_dropdown = None
+        self.controller_dropdown = None
+        self.game_var = None
+        self.controller_var = None
+        self.station_type = None
+        self.station_num = None
+        
+        # Timer display with responsive sizing
+        self.label_frame = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
+        self.label_frame.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Get font family and apply CAPPED responsive scaling
+        font_family = "Helvetica"  # Default fallback
+        if hasattr(parent, 'app') and hasattr(parent.app, 'get_font_family'):
+            font_family = parent.app.get_font_family()
+        
+        # CAP the font scaling to prevent it from being too large
+        timer_font_size = max(12, int(14 * min(self.responsive['font_scale'], 1.1)))  # Minimum 12px, target 14px
+        self.timer_label = ctk.CTkLabel(
+            self.label_frame, 
+            text="00:00:00", 
+            font=ctk.CTkFont(family=font_family, size=timer_font_size, weight="bold"),
+            fg_color="transparent"
+        )
+        self.timer_label.pack(expand=True)
+        
+        # Draw the initial gray ring at startup
+        self.draw_ring(0)
+
+    def _configure_antialiasing(self):
+        """Configure rendering quality settings"""
+        try:
+            self.tk.call("tk", "scaling", 2.0)
+            self.tk.call("::tk::unsupported::MacWindowStyle", "style", self._w, "textured", "dark")
+            self.tk.call('::tk::unsupported::ExposeCommandOptions', 'arc', '-smooth', '1')
+        except Exception:
+            pass
 
     def start(self):
+        if not self.validate_fields():
+            return
         if not self.is_running:
             self.is_running = True
-            self.start_time = time.time() - self.elapsed_time
+            import time as time_module
+            self.start_time = time_module.time() - self.elapsed_time
+            self.update_timer()
+
+        if hasattr(self, 'parent_station'):
+            self.parent_station.update_button_states(is_active=True)
 
     def stop(self):
         if self.is_running:
+            import time as time_module
+            self.elapsed_time = time_module.time() - self.start_time
             self.is_running = False
-            self.elapsed_time = time.time() - self.start_time
+        if self._update_loop_id:
+            self.after_cancel(self._update_loop_id)
+            self._update_loop_id = None
+        if self._blink_loop_id:
+            self.after_cancel(self._blink_loop_id)
+            self._blink_loop_id = None
+        self.is_blinking = False
+
+
+        if hasattr(self, 'parent_station'):
+            self.parent_station.update_button_states(is_active=False)
 
     def reset(self):
         self.is_running = False
         self.elapsed_time = 0
         self.alert_shown = False
+        self.is_blinking = False
+        self.timer_label.configure(text="00:00:00", text_color="white")
+        self.draw_ring(0)
+        
+        if self.name_entry:
+            self.name_entry.delete(0, tk.END)
+        if self.id_entry:
+            self.id_entry.delete(0, tk.END)
+        if self.game_var:
+            self.game_var.set("")
+        if self.controller_var:
+            self.controller_var.set("")
 
     def get_time(self):
         if self.is_running:
-            return time.time() - self.start_time
+            import time as time_module
+            return time_module.time() - self.start_time
         return self.elapsed_time
 
     def check_time_limit(self):
-        return self.get_time() >= self.TIME_LIMIT
+        return self.get_time() >= self.time_limit
+
+    def validate_fields(self):
+        missing_fields = []
+        
+        if not hasattr(self, 'name_entry') or self.name_entry is None or not self.name_entry.get().strip():
+            missing_fields.append("Name")
+        
+        if self.station_type in ["XBOX", "Switch"]:
+            if not hasattr(self, 'game_var') or self.game_var is None or not self.game_var.get():
+                missing_fields.append("Game")
+            if not hasattr(self, 'controller_var') or self.controller_var is None or not self.controller_var.get():
+                missing_fields.append("Controller")
+
+        if missing_fields:
+            error_message = f"Please fill out the following fields:\n" + "\n".join(missing_fields)
+            show_custom_error(self.winfo_toplevel(), "Error", error_message)
+            return False
+        return True
+
+    def draw_ring(self, progress, color_override=None):
+        """Draw progress ring with better centering"""
+        import PIL.Image, PIL.ImageDraw, PIL.ImageTk
+        
+        # Use consistent scaling
+        scale = 3  # Fixed scale for quality
+        width, height = int(self.width * scale), int(self.height * scale)
+        ring_width = max(8, int(min(width, height) * 0.08))  # Proportional ring width
+        center = (width // 2, height // 2)
+        radius = int(min(center) * 0.85)  # Slightly smaller for better fit
+        
+        img = PIL.Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = PIL.ImageDraw.Draw(img)
+
+        # Background ring
+        bg_color = "#333333" if ctk.get_appearance_mode() == "Dark" else "#CCCCCC"
+        draw.ellipse(
+            [center[0]-radius, center[1]-radius, center[0]+radius, center[1]+radius],
+            outline=bg_color,
+            width=ring_width
+        )
+
+        # Progress arc
+        if progress > 0:
+            color = color_override or ('#2AAA2A' if ctk.get_appearance_mode() == "Dark" else '#228B22')
+            start_angle = -90
+            end_angle = start_angle + (progress * 360)
+            
+            for i in range(ring_width):
+                draw.arc(
+                    [
+                        center[0]-radius + i, center[1]-radius + i,
+                        center[0]+radius - i, center[1]+radius - i
+                    ],
+                    start=start_angle,
+                    end=end_angle,
+                    fill=color,
+                    width=1
+                )
+
+        # Resize back to canvas size
+        img = img.resize((self.width, self.height), PIL.Image.LANCZOS)
+        self._ring_img = PIL.ImageTk.PhotoImage(img)
+        self.delete("all")
+        self.create_image(self.width//2, self.height//2, image=self._ring_img)
 
 
-class Station(tk.Frame):
+    def update_timer(self):
+        if self.is_running:
+            elapsed = self.get_time()
+            hours, minutes, seconds = map(int, (elapsed // 3600, (elapsed % 3600) // 60, elapsed % 60))
+            self.timer_label.configure(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+
+            progress = min(elapsed / self.time_limit, 1.0)
+
+            # Determine the appropriate color based on time elapsed
+            if elapsed >= self.time_limit:
+                color = "red"
+                if not self.is_blinking:
+                    self.is_blinking = True
+                    self.start_blinking()
+                    if hasattr(self, 'parent_station'):
+                        self.parent_station.highlight_time_exceeded()
+                self.timer_label.configure(text_color="red")
+            elif elapsed >= (self.time_limit * 0.9):
+                color = "orange"
+                self.timer_label.configure(text_color="orange")
+                # Update parent station border
+                if hasattr(self, 'parent_station'):
+                    self.parent_station.configure(border_color="orange", border_width=2)
+            elif elapsed >= (self.time_limit * 0.8):
+                color = "yellow"
+                self.timer_label.configure(text_color="yellow")
+                # Update parent station border
+                if hasattr(self, 'parent_station'):
+                    self.parent_station.configure(border_color="yellow", border_width=2)
+            else:
+                color = "green"
+                self.timer_label.configure(text_color="green")
+                # Update parent station border
+                if hasattr(self, 'parent_station'):
+                    self.parent_station.configure(border_color="green", border_width=2)
+                    
+            if not self.is_blinking and abs(progress - self.last_progress) > 0.01:
+                self.draw_ring(progress)
+                self.last_progress = progress
+
+        self._update_loop_id = self.after(1000, self.update_timer)
+
+    def start_blinking(self):
+        if not self.is_blinking:
+            return
+        self.blink_state = not self.blink_state
+        if self.blink_state:
+            self.draw_ring(1.0, "red")
+        else:
+            self.draw_ring(1.0, "#8B0000")
+        self._blink_loop_id = self.after(500, self.start_blinking)
+
+    def show_time_alert(self):
+        if not hasattr(self, 'last_alert_time'):
+            self.last_alert_time = 0
+
+        current_time = time.time()
+        if current_time - self.last_alert_time < 300:
+            return
+
+        self.last_alert_time = current_time
+        if hasattr(self, 'parent_station'):
+            self.parent_station.highlight_time_exceeded()
+
+    def update_font(self):
+        """Update the timer font after parent_station is set with responsive sizing"""
+        if hasattr(self, 'parent_station') and hasattr(self.parent_station, 'app'):
+            font_family = self.parent_station.app.get_font_family()
+            font_size = int(12 * self.responsive['font_scale'])
+            self.timer_label.configure(
+                font=ctk.CTkFont(family=font_family, size=font_size, weight="normal")
+            )
+
+
+class ShadowFrame(ctk.CTkFrame):
+    """A frame with a drop shadow effect"""
+    def __init__(self, master, **kwargs):
+        # Extract shadow-specific properties
+        shadow_color = kwargs.pop("shadow_color", "#0D0D0D")
+        shadow_offset = kwargs.pop("shadow_offset", 4)
+        
+        # Create container frame
+        self.container = ctk.CTkFrame(master, fg_color="transparent")
+        
+        # Create shadow frame
+        self.shadow = ctk.CTkFrame(
+            self.container, 
+            fg_color=shadow_color,
+            corner_radius=kwargs.get("corner_radius", 15),
+            border_width=0
+        )
+        self.shadow.place(
+            x=shadow_offset, 
+            y=shadow_offset, 
+            relwidth=1, 
+            relheight=1
+        )
+        
+        # Create main frame on top
+        super().__init__(self.container, **kwargs)
+        self.place(x=0, y=0, relwidth=1, relheight=1)
+    
+    def pack(self, **kwargs):
+        self.container.pack(**kwargs)
+    
+    def grid(self, **kwargs):
+        self.container.grid(**kwargs)
+    
+    def place(self, **kwargs):
+        self.container.place(**kwargs)
+
+
+class Station(ctk.CTkFrame):
     def __init__(self, parent, app, station_type, station_num):
-        super().__init__(parent, borderwidth=2, relief="groove")  # Add border
+        self.app = app
+        self.responsive = app.responsive  # Get responsive dimensions from app
+        
+        # Use responsive corner radius
+        corner_radius = int(15 * self.responsive['scale_factor'])
+        
+        super().__init__(
+            parent, 
+            border_width=0,
+            border_color="#333333", 
+            corner_radius=corner_radius,
+            fg_color="#171717"
+        )
+        
         self.parent = parent
-        self.app = app  # Store reference to the app
         self.station_type = station_type
         self.station_num = station_num
-        self.timer = StationTimer()
+        
+        # Configure 3-column layout
+        self.grid_columnconfigure(0, weight=1)  # Left inputs
+        self.grid_columnconfigure(1, weight=0)  # Timer (fixed width)
+        self.grid_columnconfigure(2, weight=1)  # Right inputs
+        self.grid_rowconfigure(1, weight=1)     # Middle row
+        
         self.setup_ui()
-        self.update_timer()
+        
+        # Ensure placeholders are shown after UI setup
+        self.after(100, self.ensure_placeholders)
+        
+    def update_game_combobox_color(self, *args):
+        if self.game_var.get() == "Select Game":
+            self.game_combobox.configure(text_color="#565B5E")
+        else:
+            self.game_combobox.configure(text_color="#fff")
+
+    def update_controller_combobox_color(self, *args):
+        if self.controller_var.get() == "Number of Controllers":
+            self.controller_combobox.configure(text_color="#565B5E")
+        else:
+            self.controller_combobox.configure(text_color="#fff")
+
 
     def setup_ui(self):
-        header_frame = ttk.Frame(self)
-        header_frame.pack(fill="x", padx=5, pady=5)
+        # BACK TO ORIGINAL sizing with minimal responsive scaling
+        field_font_size = int(12 * min(self.responsive['font_scale'], 1.1))  # Cap scaling
+        field_height = int(34 * min(self.responsive['scale_factor'], 1.1))   # Cap scaling
+        field_width = int(140 * min(self.responsive['scale_factor'], 1.1))   # Cap scaling
+        field_pady = 5  # Back to original
         
-        # Console type toggle
-        self.console_var = tk.StringVar(value=self.station_type)
-        # ttk.Radiobutton(header_frame, text="XBOX", variable=self.console_var, value="XBOX", command=self.change_console_type).pack(side="left")
-        # ttk.Radiobutton(header_frame, text="Switch", variable=self.console_var, value="Switch", command=self.change_console_type).pack(side="left")
+        field_font = ctk.CTkFont(size=field_font_size)
+        corner_radius = 10  # Back to original
         
-        ttk.Label(header_frame, text=f"Station {self.station_num}").pack(side="right")  # Move station number to the right
-
+        # Header Frame with ORIGINAL padding
+        header_frame = ctk.CTkFrame(self, fg_color="transparent")
+        header_frame.grid(row=0, column=0, columnspan=3, sticky="nsew", 
+                        padx=5, pady=5)  # Back to original
+        
+        # Station number label with ORIGINAL font
+        font_family = self.app.get_font_family()
+        station_label_size = int(14 * min(self.responsive['font_scale'], 1.1))  # Cap scaling
+        station_label = ctk.CTkLabel(
+            header_frame, 
+            text=f"Station {self.station_num}",
+            font=ctk.CTkFont(family=font_family, size=station_label_size, weight="bold")
+        )
+        station_label.pack(side="right", padx=5)  # Back to original
+        
+        # Station type controls with ORIGINAL sizes
+        station_type_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        station_type_frame.pack(side="left")
+        
+        # ORIGINAL icon and button sizes
+        icon_size = int(20 * min(self.responsive['icon_scale'], 1.1))  # Cap scaling
+        button_size = 40  # Back to original
+        button_corner_radius = 8  # Back to original
+        button_padding = 2  # Back to original
+        
+        # Console toggle buttons or static icons with ORIGINAL sizes
         if self.station_type in ["XBOX", "Switch"]:
-            ttk.Radiobutton(header_frame, text="XBOX", variable=self.console_var, value="XBOX", command=self.change_console_type).pack(side="left")
-            ttk.Radiobutton(header_frame, text="Switch", variable=self.console_var, value="Switch", command=self.change_console_type).pack(side="left")
-            # Name and ID fields
-            name_frame = ttk.Frame(self)
-            name_frame.pack(fill="x", padx=5, pady=2)
-            ttk.Label(name_frame, text="Name:\t").pack(side="left")
-            self.name_entry = ttk.Entry(name_frame)
-            self.name_entry.pack(side="left", fill="x", expand=True, padx=5)
-            ttk.Label(name_frame, text="ID #").pack(side="left")
+            xbox_image = Image.open("./icon_cache/xbox-logo.png")
+            switch_image = Image.open("./icon_cache/switch-logo.png")
+            xbox_icon = ctk.CTkImage(xbox_image, size=(icon_size, icon_size))
+            switch_icon = ctk.CTkImage(switch_image, size=(icon_size, icon_size))
+            
+            self.console_var = ctk.StringVar(value=self.station_type)
+            
+            def update_button_states():
+                xbox_button.configure(
+                    fg_color=("gray75", "gray25") if self.console_var.get() == "XBOX" else "transparent",
+                    hover_color=("gray65", "gray35")
+                )
+                switch_button.configure(
+                    fg_color=("gray75", "gray25") if self.console_var.get() == "Switch" else "transparent",
+                    hover_color=("gray65", "gray35")
+                )
+            
+            def select_console(console_type):
+                self.console_var.set(console_type)
+                update_button_states()
+                self.change_console_type()
+            
+            xbox_button = ctk.CTkButton(
+                station_type_frame,
+                image=xbox_icon,
+                text="",
+                width=button_size,
+                height=button_size,
+                corner_radius=button_corner_radius,
+                fg_color="transparent",
+                hover_color=("gray65", "gray35"),
+                command=lambda: select_console("XBOX")
+            )
+            xbox_button.pack(side="left", padx=button_padding)
+            self.app.create_tooltip(xbox_button, "Xbox Console")
 
-            # Game and controller dropdowns
-            game_frame = ttk.Frame(self)
-            game_frame.pack(fill="x", padx=5, pady=2)
-            ttk.Label(game_frame, text="Game:\t").pack(side="left")
-            self.game_var = tk.StringVar()
-            games = self.app.get_games_for_console(self.station_type)  # Use app to get games
-            self.game_dropdown = ttk.Combobox(game_frame, textvariable=self.game_var, values=games, width=15)
-            self.game_dropdown.pack(side="left", padx=5)
+            switch_button = ctk.CTkButton(
+                station_type_frame,
+                image=switch_icon,
+                text="",
+                width=button_size,
+                height=button_size,
+                corner_radius=button_corner_radius,
+                fg_color="transparent",
+                hover_color=("gray65", "gray35"),
+                command=lambda: select_console("Switch")
+            )
+            switch_button.pack(side="left", padx=button_padding)
+            self.app.create_tooltip(switch_button, "Nintendo Switch")
+            
+            update_button_states()
+        else:
+            # Static icons with ORIGINAL sizes
+            try:
+                if self.station_type == "PoolTable":
+                    icon_path = "./icon_cache/pool.png"
+                    tooltip_text = "Pool Table"
+                elif self.station_type == "Foosball":
+                    icon_path = "./icon_cache/foosball.png"
+                    tooltip_text = "Foosball Table"
+                elif self.station_type == "Air Hockey":
+                    icon_path = "./icon_cache/air-hockey.png"
+                    tooltip_text = "Air Hockey Table"
+                elif self.station_type == "Ping-Pong":
+                    icon_path = "./icon_cache/ping-pong.png"
+                    tooltip_text = "Ping-Pong Table"
+                else:
+                    icon_path = "./icon_cache/gamepad-2.png"
+                    tooltip_text = self.station_type
+                
+                icon_image = Image.open(icon_path)
+                station_icon_size = int(30 * min(self.responsive['icon_scale'], 1.1))  # Cap scaling
+                station_icon = ctk.CTkImage(icon_image, size=(station_icon_size, station_icon_size))
+                
+                icon_label = ctk.CTkLabel(
+                    station_type_frame,
+                    image=station_icon,
+                    text="",
+                    width=button_size,
+                    height=button_size,
+                    fg_color="gray25",
+                    corner_radius=button_corner_radius
+                )
+                icon_label.pack(side="left", padx=button_padding)
+                
+                self.app.create_tooltip(icon_label, tooltip_text)
+                
+            except Exception as e:
+                print(f"Error loading icon for {self.station_type}: {e}")
+        
+        # Left Input Column with ORIGINAL padding
+        left_fields = ctk.CTkFrame(self, fg_color="transparent")
+        left_fields.grid(row=1, column=0, sticky="nsew", 
+                        padx=(10, 5), pady=field_pady)  # Back to original
+        
+        # Name Field with ORIGINAL height
+        name_entry_height = int(32 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
+        self.name_entry = ctk.CTkEntry(
+            left_fields,
+            width=field_width,
+            height=name_entry_height,
+            border_width=1,
+            border_color="#333333",
+            corner_radius=corner_radius,
+            fg_color="transparent",
+            placeholder_text="Name",
+            font=field_font,
+            placeholder_text_color="#565B5E"
+        )
+        self.name_entry.pack(fill="x", pady=field_pady)
+        self.add_active_glow(self.name_entry, "#00843d", "#333333")
+        
+        # Game Dropdown with ORIGINAL dimensions
+        if self.station_type in ["XBOX", "Switch"]:
+            self.game_var = ctk.StringVar(value="Select Game")
+            games = self.app.get_games_for_console(self.station_type)
+            
+            self.game_combobox = ctk.CTkComboBox(
+                left_fields,
+                variable=self.game_var,
+                values=games,
+                width=field_width,
+                height=field_height,
+                border_width=1,
+                border_color="#333333",
+                fg_color="#171717",
+                corner_radius=corner_radius,
+                font=field_font,
+                justify="left",
+                state="readonly"
+            )
+            self.game_combobox.pack(fill="x", pady=field_pady)
+            self.add_active_glow(self.game_combobox, "#00843d", "#333333")
+            self.game_var.trace_add("write", self.update_game_combobox_color)
+            self.update_game_combobox_color()
 
-            controller_frame = ttk.Frame(self)
-            controller_frame.pack(fill="x", padx=5, pady=2)
-            ttk.Label(controller_frame, text="Ctrl:\t").pack(side="left")
-            self.controller_var = tk.StringVar()
+            # Dropdown with ORIGINAL dimensions
+            dropdown_width = int(240 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
+            dropdown_height = int(220 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
+            button_height = int(32 * min(self.responsive['scale_factor'], 1.1))     # Cap scaling
+            
+            self.game_dropdown = CTkScrollableDropdown(
+                self.game_combobox,
+                values=games,
+                command=lambda v: self.game_var.set(v),
+                width=dropdown_width,
+                height=dropdown_height,
+                font=field_font,
+                justify="left",
+                resize=False,
+                button_height=button_height
+            )
+
+        # Right Input Column
+        right_fields = ctk.CTkFrame(self, fg_color="transparent")
+        right_fields.grid(row=1, column=2, sticky="nsew", 
+                        padx=(5, 10), pady=field_pady)  # Back to original
+        
+        # ID Field with ORIGINAL height
+        id_entry_height = int(32 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
+        self.id_entry = ctk.CTkEntry(
+            right_fields,
+            width=field_width,
+            height=id_entry_height,
+            border_width=1,
+            border_color="#333333",
+            fg_color="transparent",
+            corner_radius=corner_radius,
+            placeholder_text="UVID (If Applicable)",
+            placeholder_text_color="#565B5E",
+            font=field_font
+        )
+        self.id_entry.pack(fill="x", pady=field_pady)
+        self.add_active_glow(self.id_entry, "#00843d", "#333333")
+        
+        # Controller Dropdown with ORIGINAL dimensions
+        if self.station_type in ["XBOX", "Switch"]:
+            self.controller_var = ctk.StringVar(value="Number of Controllers")
             controllers = ["1", "2", "3", "4"]
-            self.controller_dropdown = ttk.Combobox(controller_frame, textvariable=self.controller_var, values=controllers, width=15)
-            self.controller_dropdown.pack(side="left", padx=5)
+            self.controller_combobox = ctk.CTkComboBox(
+                right_fields,
+                variable=self.controller_var,
+                values=controllers,
+                width=field_width,
+                height=field_height,
+                border_width=1,
+                border_color="#333333",
+                fg_color="#171717",
+                button_color="#333333",
+                button_hover_color="#888888",
+                corner_radius=corner_radius,
+                font=field_font,
+                justify="left",
+                state="readonly"
+            )
+            self.controller_combobox.pack(fill="x", pady=field_pady)
+            self.add_active_glow(self.controller_combobox, "#00843d", "#333333")
+            self.controller_var.trace_add("write", self.update_controller_combobox_color)
+            self.update_controller_combobox_color()
+            self.controller_combobox.configure(cursor="hand2")
 
-        else:  # For other station types
-            ttk.Label(header_frame, text=self.station_type).pack(side="left")
-                        # Name and ID fields
-            name_frame = ttk.Frame(self)
-            name_frame.pack(fill="x", padx=5, pady=2)
-            ttk.Label(name_frame, text="Name:\t").pack(side="left")
-            self.console_var = tk.StringVar(value=self.station_type)
-            self.game_var = tk.StringVar()
-            self.controller_var = tk.StringVar()
-            self.name_entry = ttk.Entry(name_frame)
-            self.name_entry.pack(side="left", fill="x", expand=True, padx=5)
-            ttk.Label(name_frame, text="ID #").pack(side="left")
+            controller_dropdown_height = int(120 * min(self.responsive['scale_factor'], 1.1))  # Cap scaling
+            self.controller_dropdown = CTkScrollableDropdown(
+                self.controller_combobox,
+                values=controllers,
+                command=lambda v: self.controller_var.set(v),
+                width=field_width,
+                height=controller_dropdown_height,
+                font=field_font,
+                justify="left"
+            )
 
-            station_frame = ttk.Frame(self)
-            station_frame.pack(fill="x", padx=5)
-            ttk.Label(station_frame, text="Station\t").pack(side="left")
-            self.station_num_entry = ttk.Entry(station_frame, width=5)
-            self.station_num_entry.insert(0, str(self.station_num))
-            self.station_num_entry.configure(state="readonly")
-            self.station_num_entry.pack(side="left", padx=5)
+            # Apply styling to game dropdown
+            self.game_combobox.configure(
+                fg_color="#171717",
+                button_color="#333333",
+                button_hover_color="#888888",
+                border_width=1,
+                border_color="#333333",
+                corner_radius=corner_radius,
+                font=field_font,
+                justify="left",
+                state="readonly"
+            )
+            self.game_combobox.configure(cursor="hand2")
 
-        # Timer controls with ring
-        timer_frame = ttk.Frame(self)
-        timer_frame.pack(side="bottom", fill="x", padx=2, pady=2)
+        # Center Timer Column with ORIGINAL sizing
+        timer_container = ctk.CTkFrame(self, fg_color="transparent")
+        timer_container.grid(row=1, column=1, sticky="ns", padx=10)  # Back to original
         
-        # Add timer ring
-        self.timer_ring = TimerRing(timer_frame, width=75, height=75)  # Increase size of timer ring
-        self.timer_ring.pack(side="right", padx=5)
+        # ORIGINAL timer size - this is key for visibility
+        timer_size = 160  # Back to original - no scaling!
+        timer_padding = 10  # Back to original
+        self.timer = CombinedTimer(timer_container, width=timer_size, height=timer_size, app=self.app)
+        self.timer.pack(pady=timer_padding)
         
-        self.timer_label = ttk.Label(self.timer_ring, text="00:00:00", font=("Helvetica", 12))  # Increase font size of timer label
-        self.timer_label.pack(side="right", padx=5, pady=25)
+        # Connect fields to timer (same as before)
+        self.timer.name_entry = self.name_entry
+        self.timer.id_entry = self.id_entry
+        self.timer.parent_station = self
+        self.timer.station_type = self.station_type
+        self.timer.station_num = self.station_num
+        self.timer.update_font() 
+        
+        if hasattr(self, 'game_var'):
+            self.timer.game_var = self.game_var
+            self.timer.game_dropdown = self.game_dropdown
+            
+        if hasattr(self, 'controller_var'):
+            self.timer.controller_var = self.controller_var
+            self.timer.controller_dropdown = self.controller_dropdown
 
-        # Stopwatch buttons
-        button_frame = ttk.Frame(self)
-        button_frame.pack(side="bottom", fill="x", padx=2, pady=2)
-        ttk.Button(button_frame, text="Start", command=self.start_timer).pack(side="left", padx=2)
-        ttk.Button(button_frame, text="Stop", command=self.stop_timer).pack(side="left", padx=2)
-        ttk.Button(button_frame, text="Reset", command=self.reset_timer).pack(side="left", padx=2)
+        # Control Buttons with ORIGINAL sizing
+        button_frame = ctk.CTkFrame(self, fg_color="transparent")
+        button_frame.grid(row=2, column=0, columnspan=3, sticky="sew", 
+                        padx=10, pady=(0, 5))  # Back to original
+        
+        btn_container = ctk.CTkFrame(button_frame, fg_color="transparent")
+        btn_container.pack()
+        
+        # Load button icons with ORIGINAL sizing
+        button_icon_size = int(15 * min(self.responsive['icon_scale'], 1.1))  # Cap scaling
+        self.start_icon_inactive = self.colorize_icon("./icon_cache/play.png", "#FFFFFF", button_icon_size)
+        self.stop_icon_inactive = self.colorize_icon("./icon_cache/square.png", "#FFFFFF", button_icon_size)
+        self.reset_icon_inactive = self.colorize_icon("./icon_cache/refresh-ccw.png", "#FFFFFF", button_icon_size)
+        
+        self.start_icon_active = self.colorize_icon("./icon_cache/play.png", "#4DA977", button_icon_size)
+        self.stop_icon_active = self.colorize_icon("./icon_cache/square.png", "#A3483F", button_icon_size)
+        self.reset_icon_active = self.colorize_icon("./icon_cache/refresh-ccw.png", "#00BFB3", button_icon_size)
+        
+        # ORIGINAL button sizing
+        button_width = 80  # Back to original
+        button_height = 30  # Back to original
+        button_corner_radius = 20  # Back to original
+        button_padx = 5  # Back to original
+        button_font_size = int(12 * min(self.responsive['font_scale'], 1.1))  # Cap scaling
+        
+        # Create buttons with ORIGINAL sizing
+        start_button = ctk.CTkButton(
+            btn_container, 
+            image=self.start_icon_inactive, 
+            text="Start", 
+            command=self.timer.start,
+            width=button_width,
+            height=button_height,
+            corner_radius=button_corner_radius,
+            fg_color="transparent",
+            border_width=1,
+            border_color="#00843d",
+            text_color="#FFFFFF",
+            hover_color="#1a2e28",
+            font=ctk.CTkFont(size=button_font_size)
+        )
+        start_button.pack(side="left", padx=button_padx)
+        
+        stop_button = ctk.CTkButton(
+            btn_container,
+            image=self.stop_icon_inactive,
+            text="Stop",
+            command=self.timer.stop,
+            width=button_width,
+            height=button_height,
+            corner_radius=button_corner_radius,
+            fg_color="transparent",
+            border_width=1,
+            border_color="#00843d",
+            text_color="#FFFFFF",
+            hover_color="#1a2e28",
+            font=ctk.CTkFont(size=button_font_size)
+        )
+        stop_button.pack(side="left", padx=button_padx)
+        
+        reset_button = ctk.CTkButton(
+            btn_container,
+            image=self.reset_icon_inactive,
+            text="Reset",
+            command=self.reset_timer,
+            width=button_width,
+            height=button_height,
+            corner_radius=button_corner_radius,
+            fg_color="transparent",
+            border_width=1,
+            border_color="#00843d",
+            text_color="#FFFFFF",
+            hover_color="#1a2e28",
+            font=ctk.CTkFont(size=button_font_size)
+        )
+        reset_button.pack(side="left", padx=button_padx)
+        
+        # Store buttons for later state management
+        self.start_button = start_button
+        self.stop_button = stop_button
+        self.reset_button = reset_button
+        
+        # Initialize button states
+        self.update_button_states(is_active=False)
+
+
+    def add_active_glow(self, widget, glow_color="#00FFD0", normal_color="#333333", steps=8, duration=120):
+        widget._original_border_color = normal_color
+
+        def color_to_str(color):
+            if isinstance(color, (list, tuple)):
+                return color[0]
+            return color
+
+        def hex_to_rgb(hex_color):
+            hex_color = color_to_str(hex_color).lstrip('#')
+            return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+        def rgb_to_hex(rgb):
+            return '#{:02x}{:02x}{:02x}'.format(*rgb)
+
+        def interpolate_color(c1, c2, t):
+            return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+
+        # Scale the duration based on responsive scaling
+        scaled_duration = int(duration * self.responsive['scale_factor'])
+        
+        def fade_to(target_color, start_color, step=0):
+            if step > steps:
+                widget.configure(border_color=target_color)
+                return
+            t = step / steps
+            rgb = interpolate_color(hex_to_rgb(start_color), hex_to_rgb(target_color), t)
+            widget.configure(border_color=rgb_to_hex(rgb))
+            widget.after(scaled_duration // steps, lambda: fade_to(target_color, start_color, step + 1))
+
+        def on_focus_in(event):
+            fade_to(glow_color, widget._original_border_color)
+
+        def on_focus_out(event):
+            fade_to(widget._original_border_color, glow_color)
+
+        # Only bind focus events if not a ComboBox (prevents dropdown from closing)
+        if not isinstance(widget, ctk.CTkComboBox):
+            widget.bind("<FocusIn>", on_focus_in)
+            widget.bind("<FocusOut>", on_focus_out)
+
+    def colorize_icon(self, icon_path, color_hex, size=15):
+        """Recolor an icon to match the button text color with responsive sizing"""
+        # Open the icon
+        img = Image.open(icon_path).convert("RGBA")
+        
+        # Create a solid color image of the same size
+        colored = Image.new("RGBA", img.size, color_hex)
+        
+        # Use the original image as a mask
+        result = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        result.paste(colored, (0, 0), img)
+        
+        return ctk.CTkImage(result, size=(size, size))
+    
+
+    def update_button_states(self, is_active):
+        """Update button appearance based on timer active state"""
+        if is_active:
+            # Timer is active - Apply active state styling
+            
+            # Start button
+            self.start_button.configure(
+                image=self.start_icon_active,
+                border_color="#4DA977",
+                text_color="#4DA977",
+                hover=False,  # Disable hover effect
+                fg_color="transparent"
+            )
+            
+            # Stop button - active stop styling
+            self.stop_button.configure(
+                image=self.stop_icon_active,
+                border_color="#A3483F",
+                text_color="#A3483F",
+                hover_color="#2d1a1a",  # Appropriate hover effect
+                fg_color="transparent"
+            )
+            
+            # Reset button - active reset styling
+            self.reset_button.configure(
+                image=self.reset_icon_active,
+                border_color="#00BFB3",
+                text_color="#00BFB3",
+                hover_color="#1a202d",  # Appropriate hover effect 
+                fg_color="transparent"
+            )
+        else:
+            # Timer is inactive - Apply default styling
+            
+            # All buttons use the UVU green with white text
+            for button, icon in [
+                (self.start_button, self.start_icon_inactive),
+                (self.stop_button, self.stop_icon_inactive),
+                (self.reset_button, self.reset_icon_inactive)
+            ]:
+                button.configure(
+                    image=icon,
+                    border_color="#00843d",
+                    text_color="#FFFFFF",
+                    hover_color="#1a2e28",
+                    fg_color="transparent"
+                )
 
     def change_console_type(self):
         self.station_type = self.console_var.get()
         games = self.app.get_games_for_console(self.station_type)
-        self.game_dropdown['values'] = games
-        self.game_var.set('')
+        self.game_dropdown.configure(values=games)
+        self.game_var.set("Select Game")
 
-    def update_timer(self):
-        if self.timer.is_running:
-            elapsed = self.timer.get_time()
-            hours = int(elapsed // 3600)
-            minutes = int((elapsed % 3600) // 60)
-            seconds = int(elapsed % 60)
-            self.timer_label.config(text=f"{hours:02d}:{minutes:02d}:{seconds:02d}")
-            
-            # Update progress ring
-            progress = min(elapsed / self.timer.TIME_LIMIT, 1.0)
-            self.timer_ring.draw_ring(progress)
-            
-            # Update timer color based on elapsed time
-            if elapsed >= self.timer.TIME_LIMIT:
-                self.timer_label.config(foreground="red")
-                if not self.timer.alert_shown:
-                    self.show_time_alert()
-                    self.timer.alert_shown = True
-            elif elapsed >= (self.timer.TIME_LIMIT * 0.8):
-                self.timer_label.config(foreground="orange")
-            else:
-                self.timer_label.config(foreground="green")
-        
-        self.after(1000, self.update_timer)
+    # def update_timer(self):
+    #     self.timer.update_timer()
+    #     self.after(1000, self.update_timer)
+
+    def highlight_time_exceeded(self):
+        self.configure(border_color="red", border_width=3)
+        if not hasattr(self, 'alert_label'):
+            self.alert_label = ctk.CTkLabel(
+                self,
+                text="TIME EXCEEDED",
+                fg_color="red",
+                text_color="white",
+                corner_radius=6,
+                font=("Helvetica", 12, "bold")
+            )
+            self.alert_label.place(relx=0.5, rely=0.09, anchor="center")
+        else:
+            self.alert_label.place(relx=0.5, rely=0.09, anchor="center")
 
     def show_time_alert(self):
-        station_info = f"Station {self.station_num} ({self.station_type})"
-        user_name = self.name_entry.get()
-        if user_name:
-            station_info += f" - {user_name}"
-        messagebox.showwarning("Time Limit Exceeded", 
-                             f"{station_info}\nhas exceeded the 35-minute time limit.\nPlease ask the user to wrap up their session.")
+        self.highlight_time_exceeded()
 
     def start_timer(self):
         self.timer.start()
@@ -243,83 +1090,163 @@ class Station(tk.Frame):
     def stop_timer(self):
         self.timer.stop()
 
+    def ensure_placeholders(self):
+        """Force the placeholders to be shown by accessing and manipulating the entry widgets"""
+        # Force refresh of the placeholder texts
+        if hasattr(self, 'name_entry') and not self.name_entry.get():
+            self.name_entry._entry.config(validate='none')  # Disable validation temporarily
+            self.name_entry._entry.delete(0, tk.END)        # Clear any content
+            self.name_entry._activate_placeholder()         # Changed from _check_placeholder
+            
+        if hasattr(self, 'id_entry') and not self.id_entry.get():
+            self.id_entry._entry.config(validate='none')
+            self.id_entry._entry.delete(0, tk.END)
+            self.id_entry._activate_placeholder()           # Changed from _check_placeholder
+            
     def reset_timer(self):
-        self.log_usage()
-        self.timer.reset()
-        self.timer_label.config(text="00:00:00", foreground="black")
-        self.timer_ring.draw_ring(0)  # Reset progress ring
-        self.name_entry.delete(0, tk.END)
+        should_log = self.timer.is_running or self.timer.elapsed_time > 0
         
-        if self.station_type in ["XBOX", "Switch"]:
-            self.game_dropdown.set("")
-            self.controller_dropdown.set("")
+        if self.timer.is_running:
+            self.timer.stop()
+        
+        if should_log:
+            self.log_usage()
+        
+        self.timer.reset()
+        self.configure(border_width=0)
+        
+        # Reset fields and force placeholders to show
+        self.name_entry.delete(0, tk.END)
+        self.id_entry.delete(0, tk.END)
+        
+        # Force placeholder refresh
+        self.name_entry._activate_placeholder()    # Changed from _check_placeholder
+        self.id_entry._activate_placeholder()      # Changed from _check_placeholder
+        
+        if hasattr(self, 'game_var'):
+            self.game_var.set("Select Game")
+        if hasattr(self, 'controller_var'):
+            self.controller_var.set("Number of Controllers")
+        
+        if hasattr(self, 'alert_label'):
+            self.alert_label.place_forget()
 
-    def reset_station(self):
-        self.log_usage()
-        self.timer.reset()
-        self.timer_label.config(text="00:00:00", foreground="black")
-        self.timer_ring.draw_ring(0)  # Reset progress ring
-        self.name_entry.delete(0, tk.END)
-        
-        if self.station_type in ["XBOX One", "Switch"]:
-            self.game_dropdown.set("")
-            self.controller_dropdown.set("")
+        self.update_button_states(is_active=False)
 
     def log_usage(self):
-        user_name = self.name_entry.get()
-        game = self.game_var.get()
-        controller = self.controller_var.get()
-        duration = self.timer.get_time()
-        formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
-        with open("usage_log.txt", "a") as log_file:
-            log_file.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}\n")
-            log_file.write(f"Station Type: {self.station_type}\n")
-            log_file.write(f"Station Number: {self.station_num}\n")
-            log_file.write(f"User Name: {user_name}\n")
-            log_file.write(f"Duration: {formatted_duration}\n")
-            log_file.write(f"Game: {game}\n")
-            log_file.write(f"Controllers: {controller}\n")
-            log_file.write("--------------------------------------------------\n")
+        try:
+            log_file_path = os.path.join("usage_log.txt")
+
+            user_name = self.name_entry.get().strip() if hasattr(self, 'name_entry') and self.name_entry else "Unknown"
+            id_number = self.id_entry.get().strip() if hasattr(self, 'id_entry') and self.id_entry else "Unknown"
+            game = "N/A"
+            controller = "N/A"
+            if self.station_type in ["XBOX", "Switch"]:
+                if hasattr(self, 'game_var') and self.game_var:
+                    game = self.game_var.get()
+                if hasattr(self, 'controller_var') and self.controller_var:
+                    controller = self.controller_var.get()
+            duration = self.timer.get_time() if hasattr(self.timer, 'get_time') else 0
+            formatted_duration = time.strftime("%H:%M:%S", time.gmtime(duration))
+
+            log_entry = [
+                f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-4]}",
+                f"Station Type: {self.station_type}",
+                f"Station Number: {self.station_num}",
+                f"User Name: {user_name}",
+                f"ID Number: {id_number}" if id_number else "ID Number: N/A",
+                f"Duration: {formatted_duration}",
+                f"Game: {game}",
+                f"Controllers: {controller}",
+                "--------------------------------------------------"
+            ]
+
+            with open(log_file_path, "a", encoding="utf-8") as log_file:
+                log_file.write("\n".join(log_entry) + "\n")
+                log_file.flush()
+
+        except Exception as e:
+            import traceback
+            print(f"Error logging usage: {str(e)}")
+            print(traceback.format_exc())
+            messagebox.showerror(
+                "Logging Error",
+                f"Failed to log station usage. Please notify administrator.\nError: {str(e)}"
+            )
 
     def update_games_list(self):
-        if self.station_type in ["XBOX One", "Switch"]:
-            console_type = "XBOX" if self.station_type == "XBOX One" else "Switch"
-            games = self.parent.get_games_for_console(console_type)
-            self.game_dropdown['values'] = games
+        if self.station_type in ["XBOX", "Switch"]:
+            console_type = "XBOX" if self.station_type == "XBOX" else "Switch"
+            games = self.app.get_games_for_console(console_type)
+            self.game_dropdown.configure(values=games)
             if self.game_var.get() not in games:
-                self.game_var.set('')
-class GamesWindow(tk.Toplevel):
+                self.game_var.set(games[0] if games else '')
+                
+    
+class GamesWindow(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
-        self.title("View/Edit Games")
-        self.geometry("400x300")
-        self.parent = parent  # Store reference to parent
-        self.games = self.load_games()  # Load games from file
+        self.title("Games List")
+        self.geometry("600x400")
+        self.configure(bg="#333333")  # Set background color to match the dark theme
+        self.games = self.load_games()
         self.setup_ui()
+        
+        self.lift()
+        self.focus_force()
+        self.grab_set()
 
     def load_games(self):
-        try:
+        if os.path.exists('games_list.json'):
             with open('games_list.json', 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            # Default games if file doesn't exist
-            default_games = {
-                "Switch": ["Mario Kart 8", "Animal Crossing"],
-                "XBOX": ["Halo Infinite", "Forza Horizon 5"]
-            }
-            self.save_games(default_games)
-            return default_games
+                games = json.load(f)
+                for console in games:
+                    games[console].sort()  # Sort the games list alphabetically
+                return games
+        return {"Switch": [], "XBOX": []}
 
     def save_games(self, games_dict):
         with open('games_list.json', 'w') as f:
             json.dump(games_dict, f)
 
     def setup_ui(self):
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(fill='both', expand=True, padx=10, pady=10)
+        style = ttk.Style()
+        
+        # Configure notebook without creating custom elements
+        style.configure("TNotebook", 
+            background="#333333",  # Match the dark theme
+            borderwidth=0,          # Remove border
+            padding=0               # Remove padding
+        )
+        
+        # Configure the tab style with larger padding and font
+        style.configure("TNotebook.Tab", 
+            background="#444444",  # Dark background for the tabs
+            foreground="white",    # Light text for the tabs
+            padding=[12, 10],      # Increase padding to make the tabs larger
+            borderwidth=0,         # Remove border
+            font=("Helvetica", 14) # Increase font size
+        )
+            
+        style.map("TNotebook.Tab", 
+            background=[("selected", "#00843d")],  # Green for selected tab background
+            foreground=[("selected", "white")]    # White text for selected tab
+        )
 
-        self.switch_tab = ttk.Frame(self.notebook)
-        self.xbox_tab = ttk.Frame(self.notebook)
+        style.configure("TFrame", background="#333333")  # Match the dark theme
+
+        # Create a container frame to hold the notebook and scrollbar
+        container = ttk.Frame(self)
+        container.pack(fill='both', expand=True, padx=0, pady=0)
+
+        self.notebook = ttk.Notebook(container)
+        self.notebook.pack(side="left", fill='both', expand=True, padx=0, pady=0)
+
+        self.scrollbar = ctk.CTkScrollbar(container, orientation="vertical")
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.switch_tab = ttk.Frame(self.notebook, style="TFrame")
+        self.xbox_tab = ttk.Frame(self.notebook, style="TFrame")
         
         self.notebook.add(self.switch_tab, text='Switch Games')
         self.notebook.add(self.xbox_tab, text='XBOX Games')
@@ -328,30 +1255,56 @@ class GamesWindow(tk.Toplevel):
         self.setup_games_tab(self.xbox_tab, "XBOX")
 
     def setup_games_tab(self, parent, console):
-        frame = ttk.Frame(parent)
-        frame.pack(fill='both', expand=True, padx=10, pady=10)
+        frame = ctk.CTkFrame(parent, border_width=0, corner_radius=0)
+        frame.pack(fill='both', expand=True, padx=0, pady=0)
 
-        games_listbox = tk.Listbox(frame)
+        # Define a custom font with a larger size
+        custom_font = ("Helvetica", 16)  # Change the size as needed
+
+        # Use tk.Listbox wrapped in a CTkFrame
+        games_listbox = tk.Listbox(
+            frame,
+            bg="#333333",
+            fg="white",
+            selectbackground="#00843d",
+            selectforeground="white",
+            font=custom_font  # Set the custom font here
+        )
         games_listbox.pack(side='left', fill='both', expand=True)
 
         for game in self.games[console]:
             games_listbox.insert('end', game)
 
-        button_frame = ttk.Frame(frame)
-        button_frame.pack(side='right', fill='y')
+        button_frame = ctk.CTkFrame(frame, border_width=0, corner_radius=20)
+        button_frame.pack(side='right', fill='y', padx=5)  # Added padx for spacing
 
-        add_button = ttk.Button(button_frame, text="Add", command=lambda: self.add_game(console, games_listbox))
+        add_button = ctk.CTkButton(
+            button_frame, 
+            text="Add",
+            fg_color="#00843d",  # Match the tab color
+            hover_color="#006e33",
+            command=lambda: self.add_game(console, games_listbox),
+            corner_radius=20
+        )
         add_button.pack(pady=5)
-        remove_button = ttk.Button(button_frame, text="Remove", command=lambda: self.remove_game(console, games_listbox))
+
+        remove_button = ctk.CTkButton(
+            button_frame, 
+            text="Remove",
+            fg_color="#00843d",
+            hover_color="#006e33",
+            command=lambda: self.remove_game(console, games_listbox),
+            corner_radius=20
+        )
         remove_button.pack(pady=5)
 
     def add_game(self, console, games_listbox):
-        new_game = simpledialog.askstring("Add Game", f"Enter new game for {console}:")
+        dialog = CustomDialog(self, title="Add Game", prompt=f"Enter new game for {console}:")
+        new_game = dialog.show()
         if new_game:
             self.games[console].append(new_game)
             self.update_games_listbox(console, games_listbox)
             self.save_games(self.games)
-            self.parent.update_all_stations_games()  # Update all station dropdowns
 
     def remove_game(self, console, games_listbox):
         selected_game = games_listbox.get(tk.ACTIVE)
@@ -359,62 +1312,5146 @@ class GamesWindow(tk.Toplevel):
             self.games[console].remove(selected_game)
             self.update_games_listbox(console, games_listbox)
             self.save_games(self.games)
-            self.parent.update_all_stations_games()  # Update all station dropdowns
 
     def update_games_listbox(self, console, games_listbox):
         games_listbox.delete(0, tk.END)
         for game in self.games[console]:
             games_listbox.insert('end', game)
+class CustomDialog(ctk.CTkToplevel):
+    def __init__(self, parent, title="Add Game", prompt="Enter new game:"):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("300x150")
+        self.resizable(False, False)
 
-class StationSelectionDialog(simpledialog.Dialog):
+        self.result = None
+
+        self.label = ctk.CTkLabel(self, text=prompt)
+        self.label.pack(pady=10)
+
+        self.entry = ctk.CTkEntry(self)
+        self.entry.pack(pady=10, padx=10, fill="x")
+
+        self.button_frame = ctk.CTkFrame(self)
+        self.button_frame.pack(pady=10)
+
+        self.ok_button = ctk.CTkButton(self.button_frame, text="OK", command=self.on_ok)
+        self.ok_button.pack(side="left", padx=5)
+
+        self.cancel_button = ctk.CTkButton(self.button_frame, text="Cancel", command=self.on_cancel)
+        self.cancel_button.pack(side="left", padx=5)
+
+        self.entry.bind("<Return>", lambda event: self.on_ok())
+        self.entry.bind("<Escape>", lambda event: self.on_cancel())
+
+    def on_ok(self):
+        self.result = self.entry.get()
+        self.destroy()
+
+    def on_cancel(self):
+        self.result = None
+        self.destroy()
+
+    def show(self):
+        self.grab_set()
+        self.wait_window()
+        return self.result
+
+class StationSelectionDialog(ctk.CTkToplevel):
     def __init__(self, parent, title, stations):
+        super().__init__(parent)
+        self.title(title)
         self.stations = stations
         self.selected_station = None
-        super().__init__(parent, title)
-
-    def body(self, master):
-        tk.Label(master, text="Select Station:").grid(row=0, column=0, padx=10, pady=10)
-        self.station_var = tk.StringVar()
-        self.station_dropdown = ttk.Combobox(master, textvariable=self.station_var, values=self.stations)
-        self.station_dropdown.grid(row=0, column=1, padx=10, pady=10)
-        return self.station_dropdown
-
-    def apply(self):
-        self.selected_station = self.station_var.get()
-
-class GamingCenterApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Gaming Center App")
-        self.geometry("1200x1000")
-        self.stations = []  # Keep track of all stations
-        self.waitlist = []  # List to keep track of people on the waitlist
-        self.create_menu()
         self.setup_ui()
 
     def setup_ui(self):
-        # Create main container with more padding
-        main_frame = ttk.Frame(self)
+        ctk.CTkLabel(self, text="Select Station:").grid(row=0, column=0, padx=10, pady=10)
+        self.station_var = ctk.StringVar()
+        self.station_dropdown = ctk.CTkComboBox(self, values=self.stations, variable=self.station_var)
+        self.station_dropdown.grid(row=0, column=1, padx=10, pady=10)
+
+        ctk.CTkButton(self, text="OK", command=self.on_ok).grid(row=1, column=0, columnspan=2, pady=10)
+
+    def on_ok(self):
+        self.selected_station = self.station_var.get()
+        self.destroy()
+
+class WaitlistDialog(ctk.CTkToplevel):
+    def __init__(self, parent, stations, title="Add to Waitlist", prompt="Enter details:"):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("400x550")  # Increased height for email field
+        self.resizable(False, False)
+
+        self.result = None
+        
+        # Party Information
+        self.name_frame = ctk.CTkFrame(self)
+        self.name_frame.pack(pady=10, padx=10, fill="x")
+        
+        ctk.CTkLabel(self.name_frame, text="Party Information").pack(anchor="w")
+        self.name_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Name")
+        self.name_entry.pack(fill="x", pady=5)
+        
+        # Phone number entry with validation
+        self.phone_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Phone Number")
+        self.phone_entry.pack(fill="x", pady=5)
+        
+        # Add validation to the phone number entry
+        self.phone_entry.configure(
+            validate="key",  # Validate on each keystroke
+            validatecommand=(self.register(self.validate_phone), "%P")  # Pass the new input to the validation function
+        )
+        
+        # Email address field (new)
+        self.email_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Email Address (Optional)")
+        self.email_entry.pack(fill="x", pady=5)
+        
+        self.size_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Size")
+        self.size_entry.pack(fill="x", pady=5)
+
+        # Notes
+        self.notes_frame = ctk.CTkFrame(self)
+        self.notes_frame.pack(pady=10, padx=10, fill="x")
+        ctk.CTkLabel(self.notes_frame, text="Additional Notes").pack(anchor="w")
+        self.notes_entry = ctk.CTkEntry(self.notes_frame, placeholder_text="Notes")
+        self.notes_entry.pack(fill="x", pady=5)
+
+        # Station Selection
+        self.station_frame = ctk.CTkFrame(self)
+        self.station_frame.pack(pady=10, padx=10, fill="x")
+        ctk.CTkLabel(self.station_frame, text="Station").pack(anchor="w")
+        self.station_var = ctk.StringVar()
+        self.station_dropdown = ctk.CTkComboBox(
+            self.station_frame,
+            variable=self.station_var,
+            values=[]  # Empty the values list
+        )
+        self.station_dropdown.pack(fill="x", pady=5)
+
+        # Add the scrollable dropdown
+        self.station_scrollable = CTkScrollableDropdown(
+            self.station_dropdown,
+            values=stations,
+            command=lambda v: self.station_var.set(v),
+            width=200,
+            height=150,
+            font=("Helvetica", 12),
+            justify="left",
+            resize=False,
+            button_height=32
+        )
+
+        # Buttons
+        self.button_frame = ctk.CTkFrame(self)
+        self.button_frame.pack(pady=20)
+        
+        self.ok_button = ctk.CTkButton(self.button_frame, text="Add to Waitlist", command=self.on_ok)
+        self.ok_button.pack(side="left", padx=5)
+        
+        self.cancel_button = ctk.CTkButton(self.button_frame, text="Cancel", command=self.on_cancel)
+        self.cancel_button.pack(side="left", padx=5)
+
+    def validate_phone(self, new_input):
+        """Validate the phone number input."""
+        # Allow empty input (for backspace/deletion)
+        if not new_input:
+            return True
+        
+        # Check if the input is numeric and no more than 10 digits
+        return new_input.isdigit() and len(new_input) <= 10
+
+    def on_ok(self):
+        name = self.name_entry.get().strip()
+        phone = self.phone_entry.get().strip()
+        size = self.size_entry.get().strip()
+        notes = self.notes_entry.get().strip()
+        station = self.station_var.get()
+        email = self.email_entry.get().strip()  # Get email value
+        
+        # Validate the phone number
+        if not (phone.isdigit() and len(phone) == 10):
+            messagebox.showerror("Invalid Phone Number", "Please enter a valid 10-digit phone number.")
+            return
+        
+        if name and phone and size and station:
+            current_time = datetime.now()
+            self.result = {
+                "party": name,
+                "phone": phone,
+                "size": int(size),
+                "notes": notes,
+                "station": station,
+                "arrival": current_time.strftime("%I:%M %p"),
+                "quotedTime": (current_time + timedelta(minutes=15)).strftime("%I:%M %p")
+            }
+            
+            # Only add email if provided
+            if email:
+                self.result["email"] = email
+                
+            self.grab_release()
+            self.destroy()
+        else:
+            messagebox.showerror("Error", "Please fill out all required fields.")
+
+    def on_cancel(self):
+        """Cancel the dialog without saving changes"""
+        self.result = None
+        self.grab_release()
+        self.destroy()
+    
+    def show(self):
+        """Display the dialog and wait for user input"""
+        self.grab_set()  # Make the dialog modal
+        self.wait_window()  # Wait for the window to be destroyed
+        return self.result  # Return the result after the window is closed
+
+class BowlingWaitlistDialog(ctk.CTkToplevel):
+    def __init__(self, parent, lanes, title="Add to Bowling Waitlist", prompt="Enter details:"):
+        super().__init__(parent)
+        self.title(title)
+        self.geometry("400x700")  # Increased height for email field
+        self.resizable(False, False)
+
+        self.result = None
+        self.lanes = lanes
+        
+        # Party Information
+        self.name_frame = ctk.CTkFrame(self)
+        self.name_frame.pack(pady=10, padx=10, fill="x")
+        
+        ctk.CTkLabel(self.name_frame, text="Party Information").pack(anchor="w")
+        self.name_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Name")
+        self.name_entry.pack(fill="x", pady=5)
+        
+        # Phone number entry with validation
+        self.phone_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Phone Number")
+        self.phone_entry.pack(fill="x", pady=5)
+        
+        # Add validation to the phone number entry
+        self.phone_entry.configure(
+            validate="key",  # Validate on each keystroke
+            validatecommand=(self.register(self.validate_phone), "%P")  # Pass the new input to the validation function
+        )
+        
+        # Email address field (new)
+        self.email_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Email Address (Optional)")
+        self.email_entry.pack(fill="x", pady=5)
+        
+        self.size_entry = ctk.CTkEntry(self.name_frame, placeholder_text="Party Size")
+        self.size_entry.pack(fill="x", pady=5)
+
+        # Number of Lanes Needed
+        self.lanes_frame = ctk.CTkFrame(self)
+        self.lanes_frame.pack(pady=10, padx=10, fill="x")
+        ctk.CTkLabel(self.lanes_frame, text="Number of Lanes Needed").pack(anchor="w")
+        
+        # Create a frame for the lane count dropdown
+        lanes_count_frame = ctk.CTkFrame(self.lanes_frame, fg_color="transparent")
+        lanes_count_frame.pack(fill="x", pady=5)
+        
+        # Lane count dropdown with values 1-6
+        self.lanes_needed_var = ctk.StringVar(value="1")
+        self.lanes_needed_dropdown = ctk.CTkComboBox(
+            lanes_count_frame,
+            variable=self.lanes_needed_var,
+            values=[],  # Empty the values list
+            command=self.update_lane_selector
+        )
+        self.lanes_needed_dropdown.pack(fill="x")
+
+        # Add the scrollable dropdown
+        self.lanes_needed_scrollable = CTkScrollableDropdown(
+            self.lanes_needed_dropdown,
+            values=["1", "2", "3", "4", "5", "6"],
+            command=lambda v: (self.lanes_needed_var.set(v), self.update_lane_selector(v)),
+            width=150,
+            height=120,
+            font=("Helvetica", 12),
+            justify="left",
+            resize=False,
+            button_height=32
+        )
+
+
+        # Notes
+        self.notes_frame = ctk.CTkFrame(self)
+        self.notes_frame.pack(pady=10, padx=10, fill="x")
+        ctk.CTkLabel(self.notes_frame, text="Additional Notes").pack(anchor="w")
+        self.notes_entry = ctk.CTkEntry(self.notes_frame, placeholder_text="Notes")
+        self.notes_entry.pack(fill="x", pady=5)
+
+        # Lane Preferences Frame
+        self.preferences_frame = ctk.CTkFrame(self)
+        self.preferences_frame.pack(pady=10, padx=10, fill="x")
+        ctk.CTkLabel(self.preferences_frame, text="Lane Preferences (Optional)").pack(anchor="w")
+
+        # Add checkbox for specifying lane preferences
+        self.specify_lanes_var = ctk.BooleanVar(value=False)
+        self.specify_lanes_checkbox = ctk.CTkCheckBox(
+            self.preferences_frame, 
+            text="Specify preferred lanes",
+            variable=self.specify_lanes_var,
+            command=self.toggle_lane_preferences
+        )
+        self.specify_lanes_checkbox.pack(pady=5, anchor="w")
+        
+        # Container for lane selection dropdowns
+        self.lane_selectors_frame = ctk.CTkFrame(self.preferences_frame, fg_color="transparent")
+        # Initially hidden, will be shown when checkbox is checked
+        
+        # Create initial lane selector for one lane
+        self.lane_selectors = []
+        self.update_lane_selector(self.lanes_needed_var.get())
+
+        # Buttons
+        self.button_frame = ctk.CTkFrame(self)
+        self.button_frame.pack(pady=20)
+        
+        self.ok_button = ctk.CTkButton(self.button_frame, text="Add to Bowling Waitlist", command=self.on_ok)
+        self.ok_button.pack(side="left", padx=5)
+        
+        self.cancel_button = ctk.CTkButton(self.button_frame, text="Cancel", command=self.on_cancel)
+        self.cancel_button.pack(side="left", padx=5)
+
+    def toggle_lane_preferences(self):
+        """Show or hide lane preference selectors based on checkbox state"""
+        if self.specify_lanes_var.get():
+            self.lane_selectors_frame.pack(fill="x", pady=5)
+        else:
+            self.lane_selectors_frame.pack_forget()
+
+    def update_lane_selector(self, value=None):
+        """Update lane selector dropdowns based on number of lanes needed"""
+        # Clear existing lane selectors
+        for selector in self.lane_selectors:
+            for widget in selector.winfo_children():
+                widget.destroy()
+            selector.destroy()
+        self.lane_selectors = []
+        
+        # Get number of lanes needed
+        num_lanes = int(self.lanes_needed_var.get())
+        
+        # Recreate the frame
+        self.lane_selectors_frame.destroy()
+        self.lane_selectors_frame = ctk.CTkFrame(self.preferences_frame, fg_color="transparent")
+        if self.specify_lanes_var.get():
+            self.lane_selectors_frame.pack(fill="x", pady=5)
+        
+        # Create new lane selectors based on the number of lanes needed
+        for i in range(num_lanes):
+            lane_frame = ctk.CTkFrame(self.lane_selectors_frame, fg_color="transparent")
+            lane_frame.pack(fill="x", pady=2)
+            
+            label = ctk.CTkLabel(lane_frame, text=f"Lane {i+1} Preference:")
+            label.pack(side="left", padx=(0, 5))
+            
+            lane_var = ctk.StringVar()
+            lane_dropdown = ctk.CTkComboBox(
+                lane_frame,
+                variable=lane_var,
+                values=[],  # Empty the values list
+                width=100
+            )
+            lane_dropdown.pack(side="left", fill="x", expand=True)
+
+            # Add scrollable dropdown for each lane selector
+            lane_scrollable = CTkScrollableDropdown(
+                lane_dropdown,
+                values=self.lanes,
+                command=lambda v, var=lane_var: var.set(v),
+                width=100,
+                height=120,
+                font=("Helvetica", 11),
+                justify="left",
+                resize=False,
+                button_height=32
+            )
+
+    def validate_phone(self, new_input):
+        """Validate the phone number input."""
+        # Allow empty input (for backspace/deletion)
+        if not new_input:
+            return True
+        
+        # Check if the input is numeric and no more than 10 digits
+        return new_input.isdigit() and len(new_input) <= 10
+
+    def on_ok(self):
+        name = self.name_entry.get().strip()
+        phone = self.phone_entry.get().strip()
+        size = self.size_entry.get().strip()
+        notes = self.notes_entry.get().strip()
+        lanes_needed = int(self.lanes_needed_var.get())
+        email = self.email_entry.get().strip()  # Get email value
+        
+        # Validate the phone number
+        if not (phone.isdigit() and len(phone) == 10):
+            messagebox.showerror("Invalid Phone Number", "Please enter a valid 10-digit phone number.")
+            return
+        
+        # Get preferred lanes if specified
+        preferred_lanes = []
+        if self.specify_lanes_var.get() and self.lane_selectors:
+            for i, frame in enumerate(self.lane_selectors):
+                dropdown = [w for w in frame.winfo_children() if isinstance(w, ctk.CTkComboBox)]
+                if dropdown:
+                    lane = dropdown[0].get()
+                    if lane:
+                        preferred_lanes.append(lane)
+        
+        if name and phone and size:
+            current_time = datetime.now()
+            
+            # Format notes to include lanes needed
+            formatted_notes = f"Lanes needed: {lanes_needed}"
+            if notes:  # Add user notes if provided
+                formatted_notes += f" - {notes}"
+                
+            # Format preferred lanes for display in the station column
+            if preferred_lanes:
+                station_display = ", ".join(preferred_lanes)
+            else:
+                station_display = "Any Lanes"
+                
+            self.result = {
+                "party": name,
+                "phone": phone,
+                "size": int(size),
+                "notes": formatted_notes,
+                "station": station_display,  # Display preferred lanes or "Any Lanes"
+                "arrival": current_time.strftime("%I:%M %p"),
+                "quotedTime": (current_time + timedelta(minutes=30)).strftime("%I:%M %p"),
+                "lanes_needed": lanes_needed,  # Store the number of lanes needed
+                "preferred_lanes": preferred_lanes  # Store the list of preferred lanes
+            }
+            
+            # Only add email if provided
+            if email:
+                self.result["email"] = email
+                
+            self.grab_release()
+            self.destroy()
+        else:
+            messagebox.showerror("Error", "Please fill out all required fields.")
+
+    def on_cancel(self):
+        """Cancel the dialog without saving changes"""
+        self.result = None
+        self.grab_release()
+        self.destroy()
+    
+    def show(self):
+        """Display the dialog and wait for user input"""
+        self.grab_set()  # Make the dialog modal
+        self.wait_window()  # Wait for the window to be destroyed
+        return self.result  # Return the result after the window is closed
+
+
+class ReservationSystem:
+    def __init__(self, parent_app):
+        # Operating hours configuration - easily editable
+        self.operating_hours = {
+            'open_time': datetime_time(12, 0),    # 9:00 AM
+            'close_time': datetime_time(22, 0),  # 10:00 PM
+            'slot_duration': 30,        # 30 minutes per slot
+            'lanes_count': 6
+        }
+
+        # Store reference to parent app for dialog creation
+        self.parent_app = parent_app
+        
+        # Initialize Google Sheets connection variables
+        self.gc = None
+        self.worksheet = None
+        self.reservations_data = pd.DataFrame()
+        self.reservations_status = None
+        self.sheet_id = "1H_6poRS4jEH4zXzmBS1VVJAkIM001kQLtY5jhdGTX1w"
+        self.selected_date = datetime.now().date()
+
+        self.column_mapping = {
+            'Date': 'Date',
+            'Time': 'Time',
+            'Party Name': 'Group Name',
+            'Party Size': '# of People',
+            'Lane': 'Lane',  # Changed from '# of Lanes'
+            'Phone Number': 'Phone',
+            'Email': 'Email',
+            'Special Requests': 'Special Requests',
+            'Status': 'Payment'
+        }
+        
+    def setup_reservations_page(self, frame):
+        """Setup the main reservations page with modern UI"""
+        # Google Sheets setup
+        SHEET_ID = "1H_6poRS4jEH4zXzmBS1VVJAkIM001kQLtY5jhdGTX1w"
+        
+        # Create main container with modern styling
+        container = ctk.CTkFrame(frame, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Configure grid with better proportions
+        container.grid_columnconfigure(0, weight=1, minsize=350)  # Calendar column
+        container.grid_columnconfigure(1, weight=2, minsize=600)  # Time slots column
+        container.grid_rowconfigure(1, weight=1)
+        
+        # Modern header with gradient-like appearance
+        self._create_header(container)
+        
+        # Left side - Calendar with modern styling
+        self._create_calendar_section(container)
+        
+        # Right side - Time slots with improved UX
+        self._create_time_slots_section(container)
+        
+        # Initialize Google Sheets connection
+        self.gc = None
+        self.worksheet = None
+        self.reservations_data = pd.DataFrame()
+        self.sheet_id = SHEET_ID
+        
+        # Initialize with today's date
+        self.selected_date = datetime.now().date()
+        self.setup_google_sheets()
+        self.load_reservations_data()
+
+    def _create_header(self, container):
+        """Create modern header section"""
+        header_frame = ctk.CTkFrame(
+            container, 
+            fg_color="#171717",  # Consistent dark background
+            corner_radius=15,
+            height=80
+        )
+        header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 20))
+        header_frame.grid_propagate(False)
+        
+        # Title with modern typography
+        title_label = ctk.CTkLabel(
+            header_frame, 
+            text="🎳 Bowling Reservations",
+            font=("SF Pro Display", 28, "bold"),
+            text_color="#e6f2ec"  # Light greenish text for dark bg
+        )
+        title_label.pack(side="left", padx=30, pady=20)
+        
+        # Status and controls section
+        controls_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        controls_frame.pack(side="right", padx=30, pady=15)
+        
+        # Settings button
+        settings_btn = ctk.CTkButton(
+            controls_frame,
+            text="⚙️ Settings",
+            command=self.show_settings_dialog,
+            width=120,
+            height=35,
+            corner_radius=20,
+            fg_color="#232323",  # Slightly lighter dark
+            hover_color="#333333",
+            text_color="#e6f2ec"
+        )
+        settings_btn.pack(side="left", padx=(0, 10))
+        
+        # Status indicator
+        self.reservations_status = ctk.CTkLabel(
+            controls_frame,
+            text="🔄 Ready",
+            font=("SF Pro Display", 14),
+            text_color="#38a169"  # Green accent
+        )
+        self.reservations_status.pack(side="left", padx=(0, 15))
+        
+        # Refresh button with modern styling
+        refresh_button = ctk.CTkButton(
+            controls_frame,
+            text="🔄 Refresh",
+            command=self.refresh_reservations_data,
+            width=120,
+            height=35,
+            corner_radius=20,
+            fg_color="#00843d",  # UVU green
+            hover_color="#006e33",
+            text_color="#e6f2ec"
+        )
+        refresh_button.pack(side="left")
+
+    def _create_calendar_section(self, container):
+        """Create modern calendar section"""
+        calendar_frame = ctk.CTkFrame(
+            container, 
+            fg_color="#171717",  # Consistent dark background
+            corner_radius=15,
+            border_width=1,
+            border_color="#232323"
+        )
+        calendar_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 15))
+        calendar_frame.grid_columnconfigure(0, weight=1)
+        calendar_frame.grid_rowconfigure(1, weight=1)
+        
+        # Calendar header
+        cal_header = ctk.CTkLabel(
+            calendar_frame,
+            text="📅 Select Date",
+            font=("SF Pro Display", 18, "bold"),
+            text_color="#e6f2ec"
+        )
+        cal_header.grid(row=0, column=0, pady=20, sticky="n")
+        
+        # Modern calendar widget (fully dark theme)
+        self.calendar = Calendar(
+            calendar_frame,
+            selectmode='day',
+            date_pattern='yyyy-mm-dd',
+            background='#171717',           # Main background (dark)
+            foreground='#e6f2ec',           # Main text (light greenish)
+            bordercolor='#00843d',          # UVU green border
+            selectbackground='#00843d',     # Selected day background (green)
+            selectforeground='#ffffff',     # Selected day text (white)
+            normalbackground='#171717',     # Normal day background (dark)
+            normalforeground='#e6f2ec',     # Normal day text (light)
+            weekendbackground='#232323',    # Weekend background (slightly lighter dark)
+            weekendforeground='#a0aec0',    # Weekend text (gray-blue)
+            othermonthbackground='#232323', # Other month days (dark)
+            othermonthforeground='#565B5E', # Other month text (gray)
+            headersbackground='#232323',    # Header background (dark)
+            headersforeground='#e6f2ec',    # Header text (light)
+            font=('SF Pro Display', 11),
+            borderwidth=0,
+            showweeknumbers=False
+        )
+        self.calendar.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
+        self.calendar.bind('<<CalendarSelected>>', self.on_date_selected)
+
+    def _create_time_slots_section(self, container):
+        """Create modern time slots section"""
+        right_frame = ctk.CTkFrame(container, fg_color="transparent")
+        right_frame.grid(row=1, column=1, sticky="nsew")
+        right_frame.grid_rowconfigure(1, weight=1)
+        right_frame.grid_columnconfigure(0, weight=1)
+        
+        # Selected date header with modern styling
+        date_header_frame = ctk.CTkFrame(
+            right_frame, 
+            fg_color=("#ffffff", "#171717"),
+            corner_radius=15,
+            height=90,
+            border_width=1,
+            border_color=("#e2e8f0", "#171717")
+        )
+        date_header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 15))
+        date_header_frame.grid_propagate(False)
+        
+        # Date info
+        date_info_frame = ctk.CTkFrame(date_header_frame, fg_color="transparent")
+        date_info_frame.pack(side="left", fill="y", padx=25)
+        
+        self.selected_date_label = ctk.CTkLabel(
+            date_info_frame,
+            text=f"📅 {datetime.now().strftime('%A, %B %d, %Y')}",
+            font=("SF Pro Display", 20, "bold"),
+            text_color=("#2d3748", "#ffffff")
+        )
+        self.selected_date_label.pack(pady=(20, 5))
+        
+        self.date_summary_label = ctk.CTkLabel(
+            date_info_frame,
+            text="Select a time slot below",
+            font=("SF Pro Display", 14),
+            text_color=("#718096", "#a0aec0")
+        )
+        self.date_summary_label.pack()
+        
+        # Add reservation button
+        add_reservation_btn = ctk.CTkButton(
+            date_header_frame,
+            text="➕ New Reservation",
+            command=self.add_new_reservation_for_date,
+            width=160,
+            height=45,
+            corner_radius=25,
+            font=("SF Pro Display", 14, "bold"),
+            fg_color=("#38a169", "#68d391"),
+            hover_color=("#2f855a", "#38a169")
+        )
+        add_reservation_btn.pack(side="right", padx=25, pady=22)
+        
+        # Time slots container with modern styling
+        slots_container = ctk.CTkFrame(
+            right_frame, 
+            fg_color=("#ffffff", "#171717"),
+            corner_radius=15,
+            border_width=1,
+            border_color=("#e2e8f0", "#171717")
+        )
+        slots_container.grid(row=1, column=0, sticky="nsew")
+        
+        # Slots header
+        slots_header = ctk.CTkLabel(
+            slots_container,
+            text="🎯 Available Time Slots",
+            font=("SF Pro Display", 18, "bold"),
+            text_color=("#2d3748", "#ffffff")
+        )
+        slots_header.pack(pady=(20, 10))
+        
+        # Scrollable frame for time slots
+        self.slots_scrollable = ctk.CTkScrollableFrame(
+            slots_container,
+            fg_color="transparent",
+            corner_radius=10
+        )
+        self.slots_scrollable.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+    def _create_time_slot_card(self, time_slot, date_reservations):
+        """Create a modern card for each time slot with updated colors"""
+        # Check if this time slot is fully booked
+        reserved_lanes = self._count_reserved_lanes(date_reservations, time_slot)
+        available_lanes = self.operating_hours['lanes_count'] - reserved_lanes
+        is_fully_booked = available_lanes == 0
+        
+        # Choose card colors based on availability
+        if is_fully_booked:
+            card_fg_color = ("#ffebee", "#4a1a1a")  # Light red background for fully booked
+            border_color = ("#f44336", "#d32f2f")   # Red border
+            availability_color = ("#c62828", "#ff5252")
+            availability_text = "No lanes available"
+        elif available_lanes <= 2:  # Low availability
+            card_fg_color = ("#fff3e0", "#4a2a1a")  # Light orange background
+            border_color = ("#ff9800", "#f57c00")   # Orange border
+            availability_color = ("#e65100", "#ff9800")
+            availability_text = f"Only {available_lanes} lanes available"
+        else:
+            card_fg_color = ("#2d2d2d", "#2d2d2d")  # Dark background for available
+            border_color = ("#00843d", "#00843d")   # Green accent border
+            availability_color = ("#00843d", "#4caf50")
+            availability_text = f"{available_lanes} of {self.operating_hours['lanes_count']} lanes available"
+        
+        # Main card frame with conditional styling
+        card_frame = ctk.CTkFrame(
+            self.slots_scrollable, 
+            fg_color=card_fg_color,
+            corner_radius=12,
+            border_width=2 if is_fully_booked else 1,
+            border_color=border_color
+        )
+        card_frame.pack(fill="x", pady=8, padx=5)
+        
+        # Time header with reservation count button
+        time_header = ctk.CTkFrame(card_frame, fg_color="transparent")
+        time_header.pack(fill="x", padx=20, pady=(15, 10))
+        
+        # Time label with conditional color
+        time_color = ("#c62828", "#ff5252") if is_fully_booked else ("#ffffff", "#ffffff")
+        time_label = ctk.CTkLabel(
+            time_header,
+            text=time_slot,
+            font=("SF Pro Display", 16, "bold"),
+            text_color=time_color
+        )
+        time_label.pack(side="left")
+        
+        # Add "FULLY BOOKED" indicator for fully booked slots
+        if is_fully_booked:
+            booked_indicator = ctk.CTkLabel(
+                time_header,
+                text="🚫 FULLY BOOKED",
+                font=("SF Pro Display", 12, "bold"),
+                text_color=("#c62828", "#ff5252"),
+                fg_color=("#ffcdd2", "#2a1010"),
+                corner_radius=15,
+                width=120,
+                height=25
+            )
+            booked_indicator.pack(side="left", padx=(20, 0))
+        
+        # Add "View Reservations" button if there are reservations for this time slot
+        if reserved_lanes > 0:
+            view_reservations_btn = ctk.CTkButton(
+                time_header,
+                text=f"📋 View {reserved_lanes} Reservation{'s' if reserved_lanes > 1 else ''}",
+                command=lambda: self.show_time_slot_reservations(time_slot, date_reservations),
+                width=180,
+                height=25,
+                corner_radius=15,
+                font=("SF Pro Display", 11),
+                fg_color=("#3182ce", "#4299e1") if not is_fully_booked else ("#90a4ae", "#455a64"),
+                hover_color=("#2c5aa0", "#3182ce") if not is_fully_booked else ("#78909c", "#37474f")
+            )
+            view_reservations_btn.pack(side="left", padx=(20, 0))
+        
+        availability_label = ctk.CTkLabel(
+            time_header,
+            text=availability_text,
+            font=("SF Pro Display", 12, "bold"),
+            text_color=availability_color
+        )
+        availability_label.pack(side="right")
+        
+        # Lanes grid
+        lanes_frame = ctk.CTkFrame(card_frame, fg_color="transparent")
+        lanes_frame.pack(fill="x", padx=20, pady=(0, 15))
+        
+        # Configure grid for lanes
+        for i in range(self.operating_hours['lanes_count']):
+            lanes_frame.grid_columnconfigure(i, weight=1)
+        
+        # Create lane buttons with proper state handling
+        for lane in range(1, self.operating_hours['lanes_count'] + 1):
+            self._create_lane_button(lanes_frame, time_slot, lane, date_reservations, is_fully_booked)
+
+
+    def _create_lane_button(self, parent, time_slot, lane, date_reservations, is_fully_booked=False):
+        """Create a lane button with proper lane number handling and conditional styling"""
+        lane_reserved = self.is_lane_reserved(date_reservations, time_slot, lane)
+        
+        if lane_reserved:
+            reservation = lane_reserved
+            # Ensure lane number is properly formatted
+            lane_num = reservation.get('Lane', f"Lane {lane}").replace("Lane ", "")
+            party_name = reservation.get('Party Name', 'Reserved')[:12]
+            party_size = reservation.get('Party Size', '')
+            
+            # Reserved lane - red color, clickable for editing
+            lane_btn = ctk.CTkButton(
+                parent,
+                text=f"Lane {lane_num}\n{party_name}\n({party_size})",
+                width=90,
+                height=70,
+                corner_radius=10,
+                font=("SF Pro Display", 10, "bold"),
+                fg_color=("#e53e3e", "#fc8181"),  # Red for reserved
+                hover_color=("#c53030", "#e53e3e"),
+                text_color="white",
+                command=lambda r=reservation: self.edit_reservation(r)
+            )
+        else:
+            # Available lane - color depends on overall time slot status
+            if is_fully_booked:
+                # This shouldn't happen, but just in case
+                lane_btn = ctk.CTkButton(
+                    parent,
+                    text=f"Lane {lane}\nUnavailable",
+                    width=90,
+                    height=70,
+                    corner_radius=10,
+                    font=("SF Pro Display", 11, "bold"),
+                    fg_color=("#9e9e9e", "#616161"),  # Gray for unavailable
+                    hover_color=("#757575", "#424242"),
+                    text_color="white",
+                    state="disabled"
+                )
+            else:
+                # Available lane - green color, clickable for quick booking
+                lane_btn = ctk.CTkButton(
+                    parent,
+                    text=f"Lane {lane}\nAvailable",
+                    width=90,
+                    height=70,
+                    corner_radius=10,
+                    font=("SF Pro Display", 11, "bold"),
+                    fg_color=("#00843d", "#38a169"),  # Green for available
+                    hover_color=("#00662c", "#2f855a"),
+                    text_color="white",
+                    command=lambda t=time_slot, l=lane: self.quick_add_reservation(t, l)
+        )
+        
+        lane_btn.grid(row=0, column=lane-1, padx=3, pady=5, sticky="ew")
+
+
+    def setup_google_sheets(self):
+        """Initialize Google Sheets connection with better error handling"""
+        try:
+            # Define the scope
+            scope = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive.file"
+            ]
+            
+            # ...existing credentials loading code...
+            credentials_filename = "google_credentials.json"
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            possible_paths = [
+                os.path.join(script_dir, credentials_filename),
+                os.path.join(os.getcwd(), credentials_filename),
+                os.path.join(os.path.dirname(script_dir), credentials_filename),
+                credentials_filename,
+            ]
+            
+            project_folders = ["New Gaming Center App", "Gaming Center App", "src", "app"]
+            for folder in project_folders:
+                folder_path = os.path.join(os.path.dirname(script_dir), folder)
+                if os.path.exists(folder_path):
+                    possible_paths.append(os.path.join(folder_path, credentials_filename))
+            
+            credentials_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    credentials_path = path
+                    print(f"✅ Found credentials file at: {path}")
+                    break
+            
+            if not credentials_path:
+                self._update_status("❌ Credentials file not found", "error")
+                self._show_credentials_help()
+                return
+            
+            # Validate JSON file
+            try:
+                with open(credentials_path, 'r', encoding='utf-8') as f:
+                    cred_data = json.load(f)
+                service_email = cred_data.get('client_email', 'Not found')
+                print(f"✅ Valid credentials file. Service account: {service_email}")
+            except json.JSONDecodeError as e:
+                self._update_status("❌ Invalid JSON file", "error")
+                print(f"JSON Error: {e}")
+                return
+            except Exception as e:
+                self._update_status("❌ Cannot read credentials", "error")
+                print(f"File read error: {e}")
+                return
+            
+            # Load credentials and authorize
+            credentials = Credentials.from_service_account_file(credentials_path, scopes=scope)
+            self.gc = gspread.authorize(credentials)
+            
+            # Test connection and setup headers
+            try:
+                spreadsheet = self.gc.open_by_key(self.sheet_id)
+                self.worksheet = spreadsheet.sheet1
+                
+                # Check and setup headers
+                self._setup_sheet_headers()
+                
+                self._update_status("✅ Connected", "success")
+                
+            except gspread.exceptions.APIError as api_error:
+                self._handle_api_error(api_error, cred_data.get('client_email'))
+            except Exception as e:
+                self._update_status("❌ Connection failed", "error")
+                print(f"Connection error: {e}")
+                
+        except Exception as e:
+            self._update_status("❌ Setup failed", "error")
+            print(f"Setup error: {e}")
+
+
+    def _setup_sheet_headers(self):
+        """Validate existing headers without modifying them"""
+        try:
+            current_headers = self.worksheet.row_values(1)
+            print(f"Current headers in sheet: {current_headers}")
+            
+            # Verify all required columns exist
+            missing_columns = [sheet_col for sheet_col in self.column_mapping.values() 
+                            if sheet_col not in current_headers]
+            
+            if missing_columns:
+                print(f"⚠️ Missing columns in sheet: {missing_columns}")
+                self._update_status("⚠️ Some columns missing", "warning")
+            else:
+                print("✅ All mapped columns present")
+            
+            print("Column mapping:")
+            for our_header, sheet_header in self.column_mapping.items():
+                print(f"  {our_header} → {sheet_header}")
+                
+        except Exception as e:
+            print(f"Error checking headers: {e}")
+            self._update_status("❌ Header check failed", "error")
+            raise
+
+    def _update_status(self, message, status_type):
+        """Update status label with appropriate styling"""
+        colors = {
+            "success": ("#38a169", "#68d391"),
+            "error": ("#e53e3e", "#fc8181"),
+            "warning": ("#d69e2e", "#f6e05e"),
+            "info": ("#3182ce", "#63b3ed")
+        }
+        
+        color = colors.get(status_type, colors["info"])
+        
+        # Only update if the status label exists
+        if hasattr(self, 'reservations_status') and self.reservations_status:
+            self.reservations_status.configure(text=message, text_color=color)
+        else:
+            # Fallback to console output if status label doesn't exist yet
+            print(f"Status: {message}")
+
+    def _handle_api_error(self, api_error, service_email):
+        """Handle Google Sheets API errors with helpful messages"""
+        error_msg = str(api_error)
+        if "PERMISSION_DENIED" in error_msg:
+            self._update_status("❌ Permission denied", "error")
+            print(f"❌ Please share your Google Sheet with: {service_email}")
+            print("Make sure to give 'Editor' permissions to the service account email.")
+        elif "RESOURCE_EXHAUSTED" in error_msg:
+            self._update_status("❌ API quota exceeded", "warning")
+            print("API quota exceeded. Please try again later.")
+        elif "NOT_FOUND" in error_msg:
+            self._update_status("❌ Sheet not found", "error")
+            print(f"Spreadsheet with ID {self.sheet_id} not found. Check the Sheet ID.")
+        else:
+            self._update_status("❌ API error", "error")
+            print(f"API Error: {error_msg}")
+
+    def _show_credentials_help(self):
+        """Show helpful information about credentials setup"""
+        current_dir = os.getcwd()
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        print("\n" + "="*60)
+        print("📋 GOOGLE CREDENTIALS SETUP HELP")
+        print("="*60)
+        print(f"Current working directory: {current_dir}")
+        print(f"Script directory: {script_dir}")
+        print("\n📁 Place 'google_credentials.json' in one of these locations:")
+        print(f"   • {script_dir}")
+        print(f"   • {current_dir}")
+        print("\n🔑 To get credentials:")
+        print("   1. Go to Google Cloud Console")
+        print("   2. Create a Service Account")
+        print("   3. Download the JSON key file")
+        print("   4. Rename it to 'google_credentials.json'")
+        print("   5. Share your Google Sheet with the service account email")
+        print("="*60)
+
+    def generate_time_slots(self):
+        """Generate time slots based on operating hours (non-military time)"""
+        slots = []
+        current_time = datetime.combine(datetime.today(), self.operating_hours['open_time'])
+        end_time = datetime.combine(datetime.today(), self.operating_hours['close_time'])
+        
+        while current_time < end_time:
+            # Format in 12-hour format
+            time_str = current_time.strftime("%I:%M %p").lstrip('0')
+            slots.append(time_str)
+            current_time += timedelta(minutes=self.operating_hours['slot_duration'])
+        
+        return slots
+
+    def update_time_slots(self):
+        """Update time slots display with modern card-based layout"""
+        # Clear existing slots
+        for widget in self.slots_scrollable.winfo_children():
+            widget.destroy()
+        
+        # Generate time slots
+        time_slots = self.generate_time_slots()
+        
+        # Get reservations for selected date
+        date_reservations = self.get_reservations_for_date(self.selected_date)
+        
+        # Update date summary
+        reservation_count = len(date_reservations)
+        if reservation_count > 0:
+            self.date_summary_label.configure(text=f"{reservation_count} reservations today")
+        else:
+            self.date_summary_label.configure(text="No reservations today")
+        
+        # Create time slot cards
+        for time_slot in time_slots:
+            self._create_time_slot_card(time_slot, date_reservations)
+
+    def _create_time_slot_card(self, time_slot, date_reservations):
+        """Create a modern card for each time slot with updated colors"""
+        # Main card frame with dark theme
+        card_frame = ctk.CTkFrame(
+            self.slots_scrollable, 
+            fg_color=("#2d2d2d", "#2d2d2d"),  # Dark background
+            corner_radius=12,
+            border_width=1,
+            border_color=("#00843d", "#00843d")  # Green accent border
+        )
+        card_frame.pack(fill="x", pady=8, padx=5)
+        
+        # Time header with reservation count button
+        time_header = ctk.CTkFrame(card_frame, fg_color="transparent")
+        time_header.pack(fill="x", padx=20, pady=(15, 10))
+        
+        time_label = ctk.CTkLabel(
+            time_header,
+            text=time_slot,
+            font=("SF Pro Display", 16, "bold"),
+            text_color=("#ffffff", "#ffffff")  # White text
+        )
+        time_label.pack(side="left")
+        
+        # Availability indicator with dynamic colors
+        reserved_lanes = self._count_reserved_lanes(date_reservations, time_slot)
+        available_lanes = self.operating_hours['lanes_count'] - reserved_lanes
+        
+        # Add "View Reservations" button if there are reservations for this time slot
+        if reserved_lanes > 0:
+            view_reservations_btn = ctk.CTkButton(
+                time_header,
+                text=f"📋 View {reserved_lanes} Reservation{'s' if reserved_lanes > 1 else ''}",
+                command=lambda: self.show_time_slot_reservations(time_slot, date_reservations),
+                width=180,
+                height=25,
+                corner_radius=15,
+                font=("SF Pro Display", 11),
+                fg_color=("#3182ce", "#4299e1"),
+                hover_color=("#2c5aa0", "#3182ce")
+            )
+            view_reservations_btn.pack(side="left", padx=(20, 0))
+        
+        availability_text = f"{available_lanes} of {self.operating_hours['lanes_count']} lanes available"
+        availability_label = ctk.CTkLabel(
+            time_header,
+            text=availability_text,
+            font=("SF Pro Display", 12),
+            text_color=("#00843d" if available_lanes > 0 else "#e53e3e")  # Green when available, red when full
+        )
+        availability_label.pack(side="right")
+        
+        # Lanes grid
+        lanes_frame = ctk.CTkFrame(card_frame, fg_color="transparent")
+        lanes_frame.pack(fill="x", padx=20, pady=(0, 15))
+        
+        # Configure grid for lanes
+        for i in range(self.operating_hours['lanes_count']):
+            lanes_frame.grid_columnconfigure(i, weight=1)
+        
+        # Create lane buttons
+        for lane in range(1, self.operating_hours['lanes_count'] + 1):
+            self._create_lane_button(lanes_frame, time_slot, lane, date_reservations)
+
+    def _create_lane_button(self, parent, time_slot, lane, date_reservations):
+        """Create a lane button with proper lane number handling"""
+        lane_reserved = self.is_lane_reserved(date_reservations, time_slot, lane)
+        
+        if lane_reserved:
+            # Get reservation details
+            reservation = lane_reserved
+            party_name = reservation.get('Party Name', 'Reserved')[:12]
+            party_size = reservation.get('Party Size', '')
+            
+            # Get lane number (could be "Lane X" or just number)
+            lane_num = reservation.get('Lane', str(lane))
+            if isinstance(lane_num, str) and lane_num.startswith('Lane '):
+                lane_num = lane_num.replace('Lane ', '')
+            
+            lane_btn = ctk.CTkButton(
+                parent,
+                text=f"Lane {lane_num}\n{party_name}\n({party_size})",
+                width=90,
+                height=70,
+                corner_radius=10,
+                font=("SF Pro Display", 10, "bold"),
+                fg_color=("#e53e3e", "#fc8181"),
+                hover_color=("#c53030", "#e53e3e"),
+                text_color="white",
+                command=lambda r=reservation: self.edit_reservation(r)
+            )
+        else:
+            # Available lane
+            lane_btn = ctk.CTkButton(
+                parent,
+                text=f"Lane {lane}\nAvailable",
+                width=90,
+                height=70,
+                corner_radius=10,
+                font=("SF Pro Display", 11, "bold"),
+                fg_color=("#00843d", "#38a169"),
+                hover_color=("#00662c", "#2f855a"),
+                text_color="white",
+                command=lambda t=time_slot, l=lane: self.quick_add_reservation(t, l)
+            )
+        
+        lane_btn.grid(row=0, column=lane-1, padx=3, pady=5, sticky="ew")
+
+    def _count_reserved_lanes(self, date_reservations, time_slot):
+        """Count how many lanes are reserved for a specific time slot"""
+        if date_reservations.empty:
+            return 0
+        
+        normalized_slot_time = self._normalize_time(time_slot)
+        
+        # Normalize all reservation times and compare
+        reservations_at_time = date_reservations[
+            date_reservations['Time'].apply(self._normalize_time) == normalized_slot_time
+        ]
+        
+        return len(reservations_at_time)
+
+    def _normalize_time(self, time_str):
+        """Normalize time string to 24-hour format (HH:MM) with better format handling"""
+        if not time_str or pd.isna(time_str):
+            return ""
+        
+        time_str = str(time_str).strip().upper()
+        
+        # Handle range formats like "12-1pm" or "12pm to 1pm"
+        if '-' in time_str and ('PM' in time_str or 'AM' in time_str):
+            # Extract the start time from ranges like "12-1pm"
+            start_part = time_str.split('-')[0].strip()
+            if 'PM' in time_str:
+                start_part += ' PM'
+            elif 'AM' in time_str:
+                start_part += ' AM'
+            time_str = start_part
+        elif ' TO ' in time_str:
+            # Extract the start time from ranges like "12pm to 1pm"
+            start_part = time_str.split(' TO ')[0].strip()
+            time_str = start_part
+        
+        # Handle various time formats
+        time_formats = [
+            "%I:%M %p",  # 12-hour with AM/PM (e.g., "2:30 PM")
+            "%I %p",     # 12-hour without minutes (e.g., "2 PM")
+            "%I%p",      # 12-hour without space (e.g., "2PM")
+            "%H:%M",     # 24-hour (e.g., "14:30")
+            "%H:%M:%S",  # 24-hour with seconds (e.g., "14:30:00")
+            "%I:%M%p",   # 12-hour without space (e.g., "2:30PM")
+        ]
+        
+        for fmt in time_formats:
+            try:
+                time_obj = datetime.strptime(time_str, fmt)
+                return time_obj.strftime("%H:%M")
+            except ValueError:
+                continue
+
+                # If all formats fail, try to extract time from string
+        time_match = re.search(r'(\d{1,2}):?(\d{2})?\s*([AP]M)?', time_str, re.IGNORECASE)
+        if time_match:
+            hour = int(time_match.group(1))
+            minute = int(time_match.group(2)) if time_match.group(2) else 0
+            period = time_match.group(3).upper() if time_match.group(3) else None
+            
+            if period == 'PM' and hour < 12:
+                hour += 12
+            elif period == 'AM' and hour == 12:
+                hour = 0
+                
+            return f"{hour:02d}:{minute:02d}"
+        
+        # If still no match, return original string
+        print(f"Could not normalize time: {time_str}")
+        return time_str
+    
+    def show_settings_dialog(self):
+        """Show settings dialog for operating hours"""
+        dialog = ctk.CTkToplevel(self.parent_app)
+        dialog.title("⚙️ Bowling Alley Settings")
+        dialog.geometry("500x400")
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.transient(self)
+        
+        # Main frame
+        main_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=30, pady=30)
+        
+        # Title
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text="⚙️ Operating Hours Settings",
+            font=("SF Pro Display", 24, "bold")
+        )
+        title_label.pack(pady=(0, 30))
+        
+        # Settings fields
+        settings_frame = ctk.CTkFrame(main_frame, corner_radius=15)
+        settings_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Opening time
+        self._create_time_setting(settings_frame, "🌅 Opening Time:", 
+                                 self.operating_hours['open_time'], "open_time")
+        
+        # Closing time
+        self._create_time_setting(settings_frame, "🌙 Closing Time:", 
+                                 self.operating_hours['close_time'], "close_time")
+        
+        # Slot duration
+        duration_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        duration_frame.pack(fill="x", pady=15, padx=20)
+        
+        ctk.CTkLabel(duration_frame, text="⏱️ Time Slot Duration:", 
+                    font=("SF Pro Display", 14, "bold")).pack(side="left")
+        
+        self.duration_var = ctk.CTkComboBox(
+            duration_frame,
+            values=["15 minutes", "30 minutes", "45 minutes", "60 minutes"],
+            width=150
+        )
+        self.duration_var.pack(side="right", padx=10)
+        self.duration_var.set(f"{self.operating_hours['slot_duration']} minutes")
+        
+        # Number of lanes
+        lanes_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        lanes_frame.pack(fill="x", pady=15, padx=20)
+        
+        ctk.CTkLabel(lanes_frame, text="🎳 Number of Lanes:", 
+                    font=("SF Pro Display", 14, "bold")).pack(side="left")
+        
+        self.lanes_var = ctk.CTkComboBox(
+            lanes_frame,
+            values=[str(i) for i in range(1, 13)],  # 1-12 lanes
+            width=150
+        )
+        self.lanes_var.pack(side="right", padx=10)
+        self.lanes_var.set(str(self.operating_hours['lanes_count']))
+        
+        # Buttons
+        button_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        button_frame.pack(pady=20)
+        
+        save_btn = ctk.CTkButton(
+            button_frame,
+            text="💾 Save Settings",
+            command=lambda: self.save_settings(dialog),
+            width=150,
+            height=40,
+            corner_radius=20,
+            font=("SF Pro Display", 14, "bold"),
+            fg_color=("#38a169", "#68d391"),
+            hover_color=("#2f855a", "#38a169")
+        )
+        save_btn.pack(side="left", padx=10)
+        
+        cancel_btn = ctk.CTkButton(
+            button_frame,
+            text="❌ Cancel",
+            command=dialog.destroy,
+            width=120,
+            height=40,
+            corner_radius=20
+        )
+        cancel_btn.pack(side="left", padx=10)
+
+        # Google Sheets section
+        sheets_section = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        sheets_section.pack(fill="x", pady=15, padx=20)
+        
+        ctk.CTkLabel(
+            sheets_section,
+            text="📊 Google Sheets Setup",
+            font=("SF Pro Display", 16, "bold")
+        ).pack(anchor="w", pady=(0, 10))
+        
+        setup_sheet_btn = ctk.CTkButton(
+            sheets_section,
+            text="🔧 Setup Sheet Headers",
+            command=self.setup_sheet_manually,
+            width=200,
+            height=35,
+            corner_radius=20,
+            font=("SF Pro Display", 12),
+            fg_color=("#3182ce", "#4299e1"),
+            hover_color=("#2c5aa0", "#3182ce")
+        )
+        setup_sheet_btn.pack(anchor="w")
+
+
+
+    def _create_time_setting(self, parent, label_text, current_time, setting_key):
+        """Create a time setting field"""
+        time_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        time_frame.pack(fill="x", pady=15, padx=20)
+        
+        ctk.CTkLabel(time_frame, text=label_text, 
+                    font=("SF Pro Display", 14, "bold")).pack(side="left")
+        
+        # Hour selection
+        hour_var = ctk.CTkComboBox(
+            time_frame,
+            values=[f"{i:02d}" for i in range(24)],
+            width=60
+        )
+        hour_var.pack(side="right", padx=5)
+        hour_var.set(f"{current_time.hour:02d}")
+        
+        ctk.CTkLabel(time_frame, text=":", font=("SF Pro Display", 14, "bold")).pack(side="right")
+        
+        # Minute selection
+        minute_var = ctk.CTkComboBox(
+            time_frame,
+            values=["00", "15", "30", "45"],
+            width=60
+        )
+        minute_var.pack(side="right", padx=5)
+        minute_var.set(f"{current_time.minute:02d}")
+        
+        # Store references for saving
+        setattr(self, f"{setting_key}_hour", hour_var)
+        setattr(self, f"{setting_key}_minute", minute_var)
+
+    def save_settings(self, dialog):
+        """Save operating hours settings"""
+        try:
+            # Parse new settings
+            new_settings = {
+                'open_time': time(
+                    int(self.open_time_hour.get()),
+                    int(self.open_time_minute.get())
+                ),
+                'close_time': time(
+                    int(self.close_time_hour.get()),
+                    int(self.close_time_minute.get())
+                ),
+                'slot_duration': int(self.duration_var.get().split()[0]),
+                'lanes_count': int(self.lanes_var.get())
+            }
+            
+            # Validate settings
+            if new_settings['open_time'] >= new_settings['close_time']:
+                messagebox.showerror("Error", "Opening time must be before closing time!")
+                return
+            
+            # Update settings
+            self.operating_hours.update(new_settings)
+            
+            # Refresh the display
+            self.update_time_slots()
+            
+            dialog.destroy()
+            messagebox.showinfo("Success", "Settings saved successfully!")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save settings: {str(e)}")
+
+    # ... (Include all the remaining methods from your original code with similar improvements)
+    
+    def load_reservations_data(self):
+        """Load data using the actual spreadsheet columns"""
+        if not self.worksheet:
+            self._update_status("❌ No connection", "error")
+            return
+        
+        try:
+            self._update_status("🔄 Loading...", "info")
+            self._setup_sheet_headers()  # Validate headers first
+            
+            # Get all data
+            all_values = self.worksheet.get_all_values()
+            if len(all_values) < 2:  # Only headers or empty
+                self.reservations_data = pd.DataFrame(columns=list(self.column_mapping.keys()))
+                self._update_status("⚠️ Sheet is empty", "warning")
+                return
+                
+            # Create DataFrame with actual headers
+            headers = all_values[0]
+            data_rows = all_values[1:]
+            raw_df = pd.DataFrame(data_rows, columns=headers)
+            
+            # Map to our expected columns
+            self.reservations_data = pd.DataFrame()
+            for our_col, sheet_col in self.column_mapping.items():
+                if sheet_col in raw_df.columns:
+                    self.reservations_data[our_col] = raw_df[sheet_col]
+                else:
+                    self.reservations_data[our_col] = ''
+            
+            # Convert "Lane" from number to "Lane X" format
+            if 'Lane' in self.reservations_data.columns:
+                self.reservations_data['Lane'] = self.reservations_data['Lane'].apply(
+                    lambda x: f"Lane {x}" if str(x).isdigit() else x
+                )
+            
+            # Clean and convert data types
+            self._clean_reservations_data()
+            
+            print(f"✅ Loaded {len(self.reservations_data)} reservations")
+            print("Sample data:\n", self.reservations_data.head(3))
+            self._update_status("✅ Data loaded", "success")
+            
+            self.update_calendar_view()
+            self.update_time_slots()
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Load error: {error_msg}")
+            self._update_status("❌ Load failed", "error")
+            self.reservations_data = pd.DataFrame(columns=list(self.column_mapping.keys()))
+
+
+    def _clean_reservations_data(self):
+        """Clean and convert data types in loaded reservations"""
+        # Add proper type conversion for Lane
+        if 'Lane' in self.reservations_data.columns:
+            self.reservations_data['Lane'] = self.reservations_data['Lane'].apply(
+                lambda x: f"Lane {x}" if str(x).isdigit() else x
+            )
+    # Rest of your existing cleaning code...
+        # Date conversion
+        if 'Date' in self.reservations_data.columns:
+            self.reservations_data['Date'] = pd.to_datetime(
+                self.reservations_data['Date'],
+                errors='coerce'
+            ).dt.date
+        
+        # Numeric fields
+        if 'Party Size' in self.reservations_data.columns:
+            self.reservations_data['Party Size'] = pd.to_numeric(
+                self.reservations_data['Party Size'],
+                errors='coerce'
+            ).fillna(0).astype(int)
+        
+        # Text fields
+        text_cols = ['Time', 'Lane', 'Party Name', 'Phone Number', 'Email', 'Special Requests', 'Status']
+        for col in text_cols:
+            if col in self.reservations_data.columns:
+                self.reservations_data[col] = self.reservations_data[col].fillna('').astype(str)
+        
+        # Remove completely empty rows
+        self.reservations_data = self.reservations_data.dropna(how='all')
+
+
+
+    def setup_sheet_manually(self):
+        """Manually setup the Google Sheet with proper headers"""
+        try:
+            if not self.worksheet:
+                print("No worksheet connection available")
+                return False
+            
+            expected_headers = ['Date', 'Time', 'Lane', 'Party Name', 'Party Size', 
+                            'Phone Number', 'Email', 'Special Requests', 'Status']
+            
+            # Clear the first row and set headers
+            self.worksheet.clear()
+            self.worksheet.update('A1:I1', [expected_headers])
+            
+            # Add some sample data for testing (optional)
+            sample_data = [
+                ['2025-01-15', '2:00 PM', 'Lane 1', 'John Doe', '4', '555-1234', 'john@email.com', 'Birthday party', 'Confirmed'],
+                ['2025-01-15', '3:00 PM', 'Lane 2', 'Jane Smith', '6', '555-5678', 'jane@email.com', '', 'Confirmed']
+            ]
+            
+            # Uncomment the next line if you want sample data
+            # self.worksheet.update('A2:I3', sample_data)
+            
+            print("✅ Sheet setup completed successfully")
+            return True
+            
+        except Exception as e:
+            print(f"Error setting up sheet: {e}")
+            return False
+
+    def on_date_selected(self, event=None):
+        """Handle date selection from calendar"""
+        selected = self.calendar.get_date()
+        self.selected_date = datetime.strptime(selected, '%Y-%m-%d').date()
+        
+        # Update the date label with better formatting
+        formatted_date = self.selected_date.strftime('%A, %B %d, %Y')
+        self.selected_date_label.configure(text=f"📅 {formatted_date}")
+        
+        # Update time slots for selected date
+        self.update_time_slots()
+
+    def update_calendar_view(self):
+        """Update calendar to show days with reservations"""
+        if self.reservations_data.empty:
+            return
+        
+        # Get unique dates with reservations
+        reservation_dates = self.reservations_data['Date'].dropna().unique()
+        
+        # Mark dates with reservations on the calendar
+        for date in reservation_dates:
+            if isinstance(date, (datetime, pd.Timestamp)):
+                date = date.date()
+            
+            # Add visual indicator for dates with reservations
+            try:
+                self.calendar.calevent_create(date, 'Reservations', 'reservation')
+            except:
+                pass  # Date might be outside current calendar view
+
+    def get_reservations_for_date(self, date):
+        """Get all reservations for a specific date"""
+        if self.reservations_data.empty:
+            return pd.DataFrame()
+        
+        return self.reservations_data[self.reservations_data['Date'] == date]
+
+    def is_lane_reserved(self, date_reservations, time_slot, lane):
+        """Check if a specific lane is reserved at a specific time"""
+        if date_reservations.empty:
+            return False
+        
+        normalized_time = self._normalize_time(time_slot)
+        
+        reservations = date_reservations[
+            (date_reservations['Time'].apply(self._normalize_time) == normalized_time) &
+            (date_reservations['Lane'].str.contains(f"Lane {lane}", na=False))
+        ]
+        
+        if not reservations.empty:
+            return reservations.iloc[0].to_dict()
+        
+        return False
+
+    def quick_add_reservation(self, time_slot, lane):
+        """Quick add reservation for specific time and lane"""
+        self.show_reservation_dialog(
+            preset_date=self.selected_date,
+            preset_time=time_slot,
+            preset_lane=f"Lane {lane}"
+        )
+
+    def add_new_reservation_for_date(self):
+        """Add reservation for currently selected date"""
+        self.show_reservation_dialog(preset_date=self.selected_date)
+
+    def show_reservation_dialog(self, reservation=None, preset_date=None, preset_time=None, preset_lane=None):
+        """Show reservation dialog with proper parenting and styling"""
+        dialog = ctk.CTkToplevel(self.parent_app)
+        dialog.title("🎳 Bowling Reservation")
+        dialog.geometry("600x800")
+        dialog.grab_set()
+        
+        # Ensure dialog stays on top and is properly centered
+        dialog.transient(self.parent_app)
+        dialog.lift()
+        
+        # Main container with proper theming
+        main_container = ctk.CTkFrame(
+            dialog, 
+            fg_color=("#171717", "#171717"),  # Match main background
+            corner_radius=15
+        )
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Scrollable frame for content
+        scroll_frame = ctk.CTkScrollableFrame(
+            main_container,
+            fg_color="transparent",
+            corner_radius=10
+        )
+        scroll_frame.pack(fill="both", expand=True)
+        
+        # Title with accent color
+        title = "✏️ Edit Reservation" if reservation else "➕ New Reservation"
+        title_label = ctk.CTkLabel(
+            scroll_frame, 
+            text=title, 
+            font=("SF Pro Display", 24, "bold"),
+            text_color=("#00843d", "#00843d")  # Green accent
+        )
+        title_label.pack(pady=(0, 20))
+        
+        # Rest of your dialog implementation...
+        # [Keep all your existing form fields and logic, just ensure they're children of scroll_frame]
+        
+        # Form container
+        form_frame = ctk.CTkFrame(scroll_frame, corner_radius=15)
+        form_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        fields = {}
+        
+        # Date and Time section
+        datetime_section = ctk.CTkFrame(form_frame, fg_color="transparent")
+        datetime_section.pack(fill="x", padx=25, pady=20)
+        
+        section_title = ctk.CTkLabel(
+            datetime_section,
+            text="📅 Date & Time",
+            font=("SF Pro Display", 18, "bold")
+        )
+        section_title.pack(anchor="w", pady=(0, 15))
+        
+        # Date field
+        date_frame = self._create_form_field(datetime_section, "Date:", "date")
+        fields['Date'] = ctk.CTkEntry(date_frame, width=200, height=35, corner_radius=10)
+        fields['Date'].pack(side="right", padx=10)
+        if preset_date:
+            fields['Date'].insert(0, preset_date.strftime('%Y-%m-%d'))
+        elif reservation:
+            fields['Date'].insert(0, str(reservation.get('Date', '')))
+        
+        # Time field
+        time_frame = self._create_form_field(datetime_section, "Time:", "time")
+        time_slots = self.generate_time_slots()
+        fields['Time'] = ctk.CTkComboBox(
+            time_frame,
+            values=[],  # Empty the values list
+            width=200,
+            height=35,
+            corner_radius=10
+        )
+        fields['Time'].pack(side="right", padx=10)
+
+        # Add scrollable dropdown for time slots
+        time_scrollable = CTkScrollableDropdown(
+            fields['Time'],
+            values=time_slots,
+            command=lambda v: fields['Time'].set(v),
+            width=200,
+            height=200,
+            font=("SF Pro Display", 12),
+            justify="left",
+            resize=False,
+            button_height=35
+        )
+        if preset_time:
+            fields['Time'].set(preset_time)
+        elif reservation:
+            fields['Time'].set(reservation.get('Time', ''))
+        
+        # Lane field
+        lane_frame = self._create_form_field(datetime_section, "Lane:", "lane")
+        fields['Lane'] = ctk.CTkComboBox(
+            lane_frame,
+            values=[],  # Empty the values list
+            width=200,
+            height=35,
+            corner_radius=10
+        )
+        fields['Lane'].pack(side="right", padx=10)
+
+        # Add scrollable dropdown for lanes
+        lane_scrollable = CTkScrollableDropdown(
+            fields['Lane'],
+            values=[f"Lane {i}" for i in range(1, self.operating_hours['lanes_count'] + 1)],
+            command=lambda v: fields['Lane'].set(v),
+            width=200,
+            height=150,
+            font=("SF Pro Display", 12),
+            justify="left",
+            resize=False,
+            button_height=35
+        )
+
+        if preset_lane:
+            fields['Lane'].set(preset_lane)
+        elif reservation:
+            fields['Lane'].set(reservation.get('Lane', ''))
+        
+        # Customer Information section
+        customer_section = ctk.CTkFrame(form_frame, fg_color="transparent")
+        customer_section.pack(fill="x", padx=25, pady=20)
+        
+        customer_title = ctk.CTkLabel(
+            customer_section,
+            text="👥 Customer Information",
+            font=("SF Pro Display", 18, "bold")
+        )
+        customer_title.pack(anchor="w", pady=(0, 15))
+        
+        # Customer fields
+        customer_fields = [
+            ("Party Name", "👤"),
+            ("Party Size", "👨‍👩‍👧‍👦"),
+            ("Phone Number", "📞"),
+            ("Email", "📧")
+        ]
+        
+        for field_name, icon in customer_fields:
+            field_frame = self._create_form_field(customer_section, f"{field_name}:", icon)
+            fields[field_name] = ctk.CTkEntry(field_frame, width=300, height=35, corner_radius=10)
+            fields[field_name].pack(side="right", padx=10)
+            if reservation:
+                fields[field_name].insert(0, str(reservation.get(field_name, '')))
+        
+        # Special requests
+        requests_frame = self._create_form_field(customer_section, "Special Requests:", "📝")
+        fields['Special Requests'] = ctk.CTkTextbox(
+            requests_frame, 
+            width=300, 
+            height=80, 
+            corner_radius=10
+        )
+        fields['Special Requests'].pack(side="right", padx=10, pady=5)
+        if reservation:
+            fields['Special Requests'].insert("1.0", str(reservation.get('Special Requests', '')))
+        
+        # Status section
+        status_section = ctk.CTkFrame(form_frame, fg_color="transparent")
+        status_section.pack(fill="x", padx=25, pady=20)
+        
+        status_title = ctk.CTkLabel(
+            status_section,
+            text="📊 Status",
+            font=("SF Pro Display", 18, "bold")
+        )
+        status_title.pack(anchor="w", pady=(0, 15))
+        
+        status_frame = self._create_form_field(status_section, "Status:", "🔄")
+        fields['Status'] = ctk.CTkComboBox(
+            status_frame,
+            values=[],  # Empty the values list
+            width=200,
+            height=35,
+            corner_radius=10
+        )
+        fields['Status'].pack(side="right", padx=10)
+
+        # Add scrollable dropdown for status
+        status_scrollable = CTkScrollableDropdown(
+            fields['Status'],
+            values=["Confirmed", "Pending", "Cancelled", "Completed"],
+            command=lambda v: fields['Status'].set(v),
+            width=200,
+            height=120,
+            font=("SF Pro Display", 12),
+            justify="left",
+            resize=False,
+            button_height=35
+        )
+        if reservation:
+            fields['Status'].set(reservation.get('Status', 'Pending'))
+        else:
+            fields['Status'].set('Confirmed')
+        
+          # Action buttons
+        button_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        button_frame.pack(pady=30)
+     
+        def save_reservation():
+            # Collect data
+            data = {}
+            for key, widget in fields.items():
+                if key == 'Special Requests':
+                    data[key] = widget.get("1.0", "end-1c")
+                else:
+                    data[key] = widget.get()
+            
+            # Validate required fields
+            required = ['Date', 'Time', 'Lane', 'Party Name', 'Party Size']
+            missing = [field for field in required if not data[field]]
+            
+            if missing:
+                messagebox.showerror("❌ Missing Information", 
+                                   f"Please fill in the following fields:\n• {chr(10).join(missing)}")
+                return
+            
+            # Validate party size is a number
+            try:
+                int(data['Party Size'])
+            except ValueError:
+                messagebox.showerror("❌ Invalid Data", "Party Size must be a number")
+                return
+            
+            # Save to Google Sheets
+            if self.save_reservation_to_sheets(data, reservation):
+                dialog.destroy()
+                self.load_reservations_data()  # Refresh data
+        
+        # Save button
+        save_btn = ctk.CTkButton(
+            button_frame,
+            text="💾 Save Reservation",
+            command=save_reservation,
+            width=180,
+            height=45,
+            corner_radius=25,
+            font=("SF Pro Display", 16, "bold"),
+            fg_color=("#38a169", "#68d391"),
+            hover_color=("#2f855a", "#38a169")
+        )
+        save_btn.pack(side="left", padx=10)
+        
+        # Cancel button
+        cancel_btn = ctk.CTkButton(
+            button_frame,
+            text="❌ Cancel",
+            command=dialog.destroy,
+            width=120,
+            height=45,
+            corner_radius=25,
+            font=("SF Pro Display", 14)
+        )
+        cancel_btn.pack(side="left", padx=10)
+        
+        # Delete button for existing reservations
+        if reservation:
+            delete_btn = ctk.CTkButton(
+                button_frame,
+                text="🗑️ Delete",
+                command=lambda: self.delete_reservation(reservation, dialog),
+                width=120,
+                height=45,
+                corner_radius=25,
+                font=("SF Pro Display", 14),
+                fg_color=("#e53e3e", "#fc8181"),
+                hover_color=("#c53030", "#e53e3e")
+            )
+            delete_btn.pack(side="left", padx=10)
+
+    def _create_form_field(self, parent, label_text, icon):
+        """Create a consistent form field layout"""
+        field_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        field_frame.pack(fill="x", pady=8)
+        
+        label = ctk.CTkLabel(
+            field_frame,
+            text=f"{icon} {label_text}",
+            font=("SF Pro Display", 14, "bold"),
+            width=150,
+            anchor="w"
+        )
+        label.pack(side="left", padx=10)
+        
+        return field_frame
+
+    def save_reservation_to_sheets(self, data, existing_reservation=None):
+        """Save data using the actual spreadsheet columns"""
+        try:
+            self._update_status("💾 Saving...", "info")
+            
+            # Get current headers to maintain column order
+            sheet_headers = self.worksheet.row_values(1)
+            row_data = [''] * len(sheet_headers)  # Empty row with correct columns
+            
+            # Map our data to sheet columns
+            for our_col, sheet_col in self.column_mapping.items():
+                if sheet_col in sheet_headers:
+                    col_index = sheet_headers.index(sheet_col)
+                    value = str(data.get(our_col, ''))
+                    
+                    # Special handling for Lane (convert "Lane X" to number)
+                    # if our_col == 'Lane' and value.startswith('Lane '):
+                    #     value = value.replace('Lane ', '')
+                    
+                    row_data[col_index] = value
+            
+            # Set automatic fields
+            auto_fields = {
+                'Create Date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'Made by': 'App',
+                'Gaming Center': 'Bowling',  # Default value
+                'Group Type': 'Public',      # Default value
+                'Socks': 'No'                # Default value
+            }
+            
+            for field, value in auto_fields.items():
+                if field in sheet_headers:
+                    row_data[sheet_headers.index(field)] = value
+            
+              # Save to sheet
+            if existing_reservation:
+                # Update existing
+                all_data = self.worksheet.get_all_values()
+                for i, row in enumerate(all_data[1:], start=2):
+                    if (str(row[0]) == str(existing_reservation.get('Date', '')) and \
+                        str(row[1]) == str(existing_reservation.get('Time', ''))):
+                        self.worksheet.update(
+                            range_name=f"A{i}:{chr(65 + len(row_data) - 1)}{i}",
+                            values=[row_data]
+                        )
+                        break
+            else:
+              # Append new
+                self.worksheet.append_row(row_data)
+            
+            # Refresh data
+            self.load_reservations_data()
+            self._update_status("✅ Saved successfully", "success")
+            return True
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Save error: {error_msg}")
+            self._update_status("❌ Save failed", "error")
+            messagebox.showerror("Error", f"Failed to save reservation:\n{error_msg}")
+            return False
+            
+    def edit_reservation(self, reservation):
+        """Edit an existing reservation"""
+        self.show_reservation_dialog(reservation=reservation)
+
+    def delete_reservation(self, reservation, dialog):
+        """Delete a reservation with confirmation"""
+        party_name = reservation.get('Party Name', 'Unknown')
+        date_time = f"{reservation.get('Date')} at {reservation.get('Time')}"
+        
+        confirm_msg = f"""Are you sure you want to delete this reservation?
+        
+👤 Party: {party_name}
+📅 Date/Time: {date_time}
+🎳 Lane: {reservation.get('Lane', 'Unknown')}
+
+This action cannot be undone."""
+        
+        if messagebox.askyesno("🗑️ Confirm Delete", confirm_msg):
+            try:
+                self._update_status("🗑️ Deleting...", "info")
+                
+                # Find and delete the row
+                all_data = self.worksheet.get_all_records()
+                for i, row in enumerate(all_data, start=2):
+                    if (str(row.get('Date')) == str(reservation.get('Date')) and
+                        row.get('Time') == reservation.get('Time') and
+                        row.get('Lane') == reservation.get('Lane')):
+                        
+                        self.worksheet.delete_rows(i)
+                        break
+                
+                dialog.destroy()
+                self.load_reservations_data()
+                self._update_status("✅ Deleted successfully", "success")
+                messagebox.showinfo("✅ Success", "Reservation deleted successfully!")
+                
+            except Exception as e:
+                print(f"Delete error: {e}")
+                self._update_status("❌ Delete failed", "error")
+                messagebox.showerror("❌ Delete Error", f"Failed to delete reservation:\n{str(e)}")
+
+    def refresh_reservations_data(self):
+        """Refresh reservations data from Google Sheets"""
+        self.load_reservations_data()
+
+    def _get_reservations_for_time_slot(self, date_reservations, time_slot):
+        """Get reservations for a specific time slot with improved time matching"""
+        if date_reservations.empty:
+            return pd.DataFrame()
+        
+        normalized_time = self._normalize_time(time_slot)
+        print(f"Looking for time slot: {time_slot} -> normalized: {normalized_time}")
+        print(f"Available times in data: {date_reservations['Time'].tolist()}")
+        
+        # Convert normalized time to hour for flexible matching
+        try:
+            hour_24 = int(normalized_time.split(':')[0])
+            hour_12 = hour_24 if hour_24 <= 12 else hour_24 - 12
+            if hour_12 == 0:
+                hour_12 = 12
+            
+            # Create multiple possible time patterns to match
+            time_patterns = [
+                normalized_time,  # 14:00
+                time_slot,        # 2:00 PM
+                f"{hour_12}pm",   # 2pm
+                f"{hour_12}:00pm" if hour_24 >= 12 else f"{hour_12}:00am",  # 2:00pm
+                f"{hour_12}-",    # 2- (start of range like "2-3pm")
+                f"{hour_12}pm to", # 2pm to (start of range like "2pm to 3pm")
+            ]
+            
+            print(f"Searching for patterns: {time_patterns}")
+            
+            # Try multiple matching strategies
+            matching_reservations = date_reservations[
+                date_reservations['Time'].apply(lambda x: any(
+                    pattern.lower() in str(x).lower().replace(' ', '') 
+                    for pattern in [p.replace(' ', '') for p in time_patterns]
+                ))
+            ]
+        except Exception as e:
+            print(f"Error in pattern matching: {e}")
+            # Fallback to original logic
+            matching_reservations = date_reservations[
+                (date_reservations['Time'].apply(self._normalize_time) == normalized_time) |
+                (date_reservations['Time'].str.contains(time_slot, case=False, na=False)) |
+                (date_reservations['Time'].str.contains(normalized_time, case=False, na=False))
+            ]
+        
+        print(f"Found {len(matching_reservations)} matching reservations")
+        return matching_reservations
+
+    def _count_reserved_lanes(self, date_reservations, time_slot):
+    
+        """Count how many lanes are reserved for a specific time slot"""
+        if date_reservations.empty:
+            return 0
+        
+        normalized_slot_time = self._normalize_time(time_slot)
+        print(f"Counting lanes for {time_slot} -> {normalized_slot_time}")
+        print(f"Times in data: {date_reservations['Time'].apply(self._normalize_time).tolist()}")
+        
+        # Normalize all reservation times and compare
+        reservations_at_time = date_reservations[
+            date_reservations['Time'].apply(self._normalize_time) == normalized_slot_time
+        ]
+        
+        print(f"Found {len(reservations_at_time)} reservations at {time_slot}")
+        return len(reservations_at_time)
+
+
+    def _create_reservation_card(self, parent, reservation, index):
+
+        card = ctk.CTkFrame(
+            parent,
+            fg_color=("#2d2d2d", "#2d2d2d"),  # Darker background for cards
+            corner_radius=15,
+            border_width=1,
+            border_color=("#444444", "#444444")  # Subtle border color
+        )
+        card.pack(fill="x", pady=(0, 10), padx=10)
+
+
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=15)
+
+        header_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 10))
+
+
+        lane_label = ctk.CTkLabel(
+            header_frame,
+            text=f"🎳 {reservation.get('Lane', 'Unknown Lane')}",
+            font=("SF Pro Display", 18, "bold"),
+            text_color=("#38a169", "#68d391")  # Green accent color
+        )
+        lane_label.pack(side="left")
+
+        edit_btn = ctk.CTkButton(
+            header_frame,
+            text="✏️ Edit",
+            command=lambda: self.edit_reservation(reservation.to_dict() if isinstance(reservation, pd.Series) else reservation),
+            width=80,
+            height=30,
+            corner_radius=15,
+            font=("SF Pro Display", 12),
+            fg_color=("#3182ce", "#4299e1"),  # Blue accent color
+            hover_color=("#2c5aa0", "#3182ce")  # Darker blue on hover
+        )
+        edit_btn.pack(side="right")
+
+        details_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        details_frame.pack(fill="x", pady=(0, 10))
+
+        left_column = ctk.CTkFrame(details_frame, fg_color="transparent")
+        left_column.pack(side="left", fill="both", expand=True)
+
+
+        details = [
+            ("📅 Date:", reservation.get('Date', 'N/A')),
+            ("⏰ Time:", reservation.get('Time', 'N/A')),
+            ("👤 Party Name:", reservation.get('Party Name', 'N/A')),
+            ("👨‍👩‍👧‍👦 Party Size:", reservation.get('Party Size', '0')),
+            ("📞 Phone:", reservation.get('Phone Number', 'N/A')),
+            ("📧 Email:", reservation.get('Email', 'N/A')),
+            ("📝 Special Requests:", reservation.get('Special Requests', 'None')),
+            ("🔄 Status:", reservation.get('Status', 'Pending'))
+        ]
+
+        for label, value in details:
+            detail_frame = ctk.CTkFrame(left_column, fg_color="transparent")
+            detail_frame.pack(fill="x", pady=2)
+
+            ctk.CTkLabel(
+                detail_frame,
+                text=label,
+                font=("SF Pro Display", 12, "bold"),
+                text_color=("#ffffff", "#ffffff"),
+                anchor="w",
+                width=120
+            ).pack(side="left")
+            
+            ctk.CTkLabel(
+                detail_frame,
+                text=value,
+                font=("SF Pro Display", 12),
+                text_color=("#a0aec0", "#a0aec0"),
+                anchor="w"
+            ).pack(side="left", padx=(10, 0))
+
+
+                    # Right column
+        right_column = ctk.CTkFrame(details_frame, fg_color="transparent")
+        right_column.pack(side="right", fill="both", expand=True, padx=(20, 0))
+        
+        additional_details = [
+            ("📧 Email:", reservation.get('Email', 'N/A')),
+            ("📝 Special Requests:", reservation.get('Special Requests', 'None')),
+            ("📊 Status:", reservation.get('Status', 'Unknown')),
+        ]
+        
+        for label, value in additional_details:
+            detail_frame = ctk.CTkFrame(right_column, fg_color="transparent")
+            detail_frame.pack(fill="x", pady=2)
+            
+            ctk.CTkLabel(
+                detail_frame,
+                text=label,
+                font=("SF Pro Display", 12, "bold"),
+                text_color=("#ffffff", "#ffffff"),
+                anchor="w",
+                width=140
+            ).pack(side="left")
+            
+            # Wrap long text
+            display_value = value if len(str(value)) <= 30 else str(value)[:27] + "..."
+            
+            ctk.CTkLabel(
+                detail_frame,
+                text=display_value,
+                font=("SF Pro Display", 12),
+                text_color=("#a0aec0", "#a0aec0"),
+                anchor="w"
+            ).pack(side="left", padx=(10, 0))
+
+
+    def show_time_slot_reservations(self, time_slot, date_reservations):
+        """Show all reservations for a specific time slot"""
+        time_reservations = self._get_reservations_for_time_slot(date_reservations, time_slot)
+        
+        if time_reservations.empty:
+            messagebox.showinfo("No Reservations", f"No reservations found for {time_slot} on {self.selected_date}")
+            return
+        
+        # Create dialog window
+        dialog = ctk.CTkToplevel(self.parent_app)
+        dialog.title(f"Reservations for {time_slot}")
+        dialog.geometry("800x600")
+        dialog.grab_set()
+        dialog.transient(self.parent_app)
+        
+        # Fix: Remove the extra comma and quotes in fg_color
+        main_container = ctk.CTkFrame(dialog, fg_color="#171717", corner_radius=15)
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        header_frame = ctk.CTkFrame(main_container, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 20))
+
+        title_label = ctk.CTkLabel(
+            header_frame,
+            text=f"🎳 Reservations for {time_slot}",
+            font=("SF Pro Display", 24, "bold"),
+            text_color=("#00843d", "#00843d")
+        )
+        title_label.pack(pady=(0, 10))
+        
+        date_label = ctk.CTkLabel(
+            header_frame,
+            text=f"📅 {self.selected_date.strftime('%A, %B %d, %Y')}",
+            font=("SF Pro Display", 16),
+            text_color=("#ffffff", "#ffffff")
+        )
+        date_label.pack()
+        
+        # Scrollable frame for reservations
+        scroll_frame = ctk.CTkScrollableFrame(main_container, fg_color="transparent")
+        scroll_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Display each reservation
+        for idx, (_, reservation) in enumerate(time_reservations.iterrows()):
+            self._create_reservation_card(scroll_frame, reservation, idx)
+        
+        # Close button
+        close_btn = ctk.CTkButton(
+            main_container,
+            text="✕ Close",
+            command=dialog.destroy,
+            width=120,
+            height=35,
+            corner_radius=20
+        )
+        close_btn.pack(pady=(0, 10))
+
+
+    
+
+    def show_all_reservations_for_date(self, date):
+        """Show all reservations for a specific date in a dialog"""
+        date_reservations = self.get_reservations_for_date(date)
+
+        if date_reservations.empty:
+            messagebox.showinfo("No Reservations", f"No reservations found for {date}")
+            return
+        
+        dialog = ctk.CTkToplevel(self.parent_app)
+        dialog.title(f"Reservations for {date}")
+        dialog.geometry("800x600")
+        dialog.grab_set()
+        dialog.transient(self.parent_app)
+
+        main_container = ctk.CTkFrame(dialog, fg_color=("#171717", "#171717"), corner_radius=15)
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        header_frame = ctk.CTkFrame(main_container, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, 20))
+
+        title_label = ctk.CTkLabel(
+            header_frame,
+            text=f"🎳 Reservations for {date}",
+            font=("SF Pro Display", 24, "bold"),
+            text_color=("#00843d", "#00843d")
+        )
+        title_label.pack(pady=(0, 10))
+        
+        # Scrollable frame for reservations
+        scroll_frame = ctk.CTkScrollableFrame(main_container, fg_color="transparent")
+        scroll_frame.pack(fill="both", expand=True, pady=(0, 20))
+        
+        # Display each reservation
+        for idx, (_, reservation) in enumerate(date_reservations.iterrows()):
+            self._create_reservation_card(scroll_frame, reservation, idx)
+        
+        # Close button
+        close_btn = ctk.CTkButton(
+            main_container,
+            text="✕ Close",
+            command=dialog.destroy,
+            width=120,
+            height=35,
+            corner_radius=20
+        )
+        close_btn.pack(pady=(0, 10))
+
+
+class GamingCenterApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+
+        # IMPORTANT: Make DPI-aware BEFORE creating any UI elements
+        self.make_dpi_aware()
+        
+        # Get responsive dimensions (now DPI-aware)
+        self.responsive = self.get_responsive_dimensions()
+
+        # Calculate DPI-aware window size
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Use effective resolution for window sizing
+        effective_width = screen_width / self.responsive['dpi_scale']
+        effective_height = screen_height / self.responsive['dpi_scale']
+
+        window_width = int(effective_width * 0.85)
+        window_height = int(effective_height * 0.85)
+
+        # Center the window using physical coordinates
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+
+        self.title("Gaming Center App")
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.resizable(True, True)      
+        self.minsize(
+            int(1400 * self.responsive['scale_factor']), 
+            int(900 * self.responsive['scale_factor'])
+        )
+        
+        self._font_family = None
+        self.load_orbitron_font()
+        self.stations = []
+        self.waitlist = []
+        self.timers = []
+        self.waitlist_tree = None
+        self.pages = {}
+        self.active_sidebar_btn = None
+
+        self.reservation_system = ReservationSystem(self)
+
+        # Set the base application background color
+        self.configure(fg_color="#090A09")
+        
+        # Create the main container
+        self.main_container = ctk.CTkFrame(self, fg_color="#090A09", corner_radius=0)
+        self.main_container.pack(fill="both", expand=True, padx=0, pady=0)
+        
+        # Create top bar with responsive height
+        top_bar = ctk.CTkFrame(self.main_container, fg_color="#171717", 
+                            height=self.responsive['topbar_height'], corner_radius=0)
+        top_bar.pack(fill="x")
+        top_bar.pack_propagate(False)
+        self.top_bar = top_bar
+        
+        # Create sidebar with responsive width
+        sidebar = ctk.CTkFrame(self.main_container, fg_color="#171717", 
+                            width=self.responsive['sidebar_width'], corner_radius=0)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+        self.sidebar = sidebar
+        
+        # Create content area with responsive corner radius
+        content_container = ctk.CTkFrame(self.main_container, fg_color="#090A09", corner_radius=0)
+        content_container.pack(side="right", fill="both", expand=True)
+        
+        content_area = ctk.CTkFrame(
+            content_container, 
+            fg_color="#090A09",
+            corner_radius=self.responsive['corner_radius']
+        )
+        content_area.pack(fill="both", expand=True, 
+                        padx=(0, int(10 * self.responsive['scale_factor'])), 
+                        pady=(int(10 * self.responsive['scale_factor']), 
+                            int(10 * self.responsive['scale_factor'])))
+        
+        inner_content = ctk.CTkFrame(
+            content_area,
+            fg_color="#090A09",
+            corner_radius=int(25 * self.responsive['scale_factor'])
+        )
+        inner_content.pack(fill="both", expand=True, 
+                        padx=int(15 * self.responsive['scale_factor']), 
+                        pady=int(15 * self.responsive['scale_factor']))
+        self.content_area = inner_content
+        
+        # Setup UI components
+        self.setup_top_bar(top_bar)
+        self.setup_sidebar(sidebar)
+        self.setup_pages()
+        self.show_page("home")
+        self.create_arch_overlay()
+
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        
+        # Load saved station states
+        self.load_station_states()
+
+    def get_responsive_dimensions(self):
+        """Get responsive dimensions with MINIMAL scaling for better visibility"""
+        # Get actual screen dimensions
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        
+        # Get DPI scaling factor
+        dpi_scale = self.get_dpi_scaling_factor()
+        
+        # Calculate effective resolution (what the user actually sees)
+        effective_width = screen_width / dpi_scale
+        effective_height = screen_height / dpi_scale
+        
+        print(f"Physical resolution: {screen_width}x{screen_height}")
+        print(f"DPI scale factor: {dpi_scale}")
+        print(f"Effective resolution: {effective_width}x{effective_height}")
+        
+        # MUCH more conservative base scaling - barely any scaling
+        if effective_width >= 2560:  # 4K effective
+            base_scale = 1.1  # Reduced from 1.2
+        elif effective_width >= 1920:  # 1080p effective
+            base_scale = 1.0  # No scaling
+        elif effective_width >= 1600:  # 1600x900 effective
+            base_scale = 1.0  # No scaling
+        elif effective_width >= 1366:  # 1366x768 effective
+            base_scale = 1.0  # No scaling
+        else:  # Smaller effective screens
+            base_scale = 0.95  # Very minimal reduction
+        
+        # Only apply DPI scaling if it's very high
+        if dpi_scale > 1.5:
+            # Apply very minimal DPI scaling for high DPI displays
+            final_scale = base_scale * (1 + (dpi_scale - 1) * 0.2)  # Only 20% of DPI scaling
+        else:
+            # For normal DPI, just use base scaling
+            final_scale = base_scale
+        
+        print(f"Base scale: {base_scale}, Final scale: {final_scale}")
+        
+        return {
+            'scale_factor': final_scale,
+            'dpi_scale': dpi_scale,
+            'base_scale': base_scale,
+            'effective_width': effective_width,
+            'effective_height': effective_height,
+            'sidebar_width': 85,  # Keep original size
+            'topbar_height': 40,  # Keep original size
+            'corner_radius': 15,  # Keep original size
+            'station_min_width': 400,  # Keep original size
+            'station_min_height': 300,  # Keep original size
+            'font_scale': final_scale,
+            'icon_scale': final_scale,
+            'chart_scale': final_scale,
+            'padding_scale': final_scale
+        }
+
+    def get_dpi_scaling_factor(self):
+        """Get the Windows DPI scaling factor"""
+        try:
+            # Windows-specific DPI detection
+            if hasattr(ctypes.windll, 'shcore'):
+                # Windows 8.1+ method
+                ctypes.windll.shcore.SetProcessDpiAwareness(1)
+                
+            # Get DPI for the primary monitor
+            hdc = ctypes.windll.user32.GetDC(0)
+            dpi_x = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+            dpi_y = ctypes.windll.gdi32.GetDeviceCaps(hdc, 90)  # LOGPIXELSY
+            ctypes.windll.user32.ReleaseDC(0, hdc)
+            
+            # Standard DPI is 96
+            dpi_scale_x = dpi_x / 96.0
+            dpi_scale_y = dpi_y / 96.0
+            
+            # Use the average (they should be the same)
+            dpi_scale = (dpi_scale_x + dpi_scale_y) / 2.0
+            
+            print(f"System DPI: {dpi_x}x{dpi_y}, Scale factor: {dpi_scale}")
+            return dpi_scale
+            
+        except Exception as e:
+            print(f"Could not detect DPI scaling: {e}")
+            # Fallback: try to detect from tkinter's scaling
+            try:
+                # Get tkinter's scaling factor
+                tk_scale = self.tk.call('tk', 'scaling')
+                return tk_scale
+            except:
+                return 1.0  # No scaling
+
+    def make_dpi_aware(self):
+        """Make the application DPI-aware on Windows"""
+        try:
+            if hasattr(ctypes.windll, 'shcore'):
+                # Tell Windows we handle DPI scaling ourselves
+                ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+            else:
+                # Fallback for older Windows versions
+                ctypes.windll.user32.SetProcessDPIAware()
+            print("Application set to DPI-aware mode")
+            return True
+        except Exception as e:
+            print(f"Could not set DPI awareness: {e}")
+            return False
+
+    def get_responsive_font(self, base_size, weight="normal"):
+        """Get a font with DPI-aware responsive sizing"""
+        # Apply both base scaling and DPI scaling
+        final_size = int(base_size * self.responsive['font_scale'])
+        
+        # Ensure minimum readable size
+        final_size = max(final_size, 8)
+        
+        return ctk.CTkFont(
+            family=self.get_font_family(), 
+            size=final_size, 
+            weight=weight
+        )
+
+    def update_all_fonts_for_dpi(self):
+        """Update all fonts when DPI changes"""
+        # Update station timer fonts
+        for station in self.stations:
+            if hasattr(station.timer, 'timer_label'):
+                new_font = self.get_responsive_font(12)
+                station.timer.timer_label.configure(font=new_font)
+
+    def load_dpi_aware_image(self, image_path, base_size):
+        """Load images with DPI-aware scaling"""
+        scaled_size = (
+            int(base_size[0] * self.responsive['icon_scale']),
+            int(base_size[1] * self.responsive['icon_scale'])
+        )
+        
+        # Ensure minimum size for readability
+        scaled_size = (
+            max(scaled_size[0], 16),
+            max(scaled_size[1], 16)
+        )
+        
+        try:
+            image = Image.open(image_path)
+            return ctk.CTkImage(image, size=scaled_size)
+        except Exception as e:
+            print(f"Error loading image {image_path}: {e}")
+            return None
+
+
+
+    def setup_pages(self):
+        # Create all pages as frames, but only pack/grid the active one
+        self.pages["home"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.pages["waitlist"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.pages["stats"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        self.pages["reservations"] = ctk.CTkFrame(self.content_area, fg_color="transparent")
+        # ...add more as needed...
+
+        # Build the home page (station cards)
+        self.setup_home_page(self.pages["home"])
+        # Build waitlist and stats pages
+        self.setup_waitlist_page(self.pages["waitlist"])
+        self.setup_stats_page(self.pages["stats"])
+        self.setup_reservations_page(self.pages["reservations"])
+
+    def show_page(self, page_name):
+        # Hide all pages
+        for page in self.pages.values():
+            page.pack_forget()
+        # Show the selected page
+        self.pages[page_name].pack(fill="both", expand=True)
+        # Update sidebar active state
+        self.set_active_sidebar(page_name)
+
+        self.pages[page_name].pack(fill="both", expand=True)
+        self.set_active_sidebar(page_name)
+        if hasattr(self, "arch_overlay") and self.arch_overlay.winfo_exists():
+            try:
+                self.arch_overlay.lift()
+            except tk.TclError:
+                # If lifting fails, recreate the overlay
+                self.create_arch_overlay()
+
+    def set_active_sidebar(self, page_name):
+        # Reset all sidebar buttons to default state
+        for name, btn in self.sidebar_buttons.items():
+            btn.configure(
+                fg_color="transparent",
+                border_width=0,
+                border_color="#171717"
+            )
+        
+        # Remove any existing active indicators and glow effects
+        for child in self.sidebar.winfo_children():
+            if hasattr(child, '_active_indicator') and child._active_indicator:
+                child.destroy()
+            if hasattr(child, '_glow_effect') and child._glow_effect:
+                child.destroy()
+        
+        # Store the active sidebar button for counter background checking
+        self.active_sidebar_btn = page_name
+        
+        # Highlight the active button
+        if page_name in self.sidebar_buttons:
+            active_btn = self.sidebar_buttons[page_name]
+            
+            # Set the button to hover-like gray color
+            active_btn.configure(
+                fg_color="#3a3a3a",  # Similar to hover color
+                border_width=0
+            )
+            
+            # Update waitlist counter background immediately when this button becomes active
+            if page_name == "waitlist" and hasattr(self, 'counter_canvas') and self.counter_canvas:
+                self.counter_canvas.configure(bg="#3a3a3a")
+            
+            # Calculate position for glow and indicator
+            def position_effects():
+                try:
+                    # Get all sidebar buttons in order
+                    button_names = ["home", "games", "reservations", "waitlist", "stats"]
+                    button_index = button_names.index(page_name) if page_name in button_names else 0
+                    
+                    logo_space = 98
+                    button_spacing = 68
+                    button_center_offset = 26
+                    
+                    calculated_y = logo_space + (button_index * button_spacing) + button_center_offset - 20
+                    
+                    # Create simple but effective backlit glow effect
+                    self._create_simple_backlit_glow(42, calculated_y + 20)  # Center on button
+                    
+                    # Create indicator line on top
+                    indicator_line = ctk.CTkFrame(
+                        self.sidebar,
+                        width=4,
+                        height=40,
+                        corner_radius=2,
+                        fg_color="#00843d",
+                        border_width=0
+                    )
+                    indicator_line._active_indicator = True
+                    indicator_line.place(x=2, y=calculated_y)
+                    
+                except Exception as e:
+                    print(f"Error positioning effects: {e}")
+            
+            # Delay to ensure layout is complete
+            self.after(100, position_effects)
+        else:
+            # No active button, update counter to use default background for ALL buttons
+            if hasattr(self, 'counter_canvas') and self.counter_canvas:
+                self.counter_canvas.configure(bg="#171717")
+        
+        # IMPORTANT: Update counter background for button state changes
+        # This ensures the counter background updates when switching between pages
+        if hasattr(self, 'counter_canvas') and self.counter_canvas:
+            if page_name == "waitlist":
+                # Waitlist is now active - use active background
+                self.counter_canvas.configure(bg="#3a3a3a")
+            else:
+                # Waitlist is no longer active - use default background
+                self.counter_canvas.configure(bg="#171717")
+
+    def _create_simple_backlit_glow(self, center_x, center_y):
+        """Create a simple but effective backlit glow using overlapping CTkFrames"""
+        # Create multiple layers of glow with decreasing opacity and increasing size
+        glow_layers = [
+            {"size": 80, "color": "#1a4a2a", "alpha": 0.8},   # Inner glow - darkest
+            {"size": 95, "color": "#2a5a3a", "alpha": 0.6},   # Mid glow
+            {"size": 110, "color": "#3a6a4a", "alpha": 0.4},  # Outer glow
+            {"size": 125, "color": "#4a7a5a", "alpha": 0.25}, # Far glow
+            {"size": 140, "color": "#5a8a6a", "alpha": 0.15}, # Very diffused
+        ]
+        
+        for layer in glow_layers:
+            # Create circular glow frame
+            glow_frame = ctk.CTkFrame(
+                self.sidebar,
+                width=layer["size"],
+                height=layer["size"],
+                corner_radius=layer["size"] // 2,  # Perfect circle
+                fg_color=layer["color"],
+                border_width=0
+            )
+            glow_frame._glow_effect = True
+            
+            # Position the glow frame centered on the button
+            x_pos = center_x - (layer["size"] // 2)
+            y_pos = center_y - (layer["size"] // 2)
+            
+            glow_frame.place(x=x_pos, y=y_pos)
+            
+            # Send to back using tkinter's lower method correctly
+            try:
+                glow_frame.tkraise()  # First raise it
+                glow_frame.lower()    # Then lower it to back
+            except:
+                # If that fails, try alternative method
+                try:
+                    self.sidebar.update_idletasks()
+                    glow_frame._tkinter_lower()
+                except:
+                    pass  # If all fails, just leave it positioned
+
+    def _blend_glow_color(self, glow_color, bg_color, opacity):
+        """Blend glow color with background using opacity"""
+        glow_rgb = self._hex_to_rgb(glow_color)
+        bg_rgb = self._hex_to_rgb(bg_color)
+        
+        # Blend the colors
+        blended = tuple(
+            int(bg_rgb[i] + (glow_rgb[i] - bg_rgb[i]) * opacity)
+            for i in range(3)
+        )
+        
+        return self._rgb_to_hex(blended)
+
+    def _hex_to_rgb(self, hex_color):
+        """Convert hex color to RGB tuple"""
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+    def _rgb_to_hex(self, rgb):
+        """Convert RGB tuple to hex color"""
+        return f"#{int(rgb[0]):02x}{int(rgb[1]):02x}{int(rgb[2]):02x}"
+
+    def setup_home_page(self, frame):
+        responsive_padx = 20
+        responsive_pady = 20
+
+        main_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=responsive_padx, pady=responsive_pady)
+
+        # Configure grid: 4 rows x 3 columns (using only what we need)
+        for i in range(4):  # Only 4 rows needed
+            main_frame.grid_rowconfigure(i, weight=1)
+        for j in range(3):
+            main_frame.grid_columnconfigure(j, weight=1)
+
+        self.stations.clear()
+        self.timers.clear()
+
+        # Place 5th XBOX (top center, spanning 2 columns) - ROW 0
+        station = Station(main_frame, self, "XBOX", 5)
+        station.grid(row=0, column=1, columnspan=2, padx=10, pady=10, sticky="nsew")
+        self.stations.append(station)
+        self.timers.append(station.timer)
+
+        # Place XBOX stations 1-4 (left column, rows 0-3) - NO GAPS
+        for i in range(4):
+            row = i  # rows 0,1,2,3 (no gaps!)
+            col = 0
+            station = Station(main_frame, self, "XBOX", i + 1)  # Station numbers 1,2,3,4
+            station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+            self.stations.append(station)
+            self.timers.append(station.timer)
+
+        # Place other activity stations (fill from row 1, col 1 to row 3, col 2)
+        activities = [
+            ("Ping-Pong", 1),
+            ("Ping-Pong", 2),
+            ("Foosball", 1),
+            ("Air Hockey", 1),
+            ("PoolTable", 1),
+            ("PoolTable", 2),
+        ]
+        row, col = 1, 1  # Start at row 1, col 1 (under the spanning XBOX 5)
+        for activity, num in activities:
+            station = Station(main_frame, self, activity, num)
+            station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+            self.stations.append(station)
+            self.timers.append(station.timer)
+            col += 1
+            if col > 2:
+                col = 1
+                row += 1
+
+
+    def setup_reservations_page(self, frame):
+        """Setup the reservations page using the new ReservationSystem"""
+        self.reservation_system.setup_reservations_page(frame)
+    
+    # Add all the reservation system methods to your main class
+    def setup_google_sheets(self):
+        return self.reservation_system.setup_google_sheets()
+    
+    def load_reservations_data(self):
+        return self.reservation_system.load_reservations_data()
+    
+    def on_date_selected(self, event=None):
+        return self.reservation_system.on_date_selected(event)
+    
+    def update_calendar_view(self):
+        return self.reservation_system.update_calendar_view()
+    
+    def update_time_slots(self):
+        return self.reservation_system.update_time_slots()
+    
+    def get_reservations_for_date(self, date):
+        return self.reservation_system.get_reservations_for_date(date)
+    
+    def is_lane_reserved(self, date_reservations, time_slot, lane):
+        return self.reservation_system.is_lane_reserved(date_reservations, time_slot, lane)
+    
+    def quick_add_reservation(self, time_slot, lane):
+        return self.reservation_system.quick_add_reservation(time_slot, lane)
+    
+    def add_new_reservation_for_date(self):
+        return self.reservation_system.add_new_reservation_for_date()
+    
+    def show_reservation_dialog(self, reservation=None, preset_date=None, preset_time=None, preset_lane=None):
+        return self.reservation_system.show_reservation_dialog(reservation, preset_date, preset_time, preset_lane)
+    
+    def save_reservation_to_sheets(self, data, existing_reservation=None):
+        return self.reservation_system.save_reservation_to_sheets(data, existing_reservation)
+    
+    def edit_reservation(self, reservation):
+        return self.reservation_system.edit_reservation(reservation)
+    
+    def delete_reservation(self, reservation, dialog):
+        return self.reservation_system.delete_reservation(reservation, dialog)
+    
+    def refresh_reservations_data(self):
+        return self.reservation_system.refresh_reservations_data()
+
+    def setup_waitlist_page(self, frame):
+        # Initialize bowling waitlist if it doesn't exist
+        if not hasattr(self, 'bowling_waitlist'):
+            self.bowling_waitlist = []
+
+        responsive_padx = int(20 * self.responsive['padding_scale'])
+        responsive_pady = int(20 * self.responsive['padding_scale'])
+
+        main_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=responsive_padx, pady=responsive_pady)
+
+        # Header frame with title, toggle and count
+        header_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        header_frame.pack(fill="x", pady=(0, responsive_pady))
+
+        self.waitlist_type_var = ctk.StringVar(value="Game Center")
+        waitlist_toggle = ctk.CTkSegmentedButton(
+            header_frame,
+            values=["Game Center", "Bowling Lanes"],
+            variable=self.waitlist_type_var,
+            command=self.switch_waitlist_type,
+            corner_radius=int(75 * self.responsive['scale_factor']),
+            border_width=0,
+            selected_color="#00843d",
+            selected_hover_color="#006e33",
+            text_color="#ffffff",
+            text_color_disabled="#888888",
+            font=("Helvetica", int(12 * self.responsive['font_scale']), "normal"),
+            height=int(32 * self.responsive['scale_factor']),
+        )
+        waitlist_toggle.pack(side="left", padx=(0, responsive_padx))
+
+
+        title_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        title_frame.pack(side="left")
+
+        self.title_label = ctk.CTkLabel(
+            title_frame,
+            text="Gaming Center Waitlist",
+            font=("Helvetica", 20, "bold")
+        )
+        self.title_label.pack(side="left", padx=5)
+
+        self.count_label = ctk.CTkLabel(
+            title_frame,
+            text=str(len(self.waitlist)),
+            fg_color="#A3483F",
+            text_color="white",
+            corner_radius=10,
+            width=30
+        )
+        self.count_label.pack(side="left", padx=5)
+
+        search_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        search_frame.pack(side="right")
+        self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
+        self.search_entry.pack(side="right", padx=5)
+
+        # Content frame for treeview and buttons
+        content_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        content_frame.pack(fill="both", expand=True)
+
+        # Treeview styling
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure(
+            "Waitlist.Treeview",
+            background="#2b2b2b",
+            foreground="white",
+            fieldbackground="#2b2b2b",
+            rowheight=50,
+            font=("Helvetica", 12)
+        )
+        style.configure(
+            "Waitlist.Treeview.Heading",
+            background="#333333",
+            foreground="white",
+            font=("Helvetica", 12, "bold"),
+            relief="flat"
+        )
+        style.map(
+            "Waitlist.Treeview",
+            background=[("selected", "#1f538d")],
+            foreground=[("selected", "white")]
+        )
+
+        # Treeview columns
+        columns = ("party", "size", "notes", "station", "quotedTime", "arrival")
+        self.waitlist_tree = ttk.Treeview(
+            content_frame,
+            columns=columns,
+            show="headings",
+            style="Waitlist.Treeview"
+        )
+
+        # Configure column headings
+        self.headings = {
+            "party": "PARTY",
+            "size": "SIZE",
+            "notes": "NOTES",
+            "station": "STATION",
+            "quotedTime": "QUOTED TIME",
+            "arrival": "ARRIVAL"
+        }
+
+        for col, heading in self.headings.items():
+            self.waitlist_tree.heading(col, text=heading)
+            if col == "size":
+                self.waitlist_tree.column(col, width=50, anchor="center")
+            else:
+                self.waitlist_tree.column(col, width=150, anchor="w")
+
+        # Create a frame for the buttons column
+        buttons_frame = ctk.CTkFrame(content_frame, width=200)
+        buttons_frame.pack(side="right", fill="y", padx=(10, 0))
+        
+        # Add a header for the actions column
+        ctk.CTkLabel(buttons_frame, text="ACTIONS", font=("Helvetica", 11, "bold")).pack(pady=(0, 0))
+
+        # Placeholder buttons (shown when no entries exist)
+        self.placeholder_buttons_frame = ctk.CTkFrame(buttons_frame, fg_color="transparent")
+        self.placeholder_buttons_frame.pack(pady=10, padx=5)
+
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✓",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"
+        ).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✕",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"
+        ).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✎",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"
+        ).pack(side="left", padx=2)
+        ctk.CTkButton(
+            self.placeholder_buttons_frame,
+            text="✉",
+            width=30,
+            height=30,
+            fg_color="gray",
+            hover_color="gray",
+            state="disabled"
+        ).pack(side="left", padx=2)
+
+        # Treeview scrollbar
+        tree_scroll = ctk.CTkScrollbar(content_frame, orientation="vertical", command=self.waitlist_tree.yview)
+        self.waitlist_tree.configure(yscrollcommand=tree_scroll.set)
+        self.waitlist_tree.pack(side="left", fill="both", expand=True)
+        tree_scroll.pack(side="right", fill="y")
+
+        # Store references for later updates
+        self.buttons_frame = buttons_frame
+
+        # Create canvas-based floating action button
+        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+        self.create_canvas_add_button(main_frame, station_names)
+
+        # Bind search functionality
+        def update_tree(event=None):
+            search_text = self.search_entry.get().lower()
+            self.update_waitlist_tree(search_text)
+
+        self.search_entry.bind('<KeyRelease>', update_tree)
+        self.update_waitlist_tree()
+
+    def create_canvas_add_button(self, parent, station_names):
+        """Create a perfect circle add button using Canvas with responsive sizing"""
+        button_size = int(75 * self.responsive['scale_factor'])
+        
+        # Get parent background color for transparency
+        try:
+            parent_bg = parent.cget("fg_color")
+            if isinstance(parent_bg, tuple):
+                bg_color = parent_bg[1] if ctk.get_appearance_mode() == "Dark" else parent_bg[0]
+            elif parent_bg == "transparent":
+                bg_color = "#212121"  # Your main app background
+            else:
+                bg_color = parent_bg
+        except:
+            bg_color = "#212121"  # Fallback to your main background
+        
+        # Create canvas with transparent background
+        self.add_button_canvas = tk.Canvas(
+            parent,
+            width=button_size,
+            height=button_size,
+            highlightthickness=0,
+            bd=0,
+            bg=bg_color
+        )
+        
+        # Draw the perfect circle button
+        self.draw_add_button(normal_state=True)
+        
+        # Bind click events
+        def on_click(event):
+            self.handle_add_button_click(station_names)
+        
+        def on_enter(event):
+            self.draw_add_button(normal_state=False)  # Hover state
+            self.add_button_canvas.configure(cursor="hand2")
+        
+        def on_leave(event):
+            self.draw_add_button(normal_state=True)   # Normal state
+            self.add_button_canvas.configure(cursor="")
+        
+        # Bind events
+        self.add_button_canvas.bind("<Button-1>", on_click)
+        self.add_button_canvas.bind("<Enter>", on_enter)
+        self.add_button_canvas.bind("<Leave>", on_leave)
+        
+        # Position the button in the bottom-right corner
+        self.add_button_canvas.place(relx=0.95, rely=0.95, anchor="se")
+
+    def draw_add_button(self, normal_state=True):
+        """Draw the add button circle with responsive sizing"""
+        if not hasattr(self, 'add_button_canvas'):
+            return
+        
+        button_size = int(75 * self.responsive['scale_factor'])  # Responsive button size
+        
+        # Clear the canvas
+        self.add_button_canvas.delete("all")
+        
+        # Choose colors based on state
+        if normal_state:
+            circle_color = "#00843d"      # UVU Green
+            shadow_color = "#006e33"      # Darker green for shadow
+        else:
+            circle_color = "#006e33"      # Hover color
+            shadow_color = "#004d24"      # Even darker for hover shadow
+        
+        # Create subtle shadow effect with responsive offset
+        shadow_offset = int(3 * self.responsive['scale_factor'])
+        shadow_margin = int(6 * self.responsive['scale_factor'])
+        
+        # Draw shadow circle (slightly offset)
+        self.add_button_canvas.create_oval(
+            shadow_margin + shadow_offset, 
+            shadow_margin + shadow_offset,
+            button_size - shadow_margin + shadow_offset, 
+            button_size - shadow_margin + shadow_offset,
+            fill=shadow_color,
+            outline="",
+            width=0
+        )
+        
+        # Draw main circle with responsive margin
+        margin = int(4 * self.responsive['scale_factor'])
+        
+        # Main circle
+        self.add_button_canvas.create_oval(
+            margin, margin,
+            button_size - margin, button_size - margin,
+            fill=circle_color,
+            outline=circle_color,
+            width=int(2 * self.responsive['scale_factor'])
+        )
+        
+        # Draw the + symbol with responsive proportions
+        center = button_size // 2
+        plus_size = int(20 * self.responsive['scale_factor'])
+        plus_thickness = int(4 * self.responsive['scale_factor'])
+        
+        # Horizontal line of + with rounded ends effect
+        self.add_button_canvas.create_rectangle(
+            center - plus_size//2, center - plus_thickness//2,
+            center + plus_size//2, center + plus_thickness//2,
+            fill="white",
+            outline="white",
+            width=0
+        )
+        
+        # Add small circles at the ends for rounded effect
+        end_radius = plus_thickness // 2
+        # Left end
+        self.add_button_canvas.create_oval(
+            center - plus_size//2 - end_radius, center - end_radius,
+            center - plus_size//2 + end_radius, center + end_radius,
+            fill="white",
+            outline="white"
+        )
+        # Right end
+        self.add_button_canvas.create_oval(
+            center + plus_size//2 - end_radius, center - end_radius,
+            center + plus_size//2 + end_radius, center + end_radius,
+            fill="white",
+            outline="white"
+        )
+        
+        # Vertical line of + with rounded ends effect
+        self.add_button_canvas.create_rectangle(
+            center - plus_thickness//2, center - plus_size//2,
+            center + plus_thickness//2, center + plus_size//2,
+            fill="white",
+            outline="white",
+            width=0
+        )
+        
+        # Top end
+        self.add_button_canvas.create_oval(
+            center - end_radius, center - plus_size//2 - end_radius,
+            center + end_radius, center - plus_size//2 + end_radius,
+            fill="white",
+            outline="white"
+        )
+        # Bottom end
+        self.add_button_canvas.create_oval(
+            center - end_radius, center + plus_size//2 - end_radius,
+            center + end_radius, center + plus_size//2 + end_radius,
+            fill="white",
+            outline="white"
+        )
+
+    def handle_add_button_click(self, station_names):
+        """Handle click events for the canvas add button"""
+        waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+        
+        if waitlist_type == "Game Center":
+            self.add_to_waitlist(station_names)
+        else:  # Bowling Lanes
+            lane_names = [f"Lane {i}" for i in range(1, 7)]
+            self.add_to_bowling_waitlist(lane_names)
+
+    def setup_stats_page(self, frame):
+        """Set up the complete statistics page in the main app window"""
+        # Create main container frame
+        self.stats_main_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        self.stats_main_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        
+        # Initialize stats manager
+        self.stats_manager = StatsManager()
+        
+        # Configure theme colors and appearance
+        self.stats_colors = {
+            "primary": "#00843d",      # UVU Green
+            "secondary": "#4c7553",    # Muted green
+            "accent": "#add557",       # Light green accent
+            "text_light": "#FFFFFF",   # Light text
+            "text_dark": "#1a1a1a",    # Dark text
+            "success": "#28a745",      # Success green
+            "warning": "#ffc107",      # Warning yellow
+            "danger": "#dc3545",       # Error red
+            "card_bg": "#2a2a2a",      # Card background
+            "hover": "#3a3a3a",        # Hover state
+        }
+        
+        self.stats_fonts = {
+            "heading": ("Roboto", 18, "bold"),
+            "subheading": ("Roboto", 16, "normal"),
+            "body": ("Roboto", 12, "normal"),
+            "small": ("Roboto", 10, "normal"),
+            "label": ("Roboto", 12, "bold"),
+        }
+
+        # Configure grid layout
+        self.stats_main_frame.grid_columnconfigure(0, weight=1)
+        self.stats_main_frame.grid_rowconfigure(0, weight=0)  # Header
+        self.stats_main_frame.grid_rowconfigure(1, weight=1)  # Content
+
+        # Create unified header with filters, title, and toggle
+        header_frame = ctk.CTkFrame(
+            self.stats_main_frame, 
+            fg_color=self.stats_colors["card_bg"],
+            corner_radius=15,
+            height=80
+        )
+        header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 20))
+        header_frame.grid_propagate(False)
+        header_frame.grid_columnconfigure(0, weight=0)  # Title
+        header_frame.grid_columnconfigure(1, weight=1)  # Spacer
+        header_frame.grid_columnconfigure(2, weight=0)  # Toggle
+        header_frame.grid_columnconfigure(3, weight=0)  # Filter
+        
+        # Title with enhanced styling
+        title_container = ctk.CTkFrame(header_frame, fg_color="transparent")
+        title_container.grid(row=0, column=0, sticky="w", padx=25, pady=20)
+        
+        title_label = ctk.CTkLabel(
+            title_container, 
+            text="📊 Gaming Center Statistics", 
+            font=("Roboto", 24, "bold"),
+            text_color=self.stats_colors["text_light"]
+        )
+        title_label.pack()
+        
+        # Stats view toggle in center-right position
+        self.stats_view_var = ctk.StringVar(value="Summary")
+        stats_toggle = ctk.CTkSegmentedButton(
+            header_frame,
+            values=["Summary", "Station Details", "Game Rankings"],
+            variable=self.stats_view_var,
+            command=self.switch_stats_view,
+            corner_radius=25,
+            border_width=0,
+            selected_color="#00843d",
+            selected_hover_color="#006e33",
+            text_color="#ffffff",
+            font=("Roboto", 12, "bold"),
+            height=40,
+            unselected_hover_color="#3a3a3a",
+            width=450
+        )
+        stats_toggle.grid(row=0, column=2, sticky="e", padx=20, pady=20)
+        
+        # Time period filter container
+        filter_container = ctk.CTkFrame(header_frame, fg_color="transparent")
+        filter_container.grid(row=0, column=3, sticky="e", padx=25, pady=20)
+        
+        ctk.CTkLabel(
+            filter_container, 
+            text="📅 Period:", 
+            font=("Roboto", 12, "bold"),
+            text_color=self.stats_colors["text_light"]
+        ).pack(side="left", padx=(0, 8))
+        
+        period_choices = [
+            'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 
+            'This Month', 'Last Month', 'This Semester', 'Last Semester', 
+            'This Year', 'Last Year', 'All Time'
+        ]
+        self.stats_period_var = tk.StringVar(value='Today')
+        self.period_dropdown = ctk.CTkComboBox(
+            filter_container, 
+            variable=self.stats_period_var, 
+            values=[],
+            state='readonly',
+            width=160, 
+            height=36,
+            corner_radius=10,
+            dropdown_hover_color=self.stats_colors["hover"],
+            button_color=self.stats_colors["primary"],
+            button_hover_color=self.stats_colors["secondary"],
+            dropdown_fg_color=self.stats_colors["card_bg"],
+            font=("Roboto", 12)
+        )
+        self.period_dropdown.pack(side="left")
+
+        # Add scrollable dropdown
+        self.period_scrollable = CTkScrollableDropdown(
+            self.period_dropdown,
+            values=period_choices,
+            command=lambda v: (self.stats_period_var.set(v), self.update_stats()),
+            width=160,
+            height=220,
+            font=("Roboto", 12),
+            justify="left",
+            resize=False,
+            button_height=36
+        )
+        
+        # Create content frame that will change based on toggle selection
+        self.stats_content_frame = ctk.CTkFrame(self.stats_main_frame, fg_color="transparent")
+        self.stats_content_frame.grid(row=1, column=0, sticky="nsew")
+        
+        # Create all tab contents as separate frames
+        self.summary_frame = ctk.CTkFrame(self.stats_content_frame, fg_color="transparent")
+        self.station_frame = ctk.CTkFrame(self.stats_content_frame, fg_color="transparent")
+        self.games_frame = ctk.CTkFrame(self.stats_content_frame, fg_color="transparent")
+        
+        # Set up content for each frame
+        self.setup_stats_summary_tab(self.summary_frame)
+        self.setup_stats_station_tab(self.station_frame)
+        self.setup_stats_games_tab(self.games_frame)
+        
+        # Show default frame
+        self.switch_stats_view("Summary")
+        
+        # Initialize tooltip manager
+        self.stats_tooltip_texts = {
+            "period_dropdown": "Select the time period for statistics",
+            "station_dropdown": "Select a specific station to view detailed statistics",
+            "total_time": "Total usage time across all stations",
+            "total_sessions": "Total number of user sessions",
+            "avg_session": "Average duration of all sessions",
+            "station_usage": "Breakdown of usage by station type",
+            "game_rankings": "Most popular games based on play time"
+        }
+        
+        # Update statistics
+        self.update_stats()
+
+    def switch_stats_view(self, value=None):
+        """Switch between different stats views based on toggle selection"""
+        view_type = self.stats_view_var.get()
+
+        # Hide all frames
+        self.summary_frame.pack_forget()
+        self.station_frame.pack_forget()
+        self.games_frame.pack_forget()
+
+        # Show the selected frame
+        if view_type == "Summary":
+            self.summary_frame.pack(fill="both", expand=True)
+            self.update_stats()
+            self.start_activity_monitor_loop()  # <-- Add this line
+        elif view_type == "Station Details":
+            self.station_frame.pack(fill="both", expand=True)
+            self.update_stats_station_stats()
+        elif view_type == "Game Rankings":
+            self.games_frame.pack(fill="both", expand=True)
+            self.update_stats_game_rankings()
+
+    def setup_stats_summary_tab(self, parent):
+        """Set up the summary tab with enhanced visual statistics"""
+        # Configure parent grid with better proportions
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(0, weight=0)  # Top metrics row - fixed height
+        parent.grid_rowconfigure(1, weight=1)  # Main charts row - larger
+        parent.grid_rowconfigure(2, weight=1, minsize=300)  # Bottom charts row - minimum height increased
+        
+        # Enhanced color palette for charts
+        self.chart_colors = [
+            "#00843d", "#4CAF50", "#2196F3", "#FF9800", "#9C27B0",
+            "#F44336", "#00BCD4", "#795548", "#607D8B", "#E91E63"
+        ]
+        
+        # Top Row - Key Metrics Cards with better spacing
+        metrics_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        metrics_frame.grid(row=0, column=0, sticky="ew", pady=(0, 30))
+        
+        # Configure metrics frame columns
+        for i in range(4):
+            metrics_frame.grid_columnconfigure(i, weight=1)
+        
+        # Create enhanced metric cards
+        self.total_time_card = self.create_enhanced_metric_card(
+            metrics_frame, "⏱️", "Total Usage", "0h 0m", "#00843d", 0, 0)
+        self.total_time_label = self.total_time_card.value_label
+        
+        self.total_sessions_card = self.create_enhanced_metric_card(
+            metrics_frame, "🎮", "Total Sessions", "0", "#2196F3", 0, 1)
+        self.total_sessions_label = self.total_sessions_card.value_label
+        
+        self.avg_session_card = self.create_enhanced_metric_card(
+            metrics_frame, "📊", "Avg Session", "0m", "#FF9800", 0, 2)
+        self.avg_session_label = self.avg_session_card.value_label
+        
+        self.active_stations_card = self.create_enhanced_metric_card(
+            metrics_frame, "🔥", "Active Now", "0", "#E91E63", 0, 3)
+        
+        # Main Charts Row - Two large charts side by side
+        main_charts_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        main_charts_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 25))
+        main_charts_frame.grid_columnconfigure(0, weight=1)
+        main_charts_frame.grid_columnconfigure(1, weight=1)
+        main_charts_frame.grid_rowconfigure(0, weight=1)
+        
+        # Left: Station Usage Distribution
+        station_chart_content, _ = self.create_enhanced_stats_card(
+            main_charts_frame, "🎯 Station Usage Distribution", row=0, column=0, padx=(0, 15))
+        self.station_ring_chart = self.create_enhanced_station_chart(station_chart_content)
+
+        # Right: Usage by Time of Day (NEW donut chart)
+        usage_time_content, _ = self.create_enhanced_stats_card(
+            main_charts_frame, "⏰ Usage by Time of Day", row=0, column=1, padx=(15, 0))
+        self.usage_time_ring_chart = self.create_usage_time_donut_chart(usage_time_content)
+        # Right: Peak Hours Analysis
+        peak_hours_content, _ = self.create_enhanced_stats_card(
+            main_charts_frame, "📈 Peak Operating Hours", row=0, column=1, padx=(15, 0))
+        self.peak_hours_chart = self.create_enhanced_peak_hours_chart(peak_hours_content)
+        
+        # Bottom Row - Three smaller charts
+        bottom_charts_frame = ctk.CTkFrame(parent, fg_color="transparent", height=350)  # Set minimum height
+        bottom_charts_frame.grid(row=2, column=0, sticky="nsew")
+        bottom_charts_frame.grid_columnconfigure(0, weight=1)
+        bottom_charts_frame.grid_columnconfigure(1, weight=1)
+        bottom_charts_frame.grid_columnconfigure(2, weight=1)
+        bottom_charts_frame.grid_rowconfigure(0, weight=1, minsize=350)  # Ensure minimum height
+        bottom_charts_frame.grid_propagate(False)  # Prevent shrinking
+        
+        # Weekly Trends
+        trends_content, _ = self.create_enhanced_stats_card(
+            bottom_charts_frame, "📊 Weekly Trends", row=0, column=0, padx=(0, 12))
+        self.weekly_trends_chart = self.create_enhanced_weekly_trends_chart(trends_content)
+        
+        # Popular Games
+        games_content, _ = self.create_enhanced_stats_card(
+            bottom_charts_frame, "🏆 Popular Games", row=0, column=1, padx=(12, 12))
+        self.popular_games_chart = self.create_enhanced_popular_games_chart(games_content)
+        
+        # Live Activity Monitor
+        activity_content, _ = self.create_enhanced_stats_card(
+            bottom_charts_frame, "⚡ Live Activity", row=0, column=2, padx=(12, 0))
+        self.activity_monitor = self.create_enhanced_activity_monitor(activity_content)
+        
+        # Create hidden elements for compatibility
+        self._create_hidden_compatibility_elements(parent)
+
+
+    def create_usage_time_donut_chart(self, parent):
+        """Donut chart showing usage by time of day (example data)"""
+        fig, ax = plt.subplots(figsize=(6, 5))
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+
+        # Example: Usage by time of day
+        time_labels = ['Morning', 'Afternoon', 'Evening', 'Night']
+        usage = [20, 50, 70, 10]
+        colors = ['#4CAF50', '#2196F3', '#FF9800', '#607D8B']
+
+        wedges, texts = ax.pie(
+            usage,
+            labels=None,
+            colors=colors,
+            startangle=90,
+            wedgeprops=dict(width=0.65, edgecolor='white', linewidth=3),
+            labeldistance=1.2
+        )
+
+        ax.legend(wedges, time_labels, title="Time of Day", loc="center left", bbox_to_anchor=(1, 0.5), fontsize=11)
+        # ax.text(0, 0, f'{sum(usage)}\nSessions', ha='center', va='center', fontsize=18, fontweight='bold', color='white')
+
+        plt.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+        return canvas
+
+    def create_enhanced_metric_card(self, parent, icon, title, value, color, row, col):
+        """Create an enhanced metric card with modern styling"""
+        card_container = ctk.CTkFrame(parent, fg_color="transparent")
+        card_container.grid(row=row, column=col, sticky="nsew", padx=12, pady=8)
+        
+        # Main card with gradient-like effect
+        card = ctk.CTkFrame(
+            card_container,
+            fg_color=color,
+            corner_radius=15,
+            border_width=0,
+            height=110
+        )
+        card.pack(fill="both", expand=True)
+        card.pack_propagate(False)
+        
+        # Overlay for depth effect
+        overlay = ctk.CTkFrame(
+            card,
+            fg_color=("white", "white"),
+            corner_radius=12,
+            height=8
+        )
+        overlay.place(relx=0.05, rely=0.05, relwidth=0.9, relheight=0.08)
+        overlay.configure(fg_color=(color, color))
+        
+        # Content layout
+        content = ctk.CTkFrame(card, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=20, pady=15)
+        
+        # Header with icon and value
+        header = ctk.CTkFrame(content, fg_color="transparent")
+        header.pack(fill="x", pady=(0, 10))
+        
+        icon_label = ctk.CTkLabel(
+            header,
+            text=icon,
+            font=("Segoe UI Emoji", 28),
+            text_color="white"
+        )
+        icon_label.pack(side="left")
+        
+        value_label = ctk.CTkLabel(
+            header,
+            text=value,
+            font=("Roboto", 24, "bold"),
+            text_color="white"
+        )
+        value_label.pack(side="right")
+        
+        # Title with better styling
+        title_label = ctk.CTkLabel(
+            content,
+            text=title,
+            font=("Roboto", 13, "bold"),
+            text_color="#E0E0E0"
+        )
+        title_label.pack(anchor="w")
+        
+        card.value_label = value_label
+        card.title_label = title_label
+        
+        return card
+
+    def create_enhanced_stats_card(self, parent, title, row=0, column=0, rowspan=1, colspan=1, padx=10, pady=10):
+        """Create an enhanced card with modern styling and shadow"""
+        # Shadow layer
+        shadow = ctk.CTkFrame(
+            parent,
+            fg_color="#1a1a1a",
+            corner_radius=15,
+            border_width=0
+        )
+        shadow.grid(row=row, column=column, rowspan=rowspan, columnspan=colspan, 
+                  sticky="nsew", padx=(padx[0]+3 if isinstance(padx, tuple) else padx+3, 
+                                      padx[1]+3 if isinstance(padx, tuple) else padx+3), 
+                  pady=(pady[0]+3 if isinstance(pady, tuple) else pady+3,
+                        pady[1]+3 if isinstance(pady, tuple) else pady+3))
+        
+        # Main card
+        card = ctk.CTkFrame(
+            parent, 
+            fg_color=self.stats_colors["card_bg"],
+            corner_radius=15, 
+            border_width=1,
+            border_color="#3a3a3a"
+        )
+        card.grid(row=row, column=column, rowspan=rowspan, columnspan=colspan, 
+                sticky="nsew", padx=padx, pady=pady)
+        card.lift()
+        
+        # Enhanced header
+        header_frame = ctk.CTkFrame(
+            card,
+            fg_color="#333333",
+            corner_radius=15,
+            height=50
+        )
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
+        
+        title_label = ctk.CTkLabel(
+            header_frame, 
+            text=title, 
+            font=("Roboto", 16, "bold"),
+            text_color=self.stats_colors["text_light"]
+        )
+        title_label.pack(side="left", padx=20, pady=15)
+        
+        # Status indicator
+        status_indicator = ctk.CTkLabel(
+            header_frame,
+            text="●",
+            font=("Arial", 12),
+            text_color="#00FF00"
+        )
+        status_indicator.pack(side="right", padx=20, pady=15)
+        
+        # Container for content
+        content_frame = ctk.CTkFrame(card, fg_color="transparent")
+        content_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        
+        return content_frame, card
+
+    def create_enhanced_station_chart(self, parent):
+        """Create a cleaner, less crowded station usage donut chart"""
+        fig, ax = plt.subplots(figsize=(6, 5))
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+
+        # Sample data
+        station_types = ['Xbox', 'Pool', 'Air Hockey', 'Ping-Pong', 'Foosball', 'Other']
+        usage_counts = [45, 32, 28, 25, 18, 12]
+        colors = ['#00843d', '#4CAF50', '#2196F3', '#FF9800', '#9C27B0', '#607D8B']
+
+        # Donut chart with larger hole, no percentage labels
+        wedges, texts = ax.pie(
+            usage_counts,
+            labels=None,  # No labels on the chart itself
+            colors=colors,
+            startangle=90,
+            wedgeprops=dict(width=0.65, edgecolor='white', linewidth=3),
+            labeldistance=1.2
+        )
+
+        # Add legend outside the chart
+        ax.legend(wedges, station_types, title="Station Type", loc="center left", bbox_to_anchor=(1, 0.5), fontsize=11)
+
+        # (No center text!)
+
+        plt.tight_layout()
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=10, pady=10)
+        return canvas
+
+    def create_enhanced_peak_hours_chart(self, parent):
+        """Create a cleaner peak hours line chart with better text positioning"""
+        fig, ax = plt.subplots(figsize=(6, 4))  # Reduced figure size
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        # Enhanced hourly data
+        hours = list(range(24))
+        usage_data = [2, 1, 1, 0, 0, 1, 3, 8, 12, 15, 18, 22, 25, 28, 32, 35, 30, 25, 20, 15, 12, 8, 5, 3]
+        
+        # Create gradient fill
+        ax.plot(hours, usage_data, 'o-', color='#00843d', linewidth=3, 
+                markersize=6, markerfacecolor='#00843d', markeredgecolor='white', 
+                markeredgewidth=1, alpha=0.9, zorder=3)
+        
+        # Gradient fill
+        ax.fill_between(hours, usage_data, alpha=0.3, color='#00843d')
+        
+        # Simplified styling - remove problematic annotations
+        ax.set_xticks(range(0, 24, 4))  # Show fewer x-axis labels
+        ax.set_xticklabels([f"{h:02d}h" for h in range(0, 24, 4)], 
+                        color='white', fontsize=9)  # Smaller font
+        ax.set_ylabel('Sessions', color='white', fontsize=10)
+        
+        # Minimal grid
+        ax.grid(True, alpha=0.2, color='white', linestyle='-', linewidth=0.5)
+        ax.set_axisbelow(True)
+        
+        # Remove spines
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=9)
+        
+        # Remove the legend and annotation to prevent overflow
+        # Instead, just show a simple title
+        ax.set_title("Peak Hours", color='white', fontsize=11, pad=10)
+        
+        # Tight layout with extra padding
+        plt.tight_layout(pad=1.5)
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
+        
+        return canvas
+
+    def create_enhanced_weekly_trends_chart(self, parent):
+        """Create weekly trends chart with LARGER figure size"""
+        fig, ax = plt.subplots(figsize=(5, 4))  # Increased from (4, 3.5)
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        days = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+        sessions = [12, 18, 25, 32, 28, 35, 22]
+        
+        x_pos = range(len(days))
+        
+        # Create bars with value labels (now that we have more space)
+        bars = ax.bar(x_pos, sessions, color='#00843d', width=0.6, 
+                    edgecolor='white', linewidth=1, alpha=0.8)
+        
+        # Add value labels on top of bars
+        for bar, value in zip(bars, sessions):
+            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                    str(value), ha='center', va='bottom', color='white', 
+                    fontweight='bold', fontsize=10)
+        
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(days, color='white', fontsize=10)
+        ax.set_ylabel('Sessions', color='white', fontsize=10)
+        
+        # Minimal grid
+        ax.grid(True, alpha=0.2, color='white', linestyle='-', axis='y')
+        ax.set_axisbelow(True)
+        
+        # Remove spines
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=9)
+        ax.set_ylim(0, max(sessions) + 5)  # More space for labels
+        
+        plt.tight_layout(pad=1.2)
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
+        
+        return canvas
+
+    def create_enhanced_popular_games_chart(self, parent):
+        """Create a true podium-style chart for the top games"""
+        fig, ax = plt.subplots(figsize=(5, 4))
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        # Sample data - top 4 games
+        games = ['Fortnite', 'Call of Duty', 'FIFA 24', 'Minecraft']
+        sessions = [45, 38, 32, 28]
+        
+        # Create podium arrangement: 2nd, 1st, 3rd, 4th
+        # Rearrange data for podium effect (1st in center-left, 2nd on left, 3rd on center-right, 4th on right)
+        podium_order = [1, 0, 2, 3]  # indices: 2nd, 1st, 3rd, 4th
+        podium_games = [games[i] for i in podium_order]
+        podium_sessions = [sessions[i] for i in podium_order]
+        
+        # Define podium heights (2nd, 1st, 3rd, 4th)
+        podium_heights = [0.7, 1.0, 0.5, 0.3]  # 1st place tallest in position 1
+        
+        # Podium colors for visual ranking
+        rank_colors = ['#C0C0C0', '#FFD700', '#CD7F32', '#4CAF50']  # Silver, Gold, Bronze, Green
+        
+        # Position bars with specific spacing for podium effect
+        x_positions = [0, 1, 2, 3]
+        
+        # Create the podium bars with varying widths for more podium feel
+        bar_widths = [0.8, 1.0, 0.7, 0.6]  # 1st place gets widest bar
+        
+        bars = []
+        for i, (x, height, width, color) in enumerate(zip(x_positions, podium_heights, bar_widths, rank_colors)):
+            bar = ax.bar(x, height, width=width, color=color, 
+                        edgecolor='white', linewidth=3, alpha=0.9,
+                        zorder=3)
+            bars.append(bar)
+        
+        # Add podium base/platform effect
+        base_width = 4.5
+        base_height = 0.05
+        base_rect = ax.barh(0, base_width, height=base_height, 
+                        left=-0.5, color='#444444', alpha=0.8, zorder=1)
+        
+        # Add ranking medals/numbers at the top
+        rank_symbols = ['🥈', '🥇', '🥉', '4️⃣']
+        rank_numbers = ['2nd', '1st', '3rd', '4th']
+        
+        for i, (x, height, symbol, rank_num, game, session_count) in enumerate(
+            zip(x_positions, podium_heights, rank_symbols, rank_numbers, podium_games, podium_sessions)):
+            
+            # Add medal/symbol at the top
+            ax.text(x, height + 0.15, symbol, ha='center', va='bottom', 
+                fontsize=20, zorder=4)
+            
+            # Add rank number below medal
+            ax.text(x, height + 0.05, rank_num, ha='center', va='bottom',
+                color='white', fontweight='bold', fontsize=12, zorder=4)
+            
+            # Add game name in the middle of the bar
+            ax.text(x, height/2, game, ha='center', va='center',
+                color='white', fontweight='bold', fontsize=10,
+                rotation=0, zorder=4)
+            
+            # Add session count at the bottom
+            ax.text(x, 0.1, f'{session_count}', ha='center', va='center',
+                color='white', fontweight='bold', fontsize=14, zorder=4)
+        
+        # Add podium steps/separators for more 3D effect
+        for i, x in enumerate(x_positions[:-1]):
+            ax.axvline(x + 0.5, color='#666666', linewidth=1, alpha=0.5, zorder=2)
+        
+        # Customize the chart to look like a true podium
+        ax.set_xlim(-0.7, 3.7)
+        ax.set_ylim(0, 1.3)
+        ax.set_xticks([])  # Remove x-axis ticks
+        ax.set_yticks([])  # Remove y-axis ticks
+        
+        # Remove all spines to clean up the appearance
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        
+        # Add title with podium theme
+        ax.set_title("🏆 Game Champions Podium", color='white', fontsize=16, 
+                    fontweight='bold', pad=25)
+        
+        # Add subtle background gradient effect
+        ax.axhspan(0, 1.2, alpha=0.1, color='gold', zorder=0)
+        
+        # Add victory text
+        ax.text(1, -0.15, "🎮 Most Popular Games 🎮", ha='center', va='top',
+            color='#FFD700', fontsize=12, fontweight='bold')
+        
+        plt.tight_layout(pad=2.0)
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True, padx=8, pady=8)
+        
+        return canvas
+
+    def create_enhanced_activity_monitor(self, parent):
+        container = ctk.CTkFrame(parent, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        scroll_frame = ctk.CTkScrollableFrame(
+            container,
+            fg_color="transparent",
+            corner_radius=8,
+            height=280
+        )
+        scroll_frame.pack(fill="both", expand=True)
+
+        self.activity_status_frame = scroll_frame
+        self.activity_status_widgets = {}  # Store widgets for each station
+
+        for station in self.stations:
+            status_item = ctk.CTkFrame(
+                self.activity_status_frame,
+                fg_color="#333333",
+                corner_radius=10,
+                border_width=2,
+                border_color="#444444",
+                height=55
+            )
+            status_item.pack(fill="x", pady=4, padx=8)
+            status_item.pack_propagate(False)
+
+            content = ctk.CTkFrame(status_item, fg_color="transparent")
+            content.pack(fill="both", expand=True, padx=15, pady=8)
+            content.grid_columnconfigure(1, weight=1)
+
+            # Status dot
+            status_frame = ctk.CTkFrame(content, fg_color="transparent", width=30)
+            status_frame.grid(row=0, column=0, sticky="w")
+            status_dot = ctk.CTkLabel(
+                status_frame,
+                text="●",
+                font=("Arial", 20),
+                text_color="#666666",
+                width=25
+            )
+            status_dot.pack()
+
+            # Info frame
+            info_frame = ctk.CTkFrame(content, fg_color="transparent")
+            info_frame.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+            info_frame.grid_columnconfigure(0, weight=1)
+            name_label = ctk.CTkLabel(
+                info_frame,
+                text=f"{station.station_type} {station.station_num}",
+                font=("Roboto", 13, "bold"),
+                text_color="white",
+                anchor="w"
+            )
+            name_label.grid(row=0, column=0, sticky="ew")
+            status_label = ctk.CTkLabel(
+                info_frame,
+                text="🟢 Available for use",
+                font=("Roboto", 10),
+                text_color="#aaaaaa",
+                anchor="w"
+            )
+            status_label.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+
+            # Time label
+            time_label = ctk.CTkLabel(
+                content,
+                text="💤 Free",
+                font=("Roboto", 11, "bold"),
+                text_color="#666666",
+                width=70
+            )
+            time_label.grid(row=0, column=2, sticky="e")
+
+            # Store references for fast update
+            self.activity_status_widgets[station] = {
+                "status_item": status_item,
+                "status_dot": status_dot,
+                "name_label": name_label,
+                "status_label": status_label,
+                "time_label": time_label
+            }
+
+        return container
+
+    def update_enhanced_activity_monitor(self):
+        """Efficiently update the activity monitor in-place."""
+        active_count = 0
+        for station in self.stations:
+            widgets = self.activity_status_widgets.get(station)
+            if not widgets:
+                continue
+
+            is_active = station.timer.is_running
+            # Update dot color
+            widgets["status_dot"].configure(text_color="#00FF00" if is_active else "#666666")
+            # Update name label (optional, if name can change)
+            widgets["name_label"].configure(text=f"{station.station_type} {station.station_num}")
+
+            # Update status label and time label
+            if is_active:
+                active_count += 1
+                elapsed = station.timer.get_time()
+                minutes = int(elapsed // 60)
+                seconds = int(elapsed % 60)
+                user_name = station.name_entry.get() if station.name_entry.get() else "Anonymous"
+                status_text = f"👤 {user_name} • ⏱️ {minutes:02d}:{seconds:02d}"
+                progress = min(elapsed / station.timer.time_limit, 1.0)
+                if progress >= 1.0:
+                    time_color = "#FF4444"
+                    time_text = "⚠️ OVER"
+                    widgets["status_item"].configure(border_color="#FF4444")
+                elif progress >= 0.8:
+                    time_color = "#FF8800"
+                    remaining_min = int((station.timer.time_limit - elapsed) / 60)
+                    time_text = f"⏰ {remaining_min}m"
+                    widgets["status_item"].configure(border_color="#FF8800")
+                else:
+                    time_color = "#00FF00"
+                    remaining_min = int((station.timer.time_limit - elapsed) / 60)
+                    time_text = f"✅ {remaining_min}m"
+                    widgets["status_item"].configure(border_color="#00FF00")
+            else:
+                status_text = "🟢 Available for use"
+                time_color = "#666666"
+                time_text = "💤 Free"
+                widgets["status_item"].configure(border_color="#444444")
+
+            widgets["status_label"].configure(text=status_text)
+            widgets["time_label"].configure(text=time_text, text_color=time_color)
+
+        # Update the active stations card
+        if hasattr(self, 'active_stations_card'):
+            self.active_stations_card.value_label.configure(text=str(active_count))
+
+    def create_enhanced_station_status_item(self, station):
+        """Create an enhanced status item for each station"""
+        status_item = ctk.CTkFrame(
+            self.activity_status_frame,
+            fg_color="#333333",
+            corner_radius=10,
+            border_width=2,
+            border_color="#444444",
+            height=55
+        )
+        status_item._is_station_status = True
+        status_item.pack(fill="x", pady=4, padx=8)
+        status_item.pack_propagate(False)
+        
+        content = ctk.CTkFrame(status_item, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=15, pady=8)
+        content.grid_columnconfigure(1, weight=1)
+        
+        # Enhanced status indicator
+        is_active = station.timer.is_running
+        status_colors = {
+            True: "#00FF00",
+            False: "#666666"
+        }
+        
+        status_frame = ctk.CTkFrame(content, fg_color="transparent", width=30)
+        status_frame.grid(row=0, column=0, sticky="w")
+        
+        status_dot = ctk.CTkLabel(
+            status_frame,
+            text="●",
+            font=("Arial", 20),
+            text_color=status_colors[is_active],
+            width=25
+        )
+        status_dot.pack()
+        
+        # Station information
+        info_frame = ctk.CTkFrame(content, fg_color="transparent")
+        info_frame.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+        info_frame.grid_columnconfigure(0, weight=1)
+        
+        # Station name
+        name_label = ctk.CTkLabel(
+            info_frame,
+            text=f"{station.station_type} {station.station_num}",
+            font=("Roboto", 13, "bold"),
+            text_color="white",
+            anchor="w"
+        )
+        name_label.grid(row=0, column=0, sticky="ew")
+        
+        # Status details
+        if is_active:
+            elapsed = station.timer.get_time()
+            minutes = int(elapsed // 60)
+            seconds = int(elapsed % 60)
+            user_name = station.name_entry.get() if station.name_entry.get() else "Anonymous"
+            status_text = f"👤 {user_name} • ⏱️ {minutes:02d}:{seconds:02d}"
+        else:
+            status_text = "🟢 Available for use"
+        
+        status_label = ctk.CTkLabel(
+            info_frame,
+            text=status_text,
+            font=("Roboto", 10),
+            text_color="#aaaaaa",
+            anchor="w"
+        )
+        status_label.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        
+        # Enhanced time indicator
+        if is_active:
+            progress = min(elapsed / station.timer.time_limit, 1.0)
+            if progress >= 1.0:
+                time_color = "#FF4444"
+                time_text = "⚠️ OVER"
+                status_item.configure(border_color="#FF4444")
+            elif progress >= 0.8:
+                time_color = "#FF8800"
+                remaining_min = int((station.timer.time_limit - elapsed) / 60)
+                time_text = f"⏰ {remaining_min}m"
+                status_item.configure(border_color="#FF8800")
+            else:
+                time_color = "#00FF00"
+                remaining_min = int((station.timer.time_limit - elapsed) / 60)
+                time_text = f"✅ {remaining_min}m"
+        else:
+            time_color = "#666666"
+            time_text = "💤 Free"
+        
+        time_label = ctk.CTkLabel(
+            content,
+            text=time_text,
+            font=("Roboto", 11, "bold"),
+            text_color=time_color,
+            width=70
+        )
+        time_label.grid(row=0, column=2, sticky="e")
+
+    def setup_stats_station_tab(self, parent):
+        """Set up an enhanced station details tab"""
+        parent.grid_columnconfigure(0, weight=1)
+        parent.grid_rowconfigure(0, weight=0)  # Selector
+        parent.grid_rowconfigure(1, weight=1)  # Content
+        
+        # Enhanced station selector
+        selector_content, _ = self.create_enhanced_stats_card(
+            parent, "🎯 Station Analysis", row=0, column=0, pady=(0, 20))
+        
+        selector_frame = ctk.CTkFrame(selector_content, fg_color="transparent")
+        selector_frame.pack(fill="x", pady=10)
+        
+        ctk.CTkLabel(
+            selector_frame,
+            text="📍 Select Station:",
+            font=("Roboto", 14, "bold"),
+            text_color="white"
+        ).pack(side="left", padx=(5, 15))
+        
+        self.station_var = tk.StringVar()
+        self.station_dropdown = ctk.CTkComboBox(
+            selector_frame,
+            variable=self.station_var,
+            values=[],
+            state='readonly',
+            width=300,
+            height=36,
+            corner_radius=10,
+            dropdown_hover_color=self.stats_colors["hover"],
+            button_color=self.stats_colors["primary"],
+            button_hover_color=self.stats_colors["secondary"],
+            dropdown_fg_color=self.stats_colors["card_bg"],
+            font=("Roboto", 12, "bold")
+        )
+        self.station_dropdown.pack(side="left", padx=10)
+
+        # Populate dropdown and add scrollable functionality
+        stations = self.stats_manager.get_all_stations()
+        self.station_scrollable = CTkScrollableDropdown(
+            self.station_dropdown,
+            values=stations,
+            command=lambda v: (self.station_var.set(v), self.update_stats_station_stats()),
+            width=300,
+            height=220,
+            font=("Roboto", 12),
+            justify="left",
+            resize=False,
+            button_height=36
+        )
+        
+        # Enhanced details area
+        details_content, _ = self.create_enhanced_stats_card(
+            parent, "📊 Detailed Station Statistics", row=1, column=0)
+        details_content.grid_columnconfigure(0, weight=1)
+        details_content.grid_columnconfigure(1, weight=1)
+        details_content.grid_rowconfigure(0, weight=1)
+        
+        # Left side - Enhanced metrics table
+        left_frame = ctk.CTkFrame(details_content, fg_color="#333333", corner_radius=10)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 15), pady=10)
+        
+        # Custom styled treeview
+        style = ttk.Style()
+        style.configure("Enhanced.Treeview", 
+                       background="#333333", foreground="white", 
+                       fieldbackground="#333333", rowheight=30,
+                       font=("Roboto", 11))
+        style.configure("Enhanced.Treeview.Heading",
+                       background="#00843d", foreground="white",
+                       font=("Roboto", 12, "bold"))
+        
+        self.station_tree = ttk.Treeview(
+            left_frame,
+            columns=('Metric', 'Value'),
+            show='headings',
+            height=12,
+            style="Enhanced.Treeview"
+        )
+        self.station_tree.heading('Metric', text='📋 Metric')
+        self.station_tree.heading('Value', text='📈 Value')
+        self.station_tree.column('Metric', width=180, anchor='w')
+        self.station_tree.column('Value', width=150, anchor='e')
+        
+        tree_scrollbar = ctk.CTkScrollbar(left_frame, orientation="vertical", 
+                                         command=self.station_tree.yview)
+        self.station_tree.configure(yscrollcommand=tree_scrollbar.set)
+        tree_scrollbar.pack(side="right", fill="y", padx=(5, 10), pady=10)
+        self.station_tree.pack(fill="both", expand=True, padx=(10, 0), pady=10)
+        
+        # Right side - Enhanced usage chart
+        right_frame = ctk.CTkFrame(details_content, fg_color="#333333", corner_radius=10)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=(15, 0), pady=10)
+        
+        self.station_chart_frame = right_frame
+        self.station_type_usage_graph = self.create_stats_matplotlib_graph(right_frame)
+        self.station_type_usage_graph.get_tk_widget().pack(fill="both", expand=True, 
+                                                           padx=10, pady=10)
+        
+    def update_station_usage_donut(self, station_types):
+        """Update the station usage donut chart with new data."""
+        fig = self.station_ring_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        labels = list(station_types.keys())
+        usage_counts = [type_stats['sessions'] for type_stats in station_types.values()]
+        colors = [self.get_stats_station_color(label) for label in labels]
+        wedges, texts = ax.pie(
+            usage_counts,
+            labels=None,
+            colors=colors,
+            startangle=90,
+            wedgeprops=dict(width=0.65, edgecolor='white', linewidth=3),
+            labeldistance=1.2
+        )
+        ax.legend(wedges, labels, title="Station Type", loc="center left", bbox_to_anchor=(1, 0.5), fontsize=11)
+        fig.tight_layout()
+        self.station_ring_chart.draw()
+
+    def update_usage_time_donut(self, period):
+        """Update the usage by time of day donut chart with new data."""
+        usage_by_time = self.stats_manager.get_usage_by_time_of_day(period)
+        labels = list(usage_by_time.keys())
+        usage = list(usage_by_time.values())
+        colors = ['#4CAF50', '#2196F3', '#FF9800', '#607D8B'][:len(labels)]
+
+        fig = self.usage_time_ring_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+
+        if not usage or sum(usage) == 0:
+            ax.text(0.5, 0.5, "No data available", ha='center', va='center', fontsize=14, color='white')
+            ax.axis('off')
+        else:
+            wedges, texts = ax.pie(
+                usage,
+                labels=None,
+                colors=colors,
+                startangle=90,
+                wedgeprops=dict(width=0.65, edgecolor='white', linewidth=3),
+                labeldistance=1.2
+            )
+            ax.legend(wedges, labels, title="Time of Day", loc="center left", bbox_to_anchor=(1, 0.5), fontsize=11)
+        fig.tight_layout()
+        self.usage_time_ring_chart.draw()
+
+    def update_peak_hours_chart(self, period):
+        """Update the peak hours line chart with new data."""
+        usage_by_hour = self.stats_manager.get_usage_by_hour(period)
+        hours = list(range(24))
+        usage = [usage_by_hour.get(h, 0) for h in hours]
+
+        fig = self.peak_hours_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        ax.plot(hours, usage, 'o-', color='#00843d', linewidth=4,
+                markersize=8, markerfacecolor='#00843d', markeredgecolor='white',
+                markeredgewidth=2, alpha=0.9, zorder=3)
+        ax.fill_between(hours, usage, alpha=0.4, color='#00843d')
+        ax.set_xticks(range(0, 24, 3))
+        ax.set_xticklabels([f"{h:02d}:00" for h in range(0, 24, 3)],
+                        color='white', fontweight='bold', fontsize=11)
+        ax.set_ylabel('Active Sessions', color='white', fontweight='bold', fontsize=12)
+        ax.set_xlabel('Hour of Day', color='white', fontweight='bold', fontsize=12)
+        ax.grid(True, alpha=0.2, color='white', linestyle='-', linewidth=0.5)
+        ax.set_axisbelow(True)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=10)
+        ax.set_title("Peak Operating Hours", color='white', fontsize=12)
+        fig.tight_layout()
+        self.peak_hours_chart.draw()
+
+    def update_weekly_trends_chart(self, period):
+        """Update the weekly trends chart with new data."""
+        usage_by_day = self.stats_manager.get_usage_by_weekday(period)
+        days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        sessions = [usage_by_day.get(d, 0) for d in days]
+
+        fig = self.weekly_trends_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        x_pos = range(len(days))
+        bars = ax.bar(x_pos, sessions, color='#00843d', width=0.7,
+                    edgecolor='white', linewidth=2, alpha=0.8)
+        for i, (bar, v) in enumerate(zip(bars, sessions)):
+            ax.text(bar.get_x() + bar.get_width()/2, v + 1, str(v),
+                    ha='center', va='bottom', color='white', fontweight='bold', fontsize=11)
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(days, color='white', fontweight='bold', fontsize=11)
+        ax.set_ylabel('Sessions', color='white', fontweight='bold', fontsize=11)
+        ax.grid(True, alpha=0.2, color='white', linestyle='-', axis='y')
+        ax.set_axisbelow(True)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        ax.tick_params(axis='both', colors='white', length=0, labelsize=10)
+        ax.set_ylim(0, max(sessions) + 6 if sessions else 10)
+        ax.set_title("Weekly Trends", color='white', fontsize=12)
+        fig.tight_layout()
+        self.weekly_trends_chart.draw()
+
+    def update_popular_games_chart(self, game_rankings):
+        """Update the podium-style popular games chart with new data."""
+        fig = self.popular_games_chart.figure
+        fig.clear()
+        ax = fig.add_subplot(111)
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        # Get top 4 games from the actual data
+        if not game_rankings:
+            # No data available - show placeholder
+            ax.text(0.5, 0.5, "No game data available", ha='center', va='center', 
+                    fontsize=14, color='white', transform=ax.transAxes)
+            ax.axis('off')
+            fig.tight_layout()
+            self.popular_games_chart.draw()
+            return
+        
+        # Get top 4 games and their session counts
+        top_games = list(game_rankings.keys())[:4]
+        sessions = [game_rankings[game]['sessions'] for game in top_games]
+        
+        # If we have fewer than 4 games, pad with empty slots
+        while len(top_games) < 4:
+            top_games.append("No Data")
+            sessions.append(0)
+        
+        # Create podium arrangement: 2nd, 1st, 3rd, 4th
+        podium_order = [1, 0, 2, 3]  # indices: 2nd, 1st, 3rd, 4th
+        podium_games = [top_games[i] if i < len(top_games) else "No Data" for i in podium_order]
+        podium_sessions = [sessions[i] if i < len(sessions) else 0 for i in podium_order]
+        
+        # Normalize heights for podium effect (tallest = 1.0)
+        max_sessions = max(sessions) if max(sessions) > 0 else 1
+        normalized_heights = [s / max_sessions for s in podium_sessions]
+        
+        # Define podium heights (2nd, 1st, 3rd, 4th) - scaled by actual data
+        base_heights = [0.7, 1.0, 0.5, 0.3]
+        podium_heights = [base_heights[i] * (0.3 + 0.7 * normalized_heights[i]) for i in range(4)]
+        
+        # Podium colors for visual ranking
+        rank_colors = ['#C0C0C0', '#FFD700', '#CD7F32', '#4CAF50']  # Silver, Gold, Bronze, Green
+        
+        # Position bars with specific spacing for podium effect
+        x_positions = [0, 1, 2, 3]
+        
+        # Create the podium bars with varying widths
+        bar_widths = [0.8, 1.0, 0.7, 0.6]  # 1st place gets widest bar
+        
+        bars = []
+        for i, (x, height, width, color) in enumerate(zip(x_positions, podium_heights, bar_widths, rank_colors)):
+            bar = ax.bar(x, height, width=width, color=color, 
+                        edgecolor='white', linewidth=3, alpha=0.9,
+                        zorder=3)
+            bars.append(bar)
+        
+        # Add podium base/platform effect
+        base_width = 4.5
+        base_height = 0.05
+        base_rect = ax.barh(0, base_width, height=base_height, 
+                        left=-0.5, color='#444444', alpha=0.8, zorder=1)
+        
+        # Add ranking medals/numbers at the top
+        rank_symbols = ['🥈', '🥇', '🥉', '4️⃣']
+        rank_numbers = ['2nd', '1st', '3rd', '4th']
+        
+        for i, (x, height, symbol, rank_num, game, session_count) in enumerate(
+            zip(x_positions, podium_heights, rank_symbols, rank_numbers, podium_games, podium_sessions)):
+            
+            # Skip empty slots
+            if game == "No Data" or session_count == 0:
+                continue
+                
+            # Add medal/symbol at the top
+            ax.text(x, height + 0.15, symbol, ha='center', va='bottom', 
+                fontsize=20, zorder=4)
+            
+            # Add rank number below medal
+            ax.text(x, height + 0.05, rank_num, ha='center', va='bottom',
+                color='white', fontweight='bold', fontsize=12, zorder=4)
+            
+            # Add game name in the middle of the bar (truncate if too long)
+            display_name = game[:10] + "..." if len(game) > 10 else game
+            ax.text(x, height/2, display_name, ha='center', va='center',
+                color='white', fontweight='bold', fontsize=9,
+                rotation=0, zorder=4)
+            
+            # Add session count at the bottom
+            ax.text(x, 0.1, str(session_count), ha='center', va='center',
+                color='white', fontweight='bold', fontsize=12, zorder=4)
+        
+        # Add podium steps/separators for more 3D effect
+        for i, x in enumerate(x_positions[:-1]):
+            ax.axvline(x + 0.5, color='#666666', linewidth=1, alpha=0.5, zorder=2)
+        
+        # Customize the chart to look like a true podium
+        ax.set_xlim(-0.7, 3.7)
+        ax.set_ylim(0, 1.3)
+        ax.set_xticks([])  # Remove x-axis ticks
+        ax.set_yticks([])  # Remove y-axis ticks
+        
+        # Remove all spines to clean up the appearance
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        
+        # Add title with podium theme
+        ax.set_title("🏆 Game Champions Podium", color='white', fontsize=16, 
+                    fontweight='bold', pad=25)
+        
+        # Add subtle background gradient effect
+        ax.axhspan(0, 1.2, alpha=0.1, color='gold', zorder=0)
+        
+        # Add victory text
+        total_games = len([g for g in top_games if g != "No Data"])
+        ax.text(1, -0.15, f"🎮 Top {total_games} Most Popular Games 🎮", ha='center', va='top',
+            color='#FFD700', fontsize=12, fontweight='bold')
+        
+        plt.tight_layout(pad=2.0)
+        self.popular_games_chart.draw()
+
+
+    def update_stats(self, event=None):
+        """Update all statistics based on selected time period"""
+        period = self.stats_period_var.get()
+        
+        # Update status label if it exists
+        if hasattr(self, 'stats_status_label') and self.stats_status_label:
+            self.stats_status_label.configure(text=f"Loading {period} statistics...")
+            self.update_idletasks()
+        
+        stats = self.stats_manager.get_summary_stats(period)
+        game_rankings = self.stats_manager.get_game_rankings(period)
+        # You may want to add more stats fetches here as needed
+
+        self.animate_stats_label_update(self.total_time_label, stats['total_time'])
+        self.animate_stats_label_update(self.total_sessions_label, str(stats['total_sessions']))
+        self.animate_stats_label_update(self.avg_session_label, stats['avg_session'])
+
+        self.type_tree.delete(*self.type_tree.get_children())
+        for station_type, type_stats in stats['station_types'].items():
+            self.type_tree.insert('', 'end', values=(
+                station_type,
+                type_stats['sessions'],
+                type_stats['total_time'],
+                type_stats['avg_time']
+            ))
+
+        # Update all summary charts with new data
+        self.update_stats_summary_graph(stats)
+        self.update_stats_station_type_graph(stats['station_types'])
+        self.update_station_usage_donut(stats['station_types'])
+        self.update_usage_time_donut(period)
+        self.update_peak_hours_chart(period)
+        self.update_weekly_trends_chart(period)
+        self.update_popular_games_chart(game_rankings)
+
+        if hasattr(self, 'stats_status_label') and self.stats_status_label:
+            self.stats_status_label.configure(text=f"Showing statistics for: {period}")
+
+    def create_stats_matplotlib_graph(self, parent):
+        """Create a Matplotlib graph with dark theme"""
+        plt.style.use('dark_background')
+        fig, ax = plt.subplots(figsize=(6, 4))  # Add explicit figure size
+        
+        fig.patch.set_facecolor(self.stats_colors["card_bg"])
+        ax.set_facecolor(self.stats_colors["card_bg"])
+        
+        ax.xaxis.label.set_color('white')
+        ax.yaxis.label.set_color('white')
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
+        
+        # Use try-except for tight_layout to prevent warnings
+        try:
+            fig.tight_layout(pad=2.0)
+        except:
+            # Fallback to manual adjustment if tight_layout fails
+            fig.subplots_adjust(left=0.1, right=0.95, top=0.9, bottom=0.15)
+        
+        canvas = FigureCanvasTkAgg(fig, master=parent)
+        canvas.draw()
+        return canvas
+    
+    def animate_stats_label_update(self, label, new_value):
+        """Animate label updates"""
+        label.configure(text=new_value)
+        self.update_idletasks()
+
+
+    def update_stats_summary_graph(self, stats):
+        """Update the summary graph"""
+        fig = self.summary_chart_canvas.figure
+        fig.clear()
+        
+        total_time = self._stats_convert_time_to_minutes(stats['total_time'])
+        total_sessions = stats['total_sessions']
+        avg_session = self._stats_convert_time_to_minutes(stats['avg_session'])
+        
+        ax = fig.add_subplot(111)
+        x_pos = [0, 1, 2]
+        categories = ['Total Time\n(hours)', 'Total\nSessions', 'Avg Session\n(minutes)']
+        total_time_hours = total_time / 60
+        values = [total_time_hours, total_sessions, avg_session]
+        colors = [self.stats_colors["primary"], self.stats_colors["secondary"], self.stats_colors["accent"]]
+        
+        bars = ax.bar(x_pos, values, color=colors, width=0.6)
+        for bar in bars:
+            if values[bars.index(bar)] > 0:
+                label = f"{values[bars.index(bar)]:.1f}" if isinstance(values[bars.index(bar)], float) else f"{values[bars.index(bar)]}"
+                ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + (max(values) * 0.02), 
+                    label, ha='center', va='bottom', color='white', fontweight='bold')
+        
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(categories)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('gray')
+        ax.spines['bottom'].set_color('gray')
+        
+        ax.set_title(f"Usage Summary: {self.stats_period_var.get()}", color='white', fontsize=12, pad=10)
+        fig.tight_layout()
+        self.summary_chart_canvas.draw()
+
+
+    def _stats_convert_time_to_minutes(self, time_str):
+        """Convert time string to minutes"""
+        try:
+            if 'day' in time_str:
+                days_part, time_part = time_str.split(', ')
+                days = int(days_part.split()[0])
+                hours, minutes, seconds = map(int, time_part.split(':'))
+                return days * 24 * 60 + hours * 60 + minutes
+            else:
+                parts = time_str.split(':')
+                if len(parts) == 3:
+                    hours, minutes, seconds = map(int, parts)
+                    return hours * 60 + minutes
+                elif len(parts) == 2:
+                    minutes, seconds = map(int, parts)
+                    return minutes
+        except Exception as e:
+            print(f"Error parsing time: {time_str}")
+            print(f"Error details: {e}")
+        return 0
+
+
+    def update_stats_station_type_graph(self, station_types):
+        """Update station type breakdown pie chart"""
+        fig = self.station_type_graph.figure
+        fig.clear()
+        
+        labels = list(station_types.keys())
+        sessions = [type_stats['sessions'] for type_stats in station_types.values()]
+        
+        if sum(sessions) == 0:
+            ax = fig.add_subplot(111)
+            ax.text(0.5, 0.5, "No data available", 
+                    ha='center', va='center', fontsize=12, color='white')
+            fig.tight_layout()
+            self.station_type_graph.draw()
+            return
+        
+        ax = fig.add_subplot(111)
+        colors = [self.get_stats_station_color(label) for label in labels]
+        max_index = sessions.index(max(sessions))
+        explode = [0.05 if i == max_index else 0 for i in range(len(sessions))]
+        
+        wedges, texts, autotexts = ax.pie(
+            sessions, 
+            labels=labels, 
+            autopct='%1.1f%%', 
+            startangle=90, 
+            colors=colors,
+            explode=explode,
+            shadow=True,
+            wedgeprops={'edgecolor': 'white', 'linewidth': 1, 'antialiased': True},
+            textprops={'color': 'white', 'fontsize': 9}
+        )
+        
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontweight('bold')
+        
+        ax.set_title("Station Usage Distribution", color='white', fontsize=12)
+        fig.tight_layout()
+        self.station_type_graph.draw()
+
+    
+
+    def setup_stats_games_tab(self, parent):
+        """Set up an enhanced game rankings tab"""
+        parent.grid_columnconfigure(0, weight=3)
+        parent.grid_columnconfigure(1, weight=2)
+        parent.grid_rowconfigure(0, weight=1)
+        
+        # Enhanced game rankings table
+        games_content, _ = self.create_enhanced_stats_card(
+            parent, "🏆 Game Popularity Rankings", row=0, column=0, padx=(0, 15))
+        
+        # Custom styled treeview for games
+        style = ttk.Style()
+        style.configure("Games.Treeview",
+                       background="#333333", foreground="white",
+                       fieldbackground="#333333", rowheight=35,
+                       font=("Roboto", 11))
+        style.configure("Games.Treeview.Heading",
+                       background="#00843d", foreground="white",
+                       font=("Roboto", 12, "bold"))
+        
+        self.games_tree = ttk.Treeview(
+            games_content,
+            columns=('Rank', 'Game', 'Sessions', 'Total Time'),
+            show='headings',
+            height=15,
+            style="Games.Treeview"
+        )
+        self.games_tree.heading('Rank', text='🥇 Rank')
+        self.games_tree.heading('Game', text='🎮 Game')
+        self.games_tree.heading('Sessions', text='🎯 Sessions')
+        self.games_tree.heading('Total Time', text='⏱️ Total Time')
+        
+        self.games_tree.column('Rank', width=60, anchor='center')
+        self.games_tree.column('Game', width=250, anchor='w')
+        self.games_tree.column('Sessions', width=100, anchor='center')
+        self.games_tree.column('Total Time', width=120, anchor='center')
+        
+        game_scrollbar = ctk.CTkScrollbar(games_content, orientation="vertical", 
+                                         command=self.games_tree.yview)
+        self.games_tree.configure(yscrollcommand=game_scrollbar.set)
+        game_scrollbar.pack(side="right", fill="y", padx=(5, 10), pady=10)
+        self.games_tree.pack(fill="both", expand=True, padx=(10, 0), pady=10)
+        
+        # Enhanced game visualization
+        chart_content, _ = self.create_enhanced_stats_card(
+            parent, "📊 Game Performance Chart", row=0, column=1, padx=(15, 0))
+        
+        self.game_rankings_frame = chart_content
+        self.game_rankings_graph = self.create_stats_matplotlib_graph(chart_content)
+        self.game_rankings_graph.get_tk_widget().pack(fill="both", expand=True, 
+                                                      padx=10, pady=10)
+
+    def _create_hidden_compatibility_elements(self, parent):
+        """Create hidden elements for backward compatibility"""
+        hidden_frame = ctk.CTkFrame(parent, fg_color="transparent", height=1)
+        hidden_frame.grid(row=10, column=0, columnspan=2, sticky="ew")
+        hidden_frame.grid_remove()
+        
+        self.type_tree = ttk.Treeview(
+            hidden_frame,
+            columns=('Type', 'Sessions', 'Total Time', 'Avg Time'),
+            show='headings',
+            height=0
+        )
+        
+        self.summary_chart_canvas = self.create_stats_matplotlib_graph(hidden_frame)
+        self.station_type_graph = self.create_stats_matplotlib_graph(hidden_frame)
+
+    def export_stats_to_excel(self):
+        """Export statistics to Excel/CSV files"""
+        try:
+            # Check if stats_status_label exists before using it
+            if hasattr(self, 'stats_status_label') and self.stats_status_label:
+                self.stats_status_label.configure(text="Exporting data...")
+                self.update_idletasks()
+            
+            result = self.stats_manager.export_daily_stats()
+            
+            if hasattr(self, 'stats_status_label') and self.stats_status_label:
+                self.stats_status_label.configure(text="✓ Export complete!")
+            
+            messagebox.showinfo("Export Complete", 
+                            f"Statistics have been exported to the 'statistics' folder.")
+            
+            if hasattr(self, 'stats_status_label') and self.stats_status_label:
+                self.after(3000, lambda: self.stats_status_label.configure(text=""))
+        except Exception as e:
+            if hasattr(self, 'stats_status_label') and self.stats_status_label:
+                self.stats_status_label.configure(text="❌ Export failed")
+            messagebox.showerror("Export Error", f"Failed to export data: {str(e)}")
+
+    def on_stats_tab_change(self):
+        """Handle tab change events"""
+        active_tab = self.stats_notebook.get()
+        if active_tab == "Summary":
+            self.update_stats()
+        elif active_tab == "Station Details":
+            self.update_stats_station_stats(None)
+        elif active_tab == "Game Rankings":  
+            self.update_stats_game_rankings()
+
+    def load_orbitron_font(self):
+        """Load Orbitron font after window initialization"""
+        try:
+            # Check if font is already available in system
+            available_fonts = tkFont.families()
+            if "Orbitron" in available_fonts:
+                print("Orbitron font found in system fonts")
+                return True
+            
+            # If not, try to load from the font file in your project directory
+            font_path = "./fonts/Orbitron-VariableFont_wght.ttf"
+            if os.path.exists(font_path):
+                print(f"Found font file at: {font_path}")
+                
+                # For Windows, add the font to the system temporarily
+                if os.name == 'nt':  # Windows
+                    from ctypes import windll
+                    if windll.gdi32.AddFontResourceW(os.path.abspath(font_path)):
+                        print("Font added to Windows resources")
+                
+                # Register with Tkinter
+                temp_font = tkFont.Font(family="Orbitron")
+                print(f"Registered font: {temp_font.actual()}")
+                return True
+                
+            print("Orbitron font file not found")
+            return False
+        except Exception as e:
+            print(f"Error loading font: {e}")
+            return False
+            
+    def get_font_family(self):
+        """Get the appropriate font family with fallback (cached)"""
+        if self._font_family is None:
+            try:
+                available_fonts = tkFont.families()
+                if "Orbitron" in available_fonts:
+                    print("Using Orbitron font")
+                    self._font_family = "Orbitron"
+                else:
+                    print("Orbitron font not found, using Helvetica")
+                    self._font_family = "Helvetica"
+            except Exception as e:
+                print(f"Error in get_font_family: {e}")
+                self._font_family = "Helvetica"
+        
+        return self._font_family
+    
+    def get_stats_station_color(self, label):
+        """Return a color for each station type label (case-insensitive, covers all types)."""
+        color_map = {
+            'xbox': '#00843d',
+            'xbox one': '#00843d',
+            'switch': '#4CAF50',
+            'pool': '#4CAF50',
+            'pooltable': '#4CAF50',
+            'air hockey': '#2196F3',
+            'airhockey': '#2196F3',
+            'ping-pong': '#FF9800',
+            'pingpong': '#FF9800',
+            'foosball': '#9C27B0',
+            'other': '#607D8B'
+        }
+        key = str(label).replace(" ", "").replace("-", "").lower()
+        return color_map.get(key, '#00843d')  # Default to green if not found
+    
+    def start_activity_monitor_loop(self):
+        """Periodically update the active stations card and live activity monitor."""
+        self.update_enhanced_activity_monitor()
+        # Schedule the next update in 2 seconds (2000 ms)
+        self.after(2000, self.start_activity_monitor_loop)
+
+
+    def load_station_states(self):
+        save_path = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "UVU-Game-Center-App", "station_state.json")
+        if not os.path.exists(save_path):
+            return
+
+        try:
+            with open(save_path, "r") as f:
+                state = json.load(f)
+
+            now = time.time()
+
+            for i, s in enumerate(state):
+                if i >= len(self.stations):
+                    break  # Skip if there are more saved states than stations
+                    
+                station = self.stations[i]
+                
+                # Restore fields - IMPORTANT FIX: Check if fields exist and have values
+                if s.get("name") and hasattr(station, "name_entry") and station.name_entry:
+                    station.name_entry.delete(0, tk.END)
+                    station.name_entry.insert(0, s.get("name", ""))
+                
+                # Restore fields - ID entry
+                if s.get("id") and hasattr(station, "id_entry") and station.id_entry:
+                    station.id_entry.delete(0, tk.END)
+                    station.id_entry.insert(0, s.get("id", ""))
+                    
+                if s.get("game") and hasattr(station, "game_var") and station.game_var:
+                    station.game_var.set(s.get("game", ""))
+                    
+                if s.get("controller") and hasattr(station, "controller_var") and station.controller_var:
+                    station.controller_var.set(s.get("controller", ""))
+
+               
+
+                # Restore timer state
+                timer_state = s.get("timer", {})
+                timer = station.timer
+                timer.time_limit = timer_state.get("time_limit", timer.time_limit)
+                saved_elapsed = timer_state.get("elapsed_time", 0)
+                was_running = timer_state.get("is_running", False)
+
+                if was_running:
+                    timer.elapsed_time = saved_elapsed
+                    timer.start_time = now - saved_elapsed
+                    timer.is_running = True
+                    timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
+                    timer.update_timer()
+                    
+                    # Apply appropriate border colors based on time elapsed
+                    progress = saved_elapsed / timer.time_limit
+                    if progress >= 1.0:
+                        station.configure(border_color="red", border_width=2)
+                    elif progress >= 0.9:
+                        station.configure(border_color="orange", border_width=2)
+                    elif progress >= 0.8:
+                        station.configure(border_color="yellow", border_width=2)
+                    else:
+                        station.configure(border_color="green", border_width=2)
+                else:
+                    timer.elapsed_time = saved_elapsed
+                    timer.is_running = False
+                    timer.timer_label.configure(text=time.strftime("%H:%M:%S", time.gmtime(timer.elapsed_time)))
+                    timer.draw_ring(min(saved_elapsed / timer.time_limit, 1.0))
+
+                # Restore button state
+                station.update_button_states(is_active=was_running)
+        except Exception as e:
+            import traceback
+            import numpy as np
+            print(f"Error loading station states: {e}")
+            print(traceback.format_exc())
+
+    def save_station_states(self):
+        state = []
+        for station in self.stations:
+            timer = station.timer
+            is_running = timer.is_running
+            elapsed_time = timer.get_time()
+            
+            state.append({
+                "station_type": station.station_type,
+                "station_num": station.station_num,
+                "name": station.name_entry.get() if hasattr(station, "name_entry") and station.name_entry else "",
+                "id": station.id_entry.get() if hasattr(station, "id_entry") and station.id_entry else "",
+                "game": station.game_var.get() if hasattr(station, "game_var") and station.game_var else "",
+                "controller": station.controller_var.get() if hasattr(station, "controller_var") and station.controller_var else "",
+                "timer": {
+                    "is_running": is_running,
+                    "start_time": timer.start_time,
+                    "elapsed_time": elapsed_time,
+                    "time_limit": timer.time_limit
+                }
+            })
+    
+        save_path = os.path.join(os.environ.get("PROGRAMDATA", "C:\\ProgramData"), "UVU-Game-Center-App", "station_state.json")
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, "w") as f:
+            json.dump(state, f)
+
+
+
+    def create_arch_overlay(self):
+        """Create an arch effect with responsive sizing"""
+        arch_radius = int(30 * self.responsive['scale_factor'])
+        
+        try:
+            # Create a transparent canvas
+            self.arch_overlay = ctk.CTkCanvas(
+                self.main_container,
+                width=arch_radius,
+                height=arch_radius,
+                bg="#171717",  # Match the main background
+                highlightthickness=0
+            )
+            
+            # Draw a circle in the content area color
+            self.arch_overlay.create_arc(
+                0, 0,  # Top-left of bounding box
+                arch_radius*2, arch_radius*2,  # Bottom-right of bounding box
+                start=90, extent=90,  # Draw from 90° to 180° (top-left quadrant)
+                fill="#090A09",  # Content area color
+                outline=""  # No outline
+            )
+            
+            # Position at the inner corner with responsive positioning
+            x_pos = int((158 - arch_radius) * self.responsive['scale_factor'])
+            y_pos = int((90 - arch_radius) * self.responsive['scale_factor'])
+            self.arch_overlay.place(x=x_pos, y=y_pos)
+            
+            # Force the arch overlay to the top of the stacking order
+            self.after(100, lambda: self.main_container.tk.call('raise', self.arch_overlay._w))
+        except Exception as e:
+            print(f"Error creating arch overlay: {e}")
+
+    def create_visible_arch_test(self):
+        """Test version with a bright color to see positioning"""
+        arch_radius = 30
+        
+        # Create the image
+        arch_image = Image.new('RGBA', (arch_radius, arch_radius), (0, 0, 0, 0))
+        
+        # Use a bright test color to see if it's positioned correctly
+        test_color = (255, 0, 255, 255)  # Bright magenta for testing
+        
+        # Draw quarter circle
+        for x in range(arch_radius):
+            for y in range(arch_radius):
+                distance = (x**2 + y**2)**0.5
+                if distance <= arch_radius:
+                    arch_image.putpixel((x, y), test_color)
+        
+        # Convert to CTkImage
+        arch_ctk_image = ctk.CTkImage(arch_image, size=(arch_radius, arch_radius))
+        
+        # Create and position overlay
+        self.arch_overlay = ctk.CTkLabel(
+            self.main_container,
+            image=arch_ctk_image,
+            text="",
+            fg_color="transparent"
+        )
+        
+        # Test different positions - try this first to see where it appears
+        self.arch_overlay.place(x=85, y=40, anchor="nw")
+        self.arch_overlay.lift()
+
+    def create_proper_arch_overlay(self):
+        """Final version with correct color matching your content area"""
+        arch_radius = 25  # Slightly smaller for better proportion
+        
+        # Create image with scale factor for anti-aliasing
+        scale_factor = 3
+        scaled_radius = arch_radius * scale_factor
+        arch_image = Image.new('RGBA', (scaled_radius, scaled_radius), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(arch_image)
+        
+        # This should match your inner content frame color exactly
+        # Look at your code: inner_content has fg_color="#1E1E1E"
+        content_bg_color = (30, 30, 30, 255)  # #1E1E1E converted to RGBA
+        
+        # Draw a perfect circle and take only the top-left quarter
+        # Position circle so we get the curved corner effect
+        draw.ellipse([0, 0, scaled_radius * 2, scaled_radius * 2], fill=content_bg_color)
+        
+        
+        # This should match your inner content frame color exactly
+        # Look at your code: inner_content has fg_color="#1E1E1E"
+        content_bg_color = (30, 30, 30, 255)   # #1E1E1E converted to RGBA
+        
+        # Draw a perfect circle and take only the top-left quarter
+        # Position circle so we get the curved corner effect
+        draw.ellipse([0, 0, scaled_radius * 2, scaled_radius * 2], fill=content_bg_color)
+        
+        # Crop to get only the top-left quarter
+        self.arch_overlay.lift()
+
+
+    def setup_top_bar(self, top_bar):
+        """Create a top bar with help and menu icons"""
+       
+        # Add triple dot menu icon on the left
+        menu_icon_path = "./icon_cache/ellipsis.png"  # Assuming you have this icon
+        try:
+            menu_image = Image.open(menu_icon_path)
+            menu_icon = ctk.CTkImage(menu_image, size=(18, 18))
+            menu_button = ctk.CTkButton(
+                top_bar,
+                image=menu_icon,
+                text="",
+                width=32,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+               
+                hover_color="#3A3A3A",
+                command=self.show_menu
+            )
+            menu_button.pack(side="left", padx=(25,10))
+        except Exception as e:
+            print(f"Error loading menu icon: {e}")
+            # Fallback text button
+            menu_button = ctk.CTkButton(
+                top_bar,
+                text="≡",
+                width=32,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color="#3A3A3A",
+                command=self.show_menu
+            )
+            menu_button.pack(side="left", padx=10)
+        
+        # Add help icon on the right
+
+        help_icon_path = "./icon_cache/circle-help.png"  # Assuming you have this icon
+        try:
+            help_image = Image.open(help_icon_path)
+            help_icon = ctk.CTkImage(help_image, size=(18, 18))
+            help_button = ctk.CTkButton(
+                top_bar,
+                image=help_icon,
+                text="",
+                width=32,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                hover_color="#3A3A3A",
+                command=self.show_help
+            )
+            help_button.pack(side="right", padx=10)
+        except Exception as e:
+            print(f"Error loading help icon: {e}")
+            # Fallback text button
+            help_button = ctk.CTkButton(
+                top_bar,
+                text="?",
+                width=32,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent", 
+                hover_color="#3A3A3A",
+                command=self.show_help
+            )
+            help_button.pack(side="right", padx=10)        
+
+    def setup_sidebar(self, sidebar):
+        # Use responsive width
+        sidebar.configure(width=self.responsive['sidebar_width'])
+        
+        # Add the main logo at the top with responsive sizing
+        logo_frame = ctk.CTkFrame(sidebar, fg_color="transparent", 
+                                height=int(60 * self.responsive['scale_factor']))
+        logo_frame.pack(fill="x", pady=(int(10 * self.responsive['scale_factor']), 
+                                    int(20 * self.responsive['scale_factor'])))
+        logo_frame.pack_propagate(False)
+
+        # Load logo image with DPI-aware sizing
+        logo_image_path = "./icon_cache/GamingCenterApp.png"
+        try:
+            logo_size = int(60 * self.responsive['icon_scale'])
+            logo_image = Image.open(logo_image_path)
+            logo_ctk_image = ctk.CTkImage(logo_image, size=(logo_size, logo_size))
+        except Exception as e:
+            print(f"Error loading logo image: {e}")
+            logo_ctk_image = None
+
+        logo_label = ctk.CTkLabel(
+            logo_frame,
+            image=logo_ctk_image,
+            text="",
+            width=int(85 * self.responsive['scale_factor']),
+            height=int(85 * self.responsive['scale_factor'])
+        )
+        logo_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Load sidebar icons with DPI-aware sizing
+        icon_size = int(24 * self.responsive['icon_scale'])
+        home = ctk.CTkImage(Image.open("./icon_cache/house.png"), size=(icon_size, icon_size))
+        games = ctk.CTkImage(Image.open("./icon_cache/gamepad-2.png"), size=(icon_size, icon_size))
+        reservations_icon = ctk.CTkImage(Image.open("./icon_cache/calendar-clock.png"), size=(icon_size, icon_size))
+        waitlist = ctk.CTkImage(Image.open("./icon_cache/list-plus.png"), size=(icon_size, icon_size))
+        stats = ctk.CTkImage(Image.open("./icon_cache/chart-pie.png"), size=(icon_size, icon_size))
+
+        # Create sidebar buttons with responsive sizing
+        self.sidebar_buttons = {}
+        self.sidebar_buttons["home"] = self.create_sidebar_button(home, "Home", command=lambda: self.show_page("home"))
+        self.sidebar_buttons["games"] = self.create_sidebar_button(games, "Games", command=self.open_games_window)
+        self.sidebar_buttons["reservations"] = self.create_sidebar_button(
+            reservations_icon, "Reservations", command=lambda: self.show_page("reservations")
+        )
+        self.sidebar_buttons["waitlist"] = self.create_sidebar_button(waitlist, "Waitlist", command=lambda: self.show_page("waitlist"))
+        self.sidebar_buttons["stats"] = self.create_sidebar_button(stats, "Stats", command=lambda: self.show_page("stats"))
+
+        # Add waitlist counter with responsive positioning
+        self.waitlist_counter_canvas = self.create_perfect_circle_counter(
+            self.sidebar_buttons["waitlist"], 
+            int(44 * self.responsive['scale_factor']),  # x position
+            int(13 * self.responsive['scale_factor'])   # y position
+        )
+        self.update_waitlist_count()
+
+        # Initialize the notification bubble with responsive sizing
+        self.notification_bubble = ctk.CTkLabel(
+            self.sidebar,
+            text="",
+            fg_color="red",
+            text_color="white",
+            corner_radius=int(10 * self.responsive['scale_factor'])
+        )
+        self.notification_bubble.place(relx=0.9, rely=0.1, anchor="ne")
+        self.notification_bubble.place_forget()
+
+    def create_sidebar_button(self, icon, tooltip, command=None):
+        # Create button with responsive sizing
+        button_size = int(52 * self.responsive['scale_factor'])
+        corner_radius = int(8 * self.responsive['scale_factor'])
+        padding = int(8 * self.responsive['scale_factor'])
+        
+        btn = ctk.CTkButton(
+            self.sidebar,
+            image=icon,
+            text="",
+            width=button_size,
+            height=button_size,
+            corner_radius=corner_radius,
+            fg_color="transparent",
+            hover_color="#3a3a3a",
+            border_width=0,
+            command=command
+        )
+        btn.pack(pady=padding)
+
+        # Create tooltip
+        self.create_tooltip(btn, tooltip)
+
+        return btn
+
+    def create_tooltip(self, widget, text):
+        """Create an enhanced tooltip with arrow pointer"""
+        return EnhancedTooltip(widget, text)
+
+    def show_home(self):
+        # Implement home view functionality
+        pass
+
+    def stop_timers(self):
+        for timer in self.timers:  # Assuming self.timers is a list of your timer instances
+            timer.stop()  # Call the stop method for each timer
+        self.is_running = False  # Set running flag to False
+
+    def on_close(self):
+        # Stop all timers and cancel after jobs
+        for timer in self.timers:
+            if hasattr(timer, '_update_loop_id') and timer._update_loop_id:
+                try:
+                    timer.after_cancel(timer._update_loop_id)
+                except:
+                    pass
+                timer._update_loop_id = None
+            if hasattr(timer, '_blink_loop_id') and timer._blink_loop_id:
+                try:
+                    timer.after_cancel(timer._blink_loop_id)
+                except:
+                    pass
+                timer._blink_loop_id = None
+            timer.is_blinking = False
+        
+        # Cancel any pending after calls
+        try:
+            self.after_cancel("all")
+        except:
+            pass
+        
+        self.save_station_states()
+        self.destroy()
+
+
+    # Add placeholder methods for the new buttons
+    def show_menu(self):
+        """Show the application menu"""
+        print("Menu clicked - functionality to be implemented")
+        # Placeholder for menu functionality
+
+    def show_help(self):
+        """Show help information"""
+        print("Help clicked - functionality to be implemented")
+        # Placeholder for help functionality
+
+    def setup_ui(self):
+        # Create main container with proper padding to prevent overflow
+        main_frame = ctk.CTkFrame(self.content_area, fg_color="transparent")
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        # Configure grid weights
+        frames_to_focus = [main_frame, self.content_area]
+
+        for frame in frames_to_focus:
+            frame.bind("<Button-1>", lambda event, f=frame: f.focus_set())
+        
+        # Configure grid weights to ensure proper scaling
         for i in range(6):  # 6 rows
             main_frame.grid_rowconfigure(i, weight=1)
         for i in range(3):  # 3 columns
             main_frame.grid_columnconfigure(i, weight=1)
-        # Add button to view and edit games at the top right
-        games_button = ttk.Button(main_frame, text="View/Edit Games", command=self.open_games_window)
-        waitlist_button= ttk.Button(main_frame, text="Waitlist", command=self.show_waitlist_window)
-        waitlist_button.grid(row=0, column=3, padx=10, pady=10, sticky="ne")
-        games_button.grid(row=0, column=2, padx=10, pady=10, sticky="ne")
+        
         # Create first 4 console stations (left column) in reverse order
         for i in range(4):
-            station = Station(main_frame, self, "XBOX", 4 - i)  # Pass self to Station
+            shadow = ctk.CTkFrame(
+                main_frame,
+                corner_radius=15,
+                fg_color="#282828",
+                border_width=0
+            )
+            # Grid the shadow with offset padding to create the drop shadow effect
+            shadow.grid(row=i, column=0, padx=(10, 14), pady=(10, 14), sticky="nsew")
+            
+            # Then create actual station on top of shadow
+            station = Station(main_frame, self, "XBOX", 4 - i)
             station.grid(row=i, column=0, padx=10, pady=10, sticky="nsew")
             self.stations.append(station)
-        # Create 5th console station (top center)
-        station = Station(main_frame, self, "XBOX", 5)  # Pass self to Station
-        station.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+            self.timers.append(station.timer)
+        
+        # Create 5th console station (top center) with shadow
+        shadow = ctk.CTkFrame(
+            main_frame,
+            corner_radius=15,
+            fg_color="#282828",
+            border_width=0
+        )
+        # Grid with offset padding
+        shadow.grid(row=0, column=1, columnspan=2, padx=(10, 14), pady=(10, 14), sticky="nsew")
+        
+        station = Station(main_frame, self, "XBOX", 5)
+        station.grid(row=0, column=1, columnspan=2, padx=10, pady=10, sticky="nsew")
         self.stations.append(station)
+        self.timers.append(station.timer)
+        
         # Create other activity stations (under 5th console)
         activities = [
             ("Ping-Pong", 1),
@@ -426,34 +6463,36 @@ class GamingCenterApp(tk.Tk):
         ]
         row, col = 1, 1  # Start position (under 5th console)
         for activity, num in activities:
-            station = Station(main_frame, self, activity, num)  # Pass self to Station
+            # Create shadow
+            shadow = ctk.CTkFrame(
+                main_frame,
+                corner_radius=15,
+                fg_color="#282828",
+                border_width=0
+            )
+            # Grid with offset padding
+            shadow.grid(row=row, column=col, padx=(10, 14), pady=(10, 14), sticky="nsew")
+            
+            # Create station
+            station = Station(main_frame, self, activity, num)
             station.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             self.stations.append(station)
+            self.timers.append(station.timer)
             col += 1
             if col > 2:  # Move to next row after 2 columns
                 col = 1
                 row += 1
 
-        # Add the "View/Edit Games List" button
-        view_edit_games_button = tk.Button(self, text="View/Edit Games List")
-        view_edit_games_button.pack(pady=10)
-
-        # Add the waitlist button with notification bubble
-        waitlist_frame = tk.Frame(self)
-        waitlist_frame.pack(pady=10)
-
-        self.waitlist_button = tk.Button(waitlist_frame, text="Waitlist", command=self.show_waitlist_window)
-        self.waitlist_button.pack(side=tk.LEFT)
-
-        self.notification_bubble = tk.Label(waitlist_frame, text="", bg="red", fg="white", font=("Arial", 10, "bold"))
-        self.notification_bubble.pack(side=tk.LEFT, padx=5)
-        self.update_notification_bubble()
 
     def get_games_for_console(self, console_type):
         try:
             with open('games_list.json', 'r') as f:
                 games_dict = json.load(f)
-                return games_dict.get(console_type, [])
+                games_list = games_dict.get(console_type, [])
+                # Sort the games list alphabetically
+                games_list.sort()
+                return games_list
+                return games_list
         except FileNotFoundError:
             return []
 
@@ -462,84 +6501,1033 @@ class GamingCenterApp(tk.Tk):
             if hasattr(station, 'update_games_list'):
                 station.update_games_list()
 
-    def create_menu(self):
-        menubar = tk.Menu(self)
-        self.config(menu=menubar)
-
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="View Statistics", command=self.open_stats_window)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.quit)
-
-        view_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="View", menu=view_menu)
-        view_menu.add_command(label="Toggle Dark Mode", command=toggle_dark_mode)
-        
-
-    def open_stats_window(self):
-        StatsWindow(self)
-
     def open_games_window(self):
         GamesWindow(self)
 
     def update_notification_bubble(self):
-        if self.waitlist:
-            self.notification_bubble.config(text=str(len(self.waitlist)))
-            self.notification_bubble.pack(side=tk.LEFT, padx=5)
+        """Update the notification bubble to reflect the current number of parties in the waitlist."""
+        # Count both regular waitlist and bowling waitlist entries
+        regular_count = len(self.waitlist)
+        bowling_count = len(self.bowling_waitlist) if hasattr(self, 'bowling_waitlist') else 0
+        total_count = regular_count + bowling_count
+        
+        if total_count > 0:
+            self.waitlist_count_label.configure(text=str(total_count))  # Update the Waitlist button counter
+            self.waitlist_count_label.place(relx=0.8, rely=0.2, anchor="center")  # Ensure the label is visible
         else:
-            self.notification_bubble.pack_forget()
+            self.waitlist_count_label.place_forget()  # Hide the label when there are no parties
 
-    def show_waitlist_window(self):
-        waitlist_window = tk.Toplevel(self)
-        waitlist_window.title("Waitlist")
-        waitlist_window.geometry("500x500")
+    def update_count_label(self):
+        """Update the count label to reflect the current number of parties in the waitlist."""
+        if hasattr(self, 'count_label'):  # Check if the count label exists
+            self.count_label.configure(text=str(len(self.waitlist)))
 
-        waitlist_listbox = tk.Listbox(waitlist_window)
-        waitlist_listbox.pack(fill=tk.BOTH, expand=True)
+    def create_perfect_circle_counter(self, parent, x, y):
+        """Create a perfect circle counter with responsive sizing"""
+        # Responsive canvas size
+        canvas_size = int(24 * self.responsive['scale_factor'])
+        
+        # Get the actual background color instead of "transparent"
+        try:
+            parent_fg = parent.cget("fg_color")
+            if isinstance(parent_fg, tuple):
+                bg_color = parent_fg[1] if ctk.get_appearance_mode() == "Dark" else parent_fg[0]
+            elif parent_fg == "transparent":
+                bg_color = "#171717"  # Default sidebar color
+            else:
+                bg_color = parent_fg
+        except:
+            bg_color = "#171717"  # Fallback color
+        
+        # Create canvas with proper background color
+        counter_canvas = tk.Canvas(
+            parent,
+            width=canvas_size,
+            height=canvas_size,
+            highlightthickness=0,
+            bd=0,
+            bg=bg_color
+        )
+        
+        # Store references
+        self.counter_canvas = counter_canvas
+        self.counter_parent = parent
+        
+        # Position with responsive coordinates
+        x_responsive = int(x * self.responsive['scale_factor'])
+        y_responsive = int(y * self.responsive['scale_factor'])
+        counter_canvas.place(x=x_responsive, y=y_responsive, anchor="ne")
+        
+        return counter_canvas
+        
+        # IMPORTANT: Bind to parent button's hover events to update canvas background
+        def on_button_enter(event):
+            """Update canvas background when button is hovered"""
+            if hasattr(self, 'counter_canvas') and self.counter_canvas:
+                hover_color = "#3a3a3a"  # Button's hover color
+                self.counter_canvas.configure(bg=hover_color)
+        
+        def on_button_leave(event):
+            """Restore canvas background when hover ends"""
+            if hasattr(self, 'counter_canvas') and self.counter_canvas:
+                # Restore to the appropriate background based on button state
+                bg_color = self.get_parent_background_color()
+                self.counter_canvas.configure(bg=bg_color)
+        
+        # Bind hover events to the parent button
+        parent.bind("<Enter>", on_button_enter)
+        parent.bind("<Leave>", on_button_leave)
+        
+        # Position the canvas in the top-right corner
+        counter_canvas.place(x=75, y=8, anchor="ne")
+        
+        return counter_canvas
+    
+    def get_parent_background_color(self):
+        """Get the current background color of the counter's parent button"""
+        if hasattr(self, 'counter_parent') and self.counter_parent:
+            try:
+                # Get the current fg_color of the parent button
+                parent_fg = self.counter_parent.cget("fg_color")
+                
+                # Handle tuple colors (light/dark mode)
+                if isinstance(parent_fg, tuple):
+                    # Use dark mode color (index 1)
+                    return parent_fg[1] if len(parent_fg) > 1 else parent_fg[0]
+                elif parent_fg == "transparent":
+                    # If transparent, check if waitlist page is active
+                    if hasattr(self, 'active_sidebar_btn') and self.active_sidebar_btn == "waitlist":
+                        return "#3a3a3a"  # Active background color
+                    else:
+                        return "#171717"  # Default sidebar color
+                else:
+                    return parent_fg
+            except:
+                # Fallback to checking if waitlist page is active
+                if hasattr(self, 'active_sidebar_btn') and self.active_sidebar_btn == "waitlist":
+                    return "#3a3a3a"  # Active background color
+                else:
+                    return "#171717"  # Default sidebar color
+        
+        # Fallback
+        return "#171717"
 
-        for i, person in enumerate(self.waitlist):
-            waitlist_listbox.insert(tk.END, f"{i+1}. {person['name']} - Station: {person['station']} - Wait Time: {self.calculate_wait_time(person['station'])}")
+    def update_waitlist_count(self):
+        """Update the canvas-based waitlist counter"""
+        regular_count = len(self.waitlist)
+        bowling_count = len(self.bowling_waitlist) if hasattr(self, 'bowling_waitlist') else 0
+        total_count = regular_count + bowling_count
+        
+        if hasattr(self, 'counter_canvas') and self.counter_canvas:
+            # Clear the canvas
+            self.counter_canvas.delete("all")
+            
+            if total_count > 0:
+                # Determine size based on count - MAKE THESE BIGGER
+                if total_count >= 100:
+                    radius = 16        # Increased from 14
+                    font_size = 8
+                elif total_count >= 10:
+                    radius = 14        # Increased from 12
+                    font_size = 8
+                else:
+                    radius = 12        # Increased from 10
+                    font_size = 8
+                
+                canvas_size = radius * 2 + 4
+                
+                # Update canvas size and background to match parent's CURRENT state
+                bg_color = self.get_parent_background_color()
+                
+                self.counter_canvas.configure(
+                    width=canvas_size, 
+                    height=canvas_size,
+                    bg=bg_color
+                )
+                
+                # Draw the red circle
+                margin = 2
+                self.counter_canvas.create_oval(
+                    margin, margin,
+                    canvas_size - margin, canvas_size - margin,
+                    fill="#A3483F",
+                    outline="#A3483F",
+                    width=0
+                )
+                
+                # Add the text
+                self.counter_canvas.create_text(
+                    canvas_size // 2, canvas_size // 2,
+                    text=str(total_count),
+                    fill="white",
+                    font=(self.get_font_family(), font_size, "bold"),
+                    anchor="center"
+                )
+                
+                # IMPORTANT: Add this positioning line
+                self.counter_canvas.place(x=75, y=8, anchor="ne")
+            else:
+                # Hide the canvas when count is 0
+                self.counter_canvas.place_forget()
 
-        add_button = tk.Button(waitlist_window, text="Add to Waitlist", command=lambda: self.add_to_waitlist(waitlist_listbox))
-        add_button.pack(pady=5)
+    def update_canvas_counter(self, count):
+        """Update the canvas-based counter"""
+        if hasattr(self, 'counter_canvas'):
+            self.counter_canvas.itemconfig(self.counter_text_id, text=str(count))
 
-        remove_button = tk.Button(waitlist_window, text="Remove from Waitlist", command=lambda: self.remove_from_waitlist(waitlist_listbox))
-        remove_button.pack(pady=5)
+    # def show_waitlist_window(self):
+    #     """Method for GamingCenterApp class"""
+    #     # Initialize bowling waitlist if it doesn't exist
+    #     if not hasattr(self, 'bowling_waitlist'):
+    #         self.bowling_waitlist = []  # Create a separate list for bowling waitlist
+        
+    #     waitlist_window = ctk.CTkToplevel(self)
+    #     waitlist_window.title("Waitlist")
+    #     waitlist_window.geometry("1200x800")
+    #     self.waitlist_window = waitlist_window  # Store reference to the window
 
-    def add_to_waitlist(self, waitlist_listbox):
-        name = simpledialog.askstring("Add to Waitlist", "Enter Name:")
-        if not name:
+    #     waitlist_window.lift()
+    #     waitlist_window.focus_force()
+    #     waitlist_window.grab_set()
+        
+    #     # Create main container
+    #     main_frame = ctk.CTkFrame(waitlist_window)
+    #     main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+    #     # Header frame with title, toggle and count
+    #     header_frame = ctk.CTkFrame(main_frame)
+    #     header_frame.pack(fill="x", pady=(0, 20))
+        
+    #     # Create toggle for waitlist type
+    #     self.waitlist_type_var = ctk.StringVar(value="Game Center")
+    #     waitlist_toggle = ctk.CTkSegmentedButton(
+    #         header_frame,
+    #         values=["Game Center", "Bowling Lanes"],
+    #         variable=self.waitlist_type_var,
+    #         command=self.switch_waitlist_type
+    #     )
+    #     waitlist_toggle.pack(side="left", padx=(0, 20))
+        
+    #     title_frame = ctk.CTkFrame(header_frame)
+    #     title_frame.pack(side="left")
+        
+    #     # Title label that will update based on selected waitlist type
+    #     self.title_label = ctk.CTkLabel(
+    #         title_frame, 
+    #         text="Gaming Center Waitlist", 
+    #         font=("Helvetica", 20, "bold")
+    #     )
+    #     self.title_label.pack(side="left", padx=5)
+        
+    #     # Count label that will update based on selected waitlist
+    #     self.count_label = ctk.CTkLabel(
+    #         title_frame, 
+    #         text=str(len(self.waitlist)), 
+    #         fg_color="blue", 
+    #         text_color="white",
+    #         corner_radius=10, 
+    #         width=30
+    #     )
+    #     self.count_label.pack(side="left", padx=5)
+
+    #     # Search frame
+    #     search_frame = ctk.CTkFrame(header_frame)
+    #     search_frame.pack(side="right")
+    #     self.search_entry = ctk.CTkEntry(search_frame, placeholder_text="Search parties", width=200)
+    #     self.search_entry.pack(side="right", padx=5)
+
+    #     # Create a frame to hold both the treeview and buttons side by side
+    #     content_frame = ctk.CTkFrame(main_frame)
+    #     content_frame.pack(fill="both", expand=True)
+
+    #     # Create custom style for Treeview
+    #     style = ttk.Style()
+    #     style.theme_use("default")
+
+    #     style.configure(
+    #         "Waitlist.Treeview",
+    #         background="#2b2b2b",
+    #         foreground="white",
+    #         fieldbackground="#2b2b2b",
+    #         rowheight=50,
+    #         font=("Helvetica", 12)
+    #     )
+    #     style.configure(
+    #         "Waitlist.Treeview.Heading",
+    #         background="#333333",
+    #         foreground="white",
+    #         font=("Helvetica", 12, "bold"),
+    #         relief="flat"
+    #     )
+    #     style.map(
+    #         "Waitlist.Treeview",
+    #         background=[("selected", "#1f538d")],
+    #         foreground=[("selected", "white")]
+    #     )
+
+    #     # Create columns - same structure for both waitlist types
+    #     columns = ("party", "size", "notes", "station", "quotedTime", "arrival")
+    #     self.waitlist_tree = ttk.Treeview(
+    #         content_frame,
+    #         columns=columns,
+    #         show="headings",
+    #         style="Waitlist.Treeview"
+    #     )
+        
+    #     # Configure column headings and widths
+    #     self.headings = {
+    #         "party": "PARTY",
+    #         "size": "SIZE",
+    #         "notes": "NOTES",
+    #         "station": "STATION",  # Will be changed to "LANE" for bowling
+    #         "quotedTime": "QUOTED TIME",
+    #         "arrival": "ARRIVAL"
+    #     }
+        
+    #     for col, heading in self.headings.items():
+    #         self.waitlist_tree.heading(col, text=heading)
+    #         if col == "size":
+    #             self.waitlist_tree.column(col, width=50, anchor="center")  # Narrow size column
+    #         else:
+    #             self.waitlist_tree.column(col, width=150, anchor="w")  # Adjust width of other columns
+
+    #     # Create a frame for the buttons column
+    #     buttons_frame = ctk.CTkFrame(content_frame, width=200)  # Set a fixed width for the actions column
+    #     buttons_frame.pack(side="right", fill="y", padx=(10, 0))
+        
+    #     # Add a header for the actions column
+    #     ctk.CTkLabel(buttons_frame, text="ACTIONS", font=("Helvetica", 11, "bold")).pack(pady=(0, 0))
+
+    #     # Load icons
+    #     check_icon = ctk.CTkImage(Image.open("./icon_cache/check.png"), size=(16, 16))
+    #     x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
+    #     pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
+    #     message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
+
+    #     # Add a single row of placeholder buttons (grayed-out and un-clickable)
+    #     self.placeholder_buttons_frame = ctk.CTkFrame(buttons_frame)
+    #     self.placeholder_buttons_frame.pack(pady=10, padx=5)
+
+    #     ctk.CTkButton(
+    #         self.placeholder_buttons_frame,
+    #         text="✓",
+    #         width=30,
+    #         height=30,
+    #         fg_color="gray",
+    #         hover_color="gray",
+    #         state="disabled"
+    #     ).pack(side="left", padx=2)
+    #     ctk.CTkButton(
+    #         self.placeholder_buttons_frame,
+    #         text="✕",
+    #         width=30,
+    #         height=30,
+    #         fg_color="gray",
+    #         hover_color="gray",
+    #         state="disabled"
+    #     ).pack(side="left", padx=2)
+    #     ctk.CTkButton(
+    #         self.placeholder_buttons_frame,
+    #         text="✎",
+    #         width=30,
+    #         height=30,
+    #         fg_color="gray",
+    #         hover_color="gray",
+    #         state="disabled"
+    #     ).pack(side="left", padx=2)
+    #     ctk.CTkButton(
+    #         self.placeholder_buttons_frame,
+    #         text="✉",
+    #         width=30,
+    #         height=30,
+    #         fg_color="gray",
+    #         hover_color="gray",
+    #         state="disabled"
+    #     ).pack(side="left", padx=2)
+
+    #     # Now it's safe to call:
+    #     self.update_waitlist_tree()
+
+    #     # Pack the treeview with scrollbar
+    #     tree_scroll = ctk.CTkScrollbar(content_frame, orientation="vertical", command=self.waitlist_tree.yview)
+    #     self.waitlist_tree.configure(yscrollcommand=tree_scroll.set)
+        
+    #     self.waitlist_tree.pack(side="left", fill="both", expand=True)
+    #     tree_scroll.pack(side="right", fill="y")
+
+    #     # Store reference to buttons_frame for updating
+    #     self.buttons_frame = buttons_frame
+
+    #     # Add floating action button - will be updated based on waitlist type
+    #     station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+    #     self.add_button = ctk.CTkButton(
+    #         waitlist_window,
+    #         text="+",
+    #         width=60,
+    #         height=60,
+    #         corner_radius=60,
+
+    #         font=("Helvetica", 24, "bold"),
+    #         command=lambda: self.add_to_waitlist(station_names)
+    #     )
+    #     self.add_button.place(relx=0.95, rely=0.95, anchor="se")
+
+    #     def update_tree(event=None):
+    #         search_text = self.search_entry.get().lower()
+    #         self.update_waitlist_tree(search_text)
+
+    #     self.search_entry.bind('<KeyRelease>', update_tree)
+        
+    #     # Update the waitlist display
+    #     self.update_waitlist_tree()
+
+    def switch_waitlist_type(self, value=None):
+        """Switch between Game Center and Bowling Lanes waitlists"""
+        waitlist_type = self.waitlist_type_var.get()
+        
+        # Update the title and column headers
+        if waitlist_type == "Game Center":
+            self.title_label.configure(text="Gaming Center Waitlist")
+            self.count_label.configure(text=str(len(self.waitlist)))
+            self.waitlist_tree.heading("station", text="STATION")
+            
+            # Update add button command for gaming center
+            station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+            self.add_button.configure(
+                command=lambda: self.add_to_waitlist(station_names)
+            )
+        elif waitlist_type == "Bowling Lanes":
+            self.title_label.configure(text="Bowling Lanes Waitlist")
+            self.count_label.configure(text=str(len(self.bowling_waitlist)))
+            self.waitlist_tree.heading("station", text="LANE")
+            
+            # Update add button command for bowling lanes
+            lane_names = [f"Lane {i}" for i in range(1, 7)]  # Lanes 1-6
+            self.add_button.configure(
+                command=lambda: self.add_to_bowling_waitlist(lane_names)
+            )
+        
+        # Update the displayed waitlist
+        self.update_waitlist_tree()
+
+    def add_to_waitlist(self, station_names):
+        """Modified to accept station_names parameter and not show email dialog"""
+        dialog = WaitlistDialog(self, station_names, title="Add to Waitlist", prompt="Enter details:")
+        result = dialog.show()
+        if result:
+            self.waitlist.append(result)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()  # Update the sidebar count label
+
+    def add_to_bowling_waitlist(self, lane_names):
+        """Add a new entry to the bowling waitlist without showing email dialog"""
+        dialog = BowlingWaitlistDialog(self, lane_names, title="Add to Bowling Waitlist", prompt="Enter details:")
+        result = dialog.show()
+        if result:
+            self.bowling_waitlist.append(result)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()  # Update the sidebar count label
+
+    def send_sms_notification(self, entry):
+        """Send notification to the party with option to add email if not already present."""
+        phone_number = entry['phone']
+        party_name = entry['party']
+        station_name = entry['station']
+        
+        # Check if the entry already has an email, if not, prompt for one
+        if 'email' not in entry or not entry['email']:
+            email_dialog = ctk.CTkInputDialog(
+                title="Add Email Address", 
+                text=f"No email found for {party_name}. Enter email address for notifications:"
+            )
+            email = email_dialog.get_input()
+            if email:
+                # Update the entry with the new email
+                entry['email'] = email
+                # Update the waitlist entry
+                waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+                current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+                if entry in current_waitlist:
+                    idx = current_waitlist.index(entry)
+                    current_waitlist[idx] = entry
+                self.update_waitlist_tree()
+        
+        # Now proceed with sending the notification
+        if 'email' in entry and entry['email']:
+            # Use the stored email
+            recipient_email = entry['email']
+            
+            # Similar logic to send_sms but directly using the stored email
+            email = "uvuslwcgamecenter@gmail.com"
+            password = "jfuq wefo nxzk kkde"  # App password
+            
+            subject = f"UVU Gaming Center - Station Ready for {party_name}"
+            message_body = (
+                f"Hello {party_name},\n\n"
+                f"Your station {station_name} at the UVU Gaming Center is ready for you!\n\n"
+                "Please arrive within the next 10 minutes so your position isn't forfeited.\n\n"
+                "Thank you,\n"
+                "UVU Gaming Center Staff"
+            )
+            
+            try:
+                # Create the email message
+                msg = MIMEText(message_body)
+                msg['From'] = email
+                msg['To'] = recipient_email
+                msg['Subject'] = subject
+                msg['Date'] = formatdate(localtime=True)
+                
+                # Send the email
+                with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                    server.starttls()
+                    server.login(email, password)
+                    server.sendmail(email, recipient_email, msg.as_string())
+                    
+                print(f"Email notification sent to: {recipient_email}")
+                messagebox.showinfo("Success", f"Notification email sent to {recipient_email}")
+                status = "Notification sent successfully!"
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Failed to send email notification: {error_msg}")
+                messagebox.showerror("Error", f"Failed to send notification email.\n\nError: {error_msg}")
+                status = f"Failed to send notification: {error_msg}"
+        else:
+            # If no email is stored, proceed with the standard notification function
+            status = self.send_sms(phone_number, party_name, station_name)
+        
+        print(status)  # Print the status for debugging
+        
+        # Determine success based on status
+        if "successfully" in status.lower():
+            return "Notification sent successfully!"
+        else:
+            return "Failed to send notification."
+
+    def edit_waitlist_entry(self, entry):
+        """
+        Open a dialog to edit an existing waitlist entry.
+        """
+        waitlist_type = self.waitlist_type_var.get()
+        
+        if waitlist_type == "Game Center":
+            # Get the list of station names for the dropdown
+            station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
+            dialog_class = WaitlistDialog
+            current_waitlist = self.waitlist
+        else:  # Bowling Lanes
+            station_names = [f"Lane {i}" for i in range(1, 7)]
+            dialog_class = BowlingWaitlistDialog
+            current_waitlist = self.bowling_waitlist
+
+        # Create the edit dialog with the current entry's data
+        dialog = dialog_class(
+            self,
+            station_names,
+            title=f"Edit {'Bowling' if waitlist_type == 'Bowling Lanes' else 'Game Center'} Waitlist Entry",
+            prompt="Edit details:"
+        )
+
+        # Pre-populate the dialog fields with the current entry's data
+        dialog.name_entry.insert(0, entry["party"])
+        dialog.phone_entry.insert(0, entry["phone"])
+        dialog.size_entry.insert(0, str(entry["size"]))
+        dialog.notes_entry.insert(0, entry["notes"])
+        
+        # Handle station differently for each dialog type
+        if waitlist_type == "Game Center":
+            dialog.station_var.set(entry["station"])
+        
+        # Pre-populate email if it exists
+        if 'email' in entry and entry['email']:
+            dialog.email_entry.insert(0, entry["email"])
+        
+        # If it's a bowling entry, pre-populate the lanes needed field
+        if waitlist_type == "Bowling Lanes" and 'lanes_needed' in entry:
+            dialog.lanes_needed_var.set(str(entry["lanes_needed"]))
+            dialog.update_lane_selector()
+            
+            # Set preferred lanes if they exist
+            if 'preferred_lanes' in entry and entry['preferred_lanes']:
+                dialog.specify_lanes_var.set(True)
+                dialog.toggle_lane_preferences()
+                for i, lane in enumerate(entry['preferred_lanes']):
+                    if i < len(dialog.lane_selectors):
+                        lane_dropdown = [w for w in dialog.lane_selectors[i].winfo_children() if isinstance(w, ctk.CTkComboBox)]
+                        if lane_dropdown:
+                            lane_dropdown[0].set(lane)
+
+        # Show the dialog and get the result
+        result = dialog.show()
+        if result:
+            # Update the entry in the waitlist
+            if entry in current_waitlist:
+                index = current_waitlist.index(entry)
+                current_waitlist[index] = result
+                self.update_waitlist_tree()
+                self.update_count_label()
+            self.update_waitlist_tree()
+            self.update_waitlist_count()  # Update the sidebar count label
+
+    def add_to_bowling_waitlist(self, lane_names):
+        """Add a new entry to the bowling waitlist"""
+        dialog = BowlingWaitlistDialog(self, lane_names, title="Add to Bowling Waitlist", prompt="Enter details:")
+        result = dialog.show()
+        if result:
+            # Optionally capture email at time of registration
+            # email_dialog = ctk.CTkInputDialog(
+            #     title="Optional Email Address", 
+            #     text=f"Enter email address for {result['party']} (optional, for notifications):"
+            # )
+            # email = email_dialog.get_input()
+            # if email:
+            #     result['email'] = email
+                
+            self.bowling_waitlist.append(result)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()  # Update the sidebar count label
+
+    def send_sms(self, phone_number, party_name, station_name):
+        """Send SMS via email-to-SMS gateways for all major carriers simultaneously."""
+        email = "uvuslwcgamecenter@gmail.com"
+        password = "jfuq wefo nxzk kkde"  # App password
+        
+        # Format the message (keep it short for SMS)
+        message_body = (
+            f"Hello {party_name}, your station {station_name} at UVU Gaming Center is ready! "
+            "Please arrive within 10 minutes to keep your spot."
+        )
+        
+        # Common carrier email-to-SMS gateways
+        carriers = {
+            "at&t": "@txt.att.net",
+            "tmobile": "@tmomail.net",
+            "verizon": "@vtext.com",
+            "sprint": "@messaging.sprintpcs.com",
+            "boost": "@sms.myboostmobile.com",
+            "cricket": "@sms.cricketwireless.net",
+            "uscellular": "@email.uscc.net",
+            "metro": "@mymetropcs.com"
+        }
+        
+        # Show a loading indicator
+        loading_window = ctk.CTkToplevel(self)
+        loading_window.title("Sending Notification")
+        loading_window.geometry("300x100")
+        loading_window.lift()
+        loading_window.grab_set()
+        
+        ctk.CTkLabel(loading_window, text=f"Sending notification to {party_name}...").pack(pady=10)
+        progress_bar = ctk.CTkProgressBar(loading_window)
+        progress_bar.pack(pady=10, padx=20, fill="x")
+        progress_bar.set(0)
+        
+        def send_notifications():
+            success_count = 0
+            error_messages = []
+            
+            # Try sending to all carriers
+            for i, (carrier_name, suffix) in enumerate(carriers.items()):
+                try:
+                    # Update progress
+                    progress = (i + 1) / len(carriers)
+                    progress_bar.set(progress)
+                    loading_window.update_idletasks()
+                    
+                    # Construct SMS gateway address
+                    recipient = f"{phone_number}{suffix}"
+                    
+                    # Create the email message
+                    msg = MIMEText(message_body)
+                    msg['From'] = email
+                    msg['To'] = recipient
+                    msg['Subject'] = ""  # Keep empty for SMS
+                    msg['Date'] = formatdate(localtime=True)
+                    
+                    # Connect to server and send
+                    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                        server.starttls()
+                        server.login(email, password)
+                        server.sendmail(email, recipient, msg.as_string())
+                    
+                    success_count += 1
+                    
+                except Exception as e:
+                    error_messages.append(f"{carrier_name}: {str(e)}")
+            
+            # Close loading window
+            loading_window.grab_release()
+            loading_window.destroy()
+            
+            # Show results
+            if success_count > 0:
+                messagebox.showinfo(
+                    "Notification Sent", 
+                    f"Notification sent to {party_name} through {success_count} carriers."
+                )
+                return "Notification sent successfully!"
+            else:
+                error_details = "\n".join(error_messages[:3]) + "\n..."
+                messagebox.showerror(
+                    "Notification Failed", 
+                    f"Failed to send notification to {party_name}.\n\nErrors encountered with all carriers."
+                )
+                return f"Failed to send notification: {error_messages[0]}"
+        
+        # Run the sending function in a separate thread
+        threading.Thread(target=send_notifications).start()
+        
+        return "Sending notification..."
+
+    def send_sms_notification(self, entry):
+        """Send notification to the party."""
+        phone_number = entry['phone']
+        party_name = entry['party']
+        station_name = entry['station']
+
+        # Check if we have a stored email from registration
+        if 'email' in entry and entry['email']:
+            # Use the stored email
+            recipient_email = entry['email']
+            
+            # Similar logic to send_sms but directly using the stored email
+            email = "uvuslwcgamecenter@gmail.com"
+            password = "jfuq wefo nxzk kkde"  # App password
+            
+            subject = f"UVU Gaming Center - Station Ready for {party_name}"
+            message_body = (
+                f"Hello {party_name},\n\n"
+                f"Your station {station_name} at the UVU Gaming Center is ready for you!\n\n"
+                "Please arrive within the next 10 minutes so your position isn't forfeited.\n\n"
+                "Thank you,\n"
+                "UVU Gaming Center Staff"
+            )
+            
+            try:
+                # Create the email message
+                msg = MIMEText(message_body)
+                msg['From'] = email
+                msg['To'] = recipient_email
+                msg['Subject'] = subject
+                msg['Date'] = formatdate(localtime=True)
+                
+                # Send the email
+                with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                    server.starttls()
+                    server.login(email, password)
+                    server.sendmail(email, recipient_email, msg.as_string())
+                    
+                print(f"Email notification sent to: {recipient_email}")
+                messagebox.showinfo("Success", f"Notification email sent to {recipient_email}")
+                status = "Notification sent successfully!"
+            except Exception as e:
+                error_msg = str(e)
+                print(f"Failed to send email notification: {error_msg}")
+                messagebox.showerror("Error", f"Failed to send notification email.\n\nError: {error_msg}")
+                status = f"Failed to send notification: {error_msg}"
+        else:
+            # If no email is stored, proceed with the standard notification function
+            status = self.send_sms(phone_number, party_name, station_name)
+        
+        print(status)  # Print the status for debugging
+
+    def handle_click(self, event):
+        """Handle clicks on the treeview to show action buttons"""
+        region = self.waitlist_tree.identify_region(event.x, event.y)
+        if region == "cell":
+            column = self.waitlist_tree.identify_column(event.x)
+            if column == "#7":  # Actions column
+                item = self.waitlist_tree.identify_row(event.y)
+                if item:
+                    # Get the item's bbox
+                    bbox = self.waitlist_tree.bbox(item, column)
+                    if bbox:
+                        self.show_action_buttons(item, bbox)
+
+    def complete_waitlist_entry(self, entry):
+        """Mark a waitlist entry as complete and remove it from the list."""
+        waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        if entry in current_waitlist:
+            current_waitlist.remove(entry)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()
+
+    def remove_waitlist_entry(self, entry):
+        """Remove a waitlist entry from the appropriate list."""
+        waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        if entry in current_waitlist:
+            current_waitlist.remove(entry)
+            self.update_waitlist_tree()
+            self.update_waitlist_count()
+
+    def show_action_buttons(self, item, bbox):
+        """Show action buttons in a popup window"""
+        # Get the corresponding entry from waitlist
+        idx = self.waitlist_tree.index(item)
+        waitlist_type = self.waitlist_type_var.get()
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        
+        if idx >= len(current_waitlist):
             return
+        entry = current_waitlist[idx]
+        
+        # Create popup window for buttons
+        popup = tk.Toplevel(self.waitlist_window)
+        popup.overrideredirect(True)
+        
+        # Position popup at the cell location
+        tree_x = self.waitlist_tree.winfo_rootx()
+        tree_y = self.waitlist_tree.winfo_rooty()
+        popup.geometry(f"+{tree_x + bbox[0]}+{tree_y + bbox[1]}")
+        
+        # Create frame for buttons
+        button_frame = ctk.CTkFrame(popup)
+        button_frame.pack(padx=2, pady=2)
+        
+        # Create buttons
+        complete_btn = ctk.CTkButton(
+            button_frame, 
+            text="✓", 
+            width=30, 
+            height=30,
+            fg_color="green",
+            hover_color="darkgreen",
+            command=partial(self.complete_waitlist_entry, entry)
+        ).pack(side="left", padx=2)
+        
+        remove_btn = ctk.CTkButton(
+            button_frame,
+            text="✕",
+            width=30,
+            height=30,
+            fg_color="red",
+            hover_color="darkred",
+            command=partial(self.remove_waitlist_entry, entry)
+        ).pack(side="left", padx=2)
+        
+        
+        edit_btn = ctk.CTkButton(
+            button_frame,
+            text="✎",
+            width=30,
+            height=30,
+            fg_color="blue",
+            hover_color="darkblue",
+            command=partial(self.edit_waitlist_entry, entry)
+        ).pack(side="left", padx=2)
+        
+        complete_btn.pack(side="left", padx=2)
+        remove_btn.pack(side="left", padx=2)
+        edit_btn.pack(side="left", padx=2)
+        
+        # Auto-close popup when mouse leaves
+        def on_leave(e):
+            popup.destroy()
+        
+        popup.bind('<Leave>', on_leave)
 
-        station_names = [f"{station.station_type} {station.station_num}" for station in self.stations]
-        dialog = StationSelectionDialog(self, "Select Station", station_names)
-        if not dialog.selected_station:
-            return
+    def update_waitlist_tree(self, search_text=""):
+        """Updated method to handle placeholder buttons and support both waitlist types"""
+        # Clear existing entries and buttons
+        for item in self.waitlist_tree.get_children():
+            self.waitlist_tree.delete(item)
+        
+        # Clear existing buttons (except placeholders)
+        for widget in self.buttons_frame.winfo_children()[1:]:  # Skip the header label
+            if widget != self.placeholder_buttons_frame:  # Don't remove the placeholder buttons frame
+                widget.destroy()
+        
+        # Determine which waitlist to display
+        waitlist_type = self.waitlist_type_var.get() if hasattr(self, 'waitlist_type_var') else "Game Center"
+        current_waitlist = self.bowling_waitlist if waitlist_type == "Bowling Lanes" else self.waitlist
+        
+        # If there are entries in the waitlist, hide placeholder buttons
+        if current_waitlist:
+            self.placeholder_buttons_frame.pack_forget()  # Hide placeholder buttons
+        else:
+            self.placeholder_buttons_frame.pack(pady=10, padx=5)  # Show placeholder buttons
+        
+        # Load icon images
+        check_icon = ctk.CTkImage(Image.open("./icon_cache/check.png"), size=(16, 16))
+        x_icon = ctk.CTkImage(Image.open("./icon_cache/x.png"), size=(16, 16))
+        pencil_icon = ctk.CTkImage(Image.open("./icon_cache/pencil.png"), size=(16, 16))
+        message_icon = ctk.CTkImage(Image.open("./icon_cache/message-circle-more.png"), size=(16, 16))
 
-        self.waitlist.append({"name": name, "station": dialog.selected_station})
-        self.update_notification_bubble()
-        self.update_waitlist_listbox(waitlist_listbox)
+        # Add entries and their corresponding buttons
+        for entry in current_waitlist:
+            if search_text and search_text not in entry['party'].lower():
+                continue
+            
+            # Calculate wait time - handle differently for bowling lanes
+            if waitlist_type == "Bowling Lanes":
+                wait_time = "30 mins" # Default wait time for bowling
+                quoted_time = f"{entry['quotedTime']} ({wait_time})"
+            else:
+                wait_time = self.calculate_wait_time(entry['station'])
+                quoted_time = f"{entry['quotedTime']} ({wait_time})"
+            
+            # Insert row
+            self.waitlist_tree.insert("", "end", values=(
+                f"{entry['party']}\n{entry['phone']}",
+                entry['size'],
+                entry['notes'],
+                entry['station'],
+                quoted_time,
+                entry['arrival']
+            ))
+            
 
-    def remove_from_waitlist(self, waitlist_listbox):
-        selected_index = waitlist_listbox.curselection()
-        if not selected_index:
-            return
+            self.waitlist_tree.bind("<Button-1>", self.handle_click)
+            entry_buttons = ctk.CTkFrame(self.buttons_frame)
+            entry_buttons.pack(pady=10, padx=5)
+            
+            # Create buttons for this entry
+            ctk.CTkButton(
+                entry_buttons,
+                image=check_icon,
+                text="",
+                width=30,
+                height=30,
+                fg_color="green",
+                hover_color="darkgreen",
+                command=partial(GamingCenterApp.complete_waitlist_entry, self, entry)
+            ).pack(side="left", padx=2)
+            
+            ctk.CTkButton(
+                entry_buttons,
+                image=x_icon,
+                text="",
+                width=30,
+                height=30,
+                fg_color="red",
+                hover_color="darkred",
+                command=partial(self.remove_waitlist_entry, entry)
+            ).pack(side="left", padx=2)
 
-        self.waitlist.pop(selected_index[0])
-        self.update_notification_bubble()
-        self.update_waitlist_listbox(waitlist_listbox)
+            ctk.CTkButton(
+                entry_buttons,
+                image=pencil_icon,
+                text="",
+                width=30,
+                height=30,
+                fg_color="blue",
+                hover_color="darkblue",
+                command=partial(self.edit_waitlist_entry, entry)
+            ).pack(side="left", padx=2)
+            
+            # Add Send SMS button
+            ctk.CTkButton(
+                entry_buttons,
+                image=message_icon,
+                text="",
+                width=30,
+                height=30,
+                fg_color="purple",
+                hover_color="#800080",
+                command=partial(self.send_sms_notification, entry)
+            ).pack(side="left", padx=2)
+        
+        # Update count label with current waitlist count
+        if hasattr(self, 'count_label'):
+            self.count_label.configure(text=str(len(current_waitlist)))
 
-    def update_waitlist_listbox(self, waitlist_listbox):
-        waitlist_listbox.delete(0, tk.END)
-        for i, person in enumerate(self.waitlist):
-            waitlist_listbox.insert(tk.END, f"{i+1}. {person['name']} - Station: {person['station']} - Wait Time: {self.calculate_wait_time(person['station'])}")
+    def calculate_wait_time(self, station_name):
+        try:
+            for station in self.stations:
+                if f"{station.station_type} {station.station_num}" == station_name:
+                    elapsed_time = station.timer.get_time()
+                    remaining_time = max(station.timer.time_limit - elapsed_time, 0)
+                    minutes, seconds = divmod(remaining_time, 60)
+                    return f"{int(minutes)} mins {int(seconds)} secs"
+            return "N/A"
+        except Exception as e:
+            print(f"Error calculating wait time: {str(e)}")
+            return "N/A"
 
-    def calculate_wait_time(self, station):
-        # Placeholder function to calculate wait time based on station's timer
-        return "10 mins"
+class EnhancedTooltip:
+    """Simple, reliable tooltip with triangle pointer and visible text"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
+        self._after_id = None
+        
+        # Bind events
+        self.widget.bind('<Enter>', self.show_tooltip)
+        self.widget.bind('<Leave>', self.hide_tooltip)
+    
+    def show_tooltip(self, event=None):
+        """Display the tooltip"""
+        # Hide any existing tooltip
+        self.hide_tooltip()
+        
+        # Get widget position (centered below widget)
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+        
+        # Create tooltip window
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)  # No window decorations
+        
+        # Create a frame with padding
+        frame = tk.Frame(self.tooltip, bg="#333333", bd=1, relief="solid")
+        frame.pack(fill="both", expand=True)
+        
+        # Add the tooltip content with fixed height and proper triangle pointer
+        tooltip_content = tk.Frame(frame, bg="#333333")
+        tooltip_content.pack(padx=0, pady=0)
+        
+        # Draw the triangle pointer
+        triangle_canvas = tk.Canvas(
+            tooltip_content, 
+            width=10, 
+            height=6,
+            bg="#333333", 
+            highlightthickness=0
+        )
+        triangle_canvas.create_polygon(
+            0, 6,   # bottom-left
+            5, 0,   # top-center
+            10, 6,  # bottom-right
+            fill="#333333", 
+            outline="#333333"
+        )
+        triangle_canvas.pack(fill="x", pady=0)
+        
+        # Text content
+        text_label = tk.Label(
+            tooltip_content,
+            text=self.text,
+            justify="center",
+            font=("Helvetica", 10),
+            fg="white",
+            bg="#333333",
+            padx=8, 
+            pady=4
+        )
+        text_label.pack(fill="both")
+        
+        # Position the tooltip 
+        self.tooltip.update_idletasks()
+        tooltip_width = text_label.winfo_width() + 16  # Add padding
+        tooltip_height = text_label.winfo_height() + 16  # Add padding
+        self.tooltip.geometry(f"{tooltip_width}x{tooltip_height}")
+        self.tooltip.geometry(f"+{x - tooltip_width//2}+{y}")
+        self._after_id = self.tooltip.after(5000, self.hide_tooltip)
+    
+    def hide_tooltip(self, event=None):
+        if self._after_id:
+            self.tooltip.after_cancel(self._after_id)
+            self._after_id = None
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
 
 
 if __name__ == "__main__":
     app = GamingCenterApp()
+    app.iconbitmap("icon_cache/GamingCenterApp.ico")
     app.mainloop()
+cProfile.run('app.mainloop()', 'restats')
